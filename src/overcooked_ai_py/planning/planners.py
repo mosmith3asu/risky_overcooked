@@ -222,7 +222,7 @@ class MotionPlanner(object):
         facing_terrain_type = self.mdp.get_terrain_type_at_pos(
             pos_of_facing_terrain
         )
-        if facing_terrain_type == " " or (
+        if (facing_terrain_type == " " or facing_terrain_type == "W") or (
             facing_terrain_type == "X"
             and pos_of_facing_terrain not in self.counter_goals
         ):
@@ -427,7 +427,7 @@ class MotionPlanner(object):
         terrain features that the agent might want to interact with."""
         terrain_feature_locations = []
         for terrain_type, pos_list in self.mdp.terrain_pos_dict.items():
-            if terrain_type != " ":
+            if terrain_type != " " and terrain_type != "W":
                 terrain_feature_locations += pos_list
         return {
             feature_pos: self._get_possible_motion_goals_for_feature(

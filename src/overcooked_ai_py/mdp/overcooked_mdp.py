@@ -1022,6 +1022,8 @@ BASE_REW_SHAPING_PARAMS = {
     "DISH_DISP_DISTANCE_REW": 0,
     "POT_DISTANCE_REW": 0,
     "SOUP_DISTANCE_REW": 0,
+    "ONION_DROP_REW": 0,
+    "SOUP_DROP_REW": 0,
 }
 
 EVENT_TYPES = [
@@ -1055,6 +1057,11 @@ EVENT_TYPES = [
     "catastrophic_tomato_potting",
     "useless_onion_potting",
     "useless_tomato_potting",
+    "onion_slip",
+    "tomato_slip",
+    "soup_slip",
+    "dish_slip",
+    "empty_slip",
 ]
 
 POTENTIAL_CONSTANTS = {
@@ -1409,6 +1416,9 @@ class OvercookedGridworld(object):
         # Resolve player movements
         self.resolve_movement(new_state, joint_action)
 
+        # Resolve slipping in water
+        self.resolve_enter_water(state, new_state, events_infos)
+
         # Finally, environment effects
         self.step_environment_effects(new_state)
 
@@ -1578,6 +1588,32 @@ class OvercookedGridworld(object):
 
         return sparse_reward, shaped_reward
 
+    def resolve_enter_water(self, state, new_state,events_infos):
+        """
+        If a player enters a puddle, they have a p_slip chance to drop their held item
+        and experince slight delay in action.
+        """
+
+        p_slip = 0.5
+        # all_objects = list(new_state.objects.values())
+        for player_idx,player in enumerate(new_state.players):
+            old_player_state = state.players[player_idx]
+            is_same_position = np.all(player.position == old_player_state.position)
+            is_entered_water = player.position in self.terrain_pos_dict["W"]
+            if not is_same_position and is_entered_water:
+
+                if player.held_object is not None: # if player is holding object
+                    is_dropped = np.random.choice([True, False], p=[p_slip, 1-p_slip])
+                    if is_dropped:
+                        # remove item from players hand and the environment
+                        obj = player.remove_object()
+                        # add event flag for later animation update
+                        self.log_object_slip(events_infos, obj.name, player_idx)
+                else:
+                    # still add event flag for animation update when no held object
+                    self.log_object_slip(events_infos, 'empty', player_idx)
+
+
     def get_recipe_value(
         self,
         state,
@@ -1732,7 +1768,7 @@ class OvercookedGridworld(object):
 
     def get_valid_player_positions(self):
         # return self.terrain_pos_dict[" "]
-        return self.terrain_pos_dict[" "] #+ self.terrain_pos_dict["W"]
+        return self.terrain_pos_dict[" "]  + self.terrain_pos_dict["W"]
 
     def get_valid_joint_player_positions(self):
         """Returns all valid tuples of the form (p0_pos, p1_pos, p2_pos, ...)"""
@@ -2181,6 +2217,15 @@ class OvercookedGridworld(object):
             if USEFUL_DROP_FNS[obj_name](state, pot_states, player_index):
                 obj_useful_key = "useful_" + obj_name + "_drop"
                 events_infos[obj_useful_key][player_index] = True
+
+    def log_object_slip(
+        self, events_infos, obj_name, player_index
+    ):
+        """Player dropped the object on a counter"""
+        obj_drop_key = obj_name + "_slip"
+        if obj_drop_key not in events_infos:
+            raise ValueError("Unknown event {}".format(obj_drop_key))
+        events_infos[obj_drop_key][player_index] = True
 
     def is_dish_pickup_useful(self, state, pot_states, player_index=None):
         """

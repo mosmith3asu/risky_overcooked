@@ -11,10 +11,10 @@ import ray
 from utils import DOCKER_VOLUME, create_dirs
 
 from human_aware_rl.rllib.rllib import load_agent
-from risky_overcooked_py.mdp.actions import Action, Direction
-from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
-from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
-from risky_overcooked_py.planning.planners import (
+from overcooked_ai_py.mdp.actions import Action, Direction
+from overcooked_ai_py.mdp.overcooked_env import OvercookedEnv
+from overcooked_ai_py.mdp.overcooked_mdp import OvercookedGridworld
+from overcooked_ai_py.planning.planners import (
     NO_COUNTERS_PARAMS,
     MotionPlanner,
 )

@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 from numpy import nan
 
-from overcooked_ai_py.static import LAYOUTS_DIR
+from risky_overcooked_py.static import LAYOUTS_DIR
 
 # I/O
 

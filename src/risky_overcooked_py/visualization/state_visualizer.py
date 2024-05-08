@@ -4,8 +4,8 @@ import os
 
 import pygame
 
-from overcooked_ai_py.mdp.actions import Action, Direction
-from overcooked_ai_py.mdp.layout_generator import (
+from risky_overcooked_py.mdp.actions import Action, Direction
+from risky_overcooked_py.mdp.layout_generator import (
     COUNTER,
     DISH_DISPENSER,
     EMPTY,
@@ -15,20 +15,20 @@ from overcooked_ai_py.mdp.layout_generator import (
     TOMATO_DISPENSER,
     WATER
 )
-from overcooked_ai_py.static import FONTS_DIR, GRAPHICS_DIR
-from overcooked_ai_py.utils import (
+from risky_overcooked_py.static import FONTS_DIR, GRAPHICS_DIR
+from risky_overcooked_py.utils import (
     classproperty,
     cumulative_rewards_from_rew_list,
     generate_temporary_file_path,
 )
-from overcooked_ai_py.visualization.pygame_utils import (
+from risky_overcooked_py.visualization.pygame_utils import (
     MultiFramePygameImage,
     blit_on_new_surface_of_size,
     run_static_resizeable_window,
     scale_surface_by_factor,
     vstack_surfaces,
 )
-from overcooked_ai_py.visualization.visualization_utils import (
+from risky_overcooked_py.visualization.visualization_utils import (
     show_image_in_ipython,
     show_ipython_images_slider,
 )

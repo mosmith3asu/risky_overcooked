@@ -8,23 +8,23 @@ import numpy as np
 import pygame
 import tqdm
 
-from overcooked_ai_py.mdp.actions import Action
-from overcooked_ai_py.mdp.overcooked_mdp import (
+from risky_overcooked_py.mdp.actions import Action
+from risky_overcooked_py.mdp.overcooked_mdp import (
     EVENT_TYPES,
     OvercookedGridworld,
 )
-from overcooked_ai_py.mdp.overcooked_trajectory import (
+from risky_overcooked_py.mdp.overcooked_trajectory import (
     DEFAULT_TRAJ_KEYS,
     EPISODE_TRAJ_KEYS,
     TIMESTEP_TRAJ_KEYS,
 )
-from overcooked_ai_py.planning.planners import (
+from risky_overcooked_py.planning.planners import (
     NO_COUNTERS_PARAMS,
     MediumLevelActionManager,
     MotionPlanner,
 )
-from overcooked_ai_py.utils import append_dictionaries, mean_and_std_err
-from overcooked_ai_py.visualization.state_visualizer import StateVisualizer
+from risky_overcooked_py.utils import append_dictionaries, mean_and_std_err
+from risky_overcooked_py.visualization.state_visualizer import StateVisualizer
 
 DEFAULT_ENV_PARAMS = {"horizon": 400}
 
@@ -582,7 +582,7 @@ class OvercookedEnv(object):
         )
 
         # TODO: should probably transfer check methods over to Env class
-        from overcooked_ai_py.agents.benchmarking import AgentEvaluator
+        from risky_overcooked_py.agents.benchmarking import AgentEvaluator
 
         AgentEvaluator.check_trajectories(trajectories, verbose=info)
         return trajectories
@@ -671,7 +671,7 @@ class OvercookedEnv(object):
 
 from pettingzoo.utils.env import ParallelEnv
 
-from overcooked_ai_py.agents.agent import AgentPair
+from risky_overcooked_py.agents.agent import AgentPair
 
 
 class OvercookedEnvPettingZoo(ParallelEnv):

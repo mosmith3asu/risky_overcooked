@@ -2,21 +2,21 @@ import copy
 
 import numpy as np
 
-from overcooked_ai_py.agents.agent import (
+from risky_overcooked_py.agents.agent import (
     AgentPair,
     GreedyHumanModel,
     RandomAgent,
 )
-from overcooked_ai_py.mdp.layout_generator import LayoutGenerator
-from overcooked_ai_py.mdp.overcooked_env import OvercookedEnv
-from overcooked_ai_py.mdp.overcooked_mdp import (
+from risky_overcooked_py.mdp.layout_generator import LayoutGenerator
+from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
+from risky_overcooked_py.mdp.overcooked_mdp import (
     Action,
     OvercookedGridworld,
     OvercookedState,
 )
-from overcooked_ai_py.mdp.overcooked_trajectory import DEFAULT_TRAJ_KEYS
-from overcooked_ai_py.planning.planners import NO_COUNTERS_PARAMS
-from overcooked_ai_py.utils import (
+from risky_overcooked_py.mdp.overcooked_trajectory import DEFAULT_TRAJ_KEYS
+from risky_overcooked_py.planning.planners import NO_COUNTERS_PARAMS
+from risky_overcooked_py.utils import (
     cumulative_rewards_from_rew_list,
     is_iterable,
     load_from_json,

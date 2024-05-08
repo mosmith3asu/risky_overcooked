@@ -6,9 +6,9 @@ from collections import defaultdict
 import dill
 import numpy as np
 
-from overcooked_ai_py.mdp.actions import Action
-from overcooked_ai_py.mdp.overcooked_mdp import Recipe
-from overcooked_ai_py.utils import OvercookedException
+from risky_overcooked_py.mdp.actions import Action
+from risky_overcooked_py.mdp.overcooked_mdp import Recipe
+from risky_overcooked_py.utils import OvercookedException
 
 
 class Agent(object):

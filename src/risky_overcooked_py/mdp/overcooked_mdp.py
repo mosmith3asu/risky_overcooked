@@ -6,8 +6,8 @@ from functools import reduce
 
 import numpy as np
 
-from overcooked_ai_py.mdp.actions import Action, Direction
-from overcooked_ai_py.utils import (
+from risky_overcooked_py.mdp.actions import Action, Direction
+from risky_overcooked_py.utils import (
     OvercookedException,
     classproperty,
     pos_distance,

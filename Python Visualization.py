@@ -1,6 +1,6 @@
-from overcooked_ai_py.agents.benchmarking import AgentEvaluator
-from overcooked_ai_py.agents.agent import AgentPair, FixedPlanAgent, GreedyHumanModel, RandomAgent, SampleAgent
-from overcooked_ai_py.visualization.state_visualizer import StateVisualizer
+from risky_overcooked_py.agents.benchmarking import AgentEvaluator
+from risky_overcooked_py.agents.agent import AgentPair, FixedPlanAgent, GreedyHumanModel, RandomAgent, SampleAgent
+from risky_overcooked_py.visualization.state_visualizer import StateVisualizer
 # from IPython.display import display, Image
 from matplotlib.widgets import Button, Slider
 import os
@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 from PIL import Image
 
 T = 100
-
-ae = AgentEvaluator.from_layout_name({"layout_name": "risky_cramped_room"}, {"horizon": T })
+LAYOUT = "sanity_check_3_onion"
+ae = AgentEvaluator.from_layout_name({"layout_name": LAYOUT}, {"horizon": T })
 trajs = ae.evaluate_human_model_pair()
 # print(ae.env)
 # print(ae.mdp.state_string)

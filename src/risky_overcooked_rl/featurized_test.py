@@ -116,23 +116,6 @@ class CustomQAgent(Agent):
                 action = Action.sample(action_probs)
                 action_info = {"action_probs": action_probs}
 
-            # Argmax action -----------
-            # legal_actions = Action.ALL_ACTIONS
-            # legal_actions_indices = np.array([Action.ACTION_TO_INDEX[motion_a] for motion_a in legal_actions])
-            # legal_choice_idx = np.argmax(self.Q_table[current_state_idx, legal_actions_indices])
-            #
-            # # action_idx = np.argmax(self.Q_table[current_state_idx, :])
-            # action_idx=legal_actions_indices[legal_choice_idx]
-            #
-            # action = self.valid_actions[action_idx]
-            # action_probs = 1 #check what the action probs is supposed to be
-            # action_info = {"action_probs": action_probs}
-
-            # Check valid action -----------
-            # action_set = self.mdp.get_actions(state)[self.my_index]
-            # if action not in action_set:
-            #     raise ValueError(f"Invalid action {action} for state {state}")
-
         return action, action_info
     def actions(self, states, agent_indices):
         return (self.action(state) for state in states)
@@ -196,6 +179,8 @@ class CustomQAgent(Agent):
 
 
 
+
+
 if __name__ == "__main__":
     # LAYOUT = "cramped_room_one_onion"
     LAYOUT = "sanity_check"; HORIZON = 500; ITERATIONS = 10_000
@@ -230,6 +215,8 @@ if __name__ == "__main__":
         cum_reward = 0
         for t in count():
             state = env.state
+            featurized_state = env.featurize_state_mdp(state, num_pots=1)
+            print(f"State {np.shape(featurized_state)}")
             action1, _ = q_agent.action(state)
             action2, _ = stay_agent.action(state)
             joint_action = (action1, action2)
@@ -258,8 +245,7 @@ if __name__ == "__main__":
                 env.reset()
                 for t in count():
                     state = env.state
-                    featurized_state = env.featurize_state_mdp(state,num_pots=1)
-                    print(f"State {np.shape(featurized_state)}")
+
                     action1, _ = q_agent.action(state,rationality=9)
                     action2, _ = stay_agent.action(state)
                     joint_action = (action1, action2)

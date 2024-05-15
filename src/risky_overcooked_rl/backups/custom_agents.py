@@ -104,6 +104,15 @@ class SoloQAgent(Agent):
                 # action_probs = np.exp(rationality * qs) / np.sum(np.exp(rationality * qs))
                 action_probs = self.softmax(self.rationality * qs)
                 action = Action.sample(action_probs)
+                # assert np.isclose(np.sum(action_probs), 1), f"Action probs not normalized: {action_probs}"
+                # try:
+                #     action = Action.sample(action_probs)
+                # except:
+                #     print(f"Error sampling action: {action_probs}")
+                #     print(f"Qs: {qs}")
+                #     print(f"Obs: {obs}")
+                #     print(f"Action Probs: {action_probs}")
+                #     raise
                 action_info = {"action_probs": action_probs}
 
         return action, action_info

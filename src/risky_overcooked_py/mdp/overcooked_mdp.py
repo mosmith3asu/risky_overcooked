@@ -1613,7 +1613,6 @@ class OvercookedGridworld(object):
                     # still add event flag for animation update when no held object
                     self.log_object_slip(events_infos, 'empty', player_idx)
 
-
     def get_recipe_value(
         self,
         state,
@@ -1876,6 +1875,21 @@ class OvercookedGridworld(object):
                     ].append(pot_pos)
 
         return pots_states_dict
+
+    def get_reachable_counters(self, valid_terrain = (" ","W", "1","2")):
+        reachable_counters = []
+        counter_locations = self.get_counter_locations()
+        for pos in counter_locations:
+            for d in Direction.ALL_DIRECTIONS:
+                adj_pos = Action.move_in_direction(pos, d)
+                try:
+                    tile = self.get_terrain_type_at_pos(adj_pos)
+                    if tile in valid_terrain:
+                        reachable_counters.append(pos)
+                        break
+                except: pass
+        return reachable_counters
+
 
     def get_counter_objects_dict(self, state, counter_subset=None):
         """Returns a dictionary of pos:objects on counters by type"""

@@ -125,33 +125,24 @@ class SoloDeepQAgent(Agent):
         return e_x / e_x.sum()
 
     def update(self, experiences):
-        """
-
-        :param state:
-        :param action:
-        :param reward:
-        :param next_state:
-        :param explore_decay_prog: [0,1] advc
-        :return:
-        """
+        """ Provides batch update to the DQN model """
         states, actions, rewards, next_states, dones = experiences
-        # experiences = np.array(experiences)
-        # states, actions, rewards, next_states, dones = [experiences[:,c] for c in range(experiences.shape[1])]
         next_Q_values = self.model.predict(next_states)
         max_next_Q_values = np.max(next_Q_values, axis=1)
         target_Q_values = (rewards + (1 - dones) * self.gamma * max_next_Q_values)
         target_Q_values = target_Q_values.reshape(-1, 1)
+        target_Q_values = self.valuation_fun(target_Q_values)  # apply possibly biased valuation function
         mask = tf.one_hot(actions, self.model.n_outputs)
         with tf.GradientTape() as tape:
-            # all_Q_values = model(states)
-            all_Q_values = self.model.base_model(states)
+            all_Q_values = self.model.base_model(states) # must call model directly for gradient calc
             Q_values = tf.reduce_sum(all_Q_values * mask, axis=1, keepdims=True)
             loss = tf.reduce_mean(self.model.loss_fn(target_Q_values, Q_values))
         grads = tape.gradient(loss, self.model.trainable_variables)
         self.model.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
 
-    def evaluate_state(self, state):
-        return NotImplementedError()
+    def valuation_fun(self, td_target):
+        """ Applies CPT (if specified) to the target Q values"""
+        return td_target
 
     ########################################################
     # Featurization methods ################################

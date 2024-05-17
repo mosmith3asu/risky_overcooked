@@ -697,39 +697,41 @@ def test_update():
     q_agent.update(state, action, reward, next_state, explore_decay_prog)
 
 
+def test_featurize():
+    from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
+    from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
+
+    LAYOUT = "sanity_check_3_onion"; HORIZON = 500; ITERATIONS = 10_000
+
+    # Generate MDP and environment----------------
+    # mdp_gen_params = {"layout_name": 'cramped_room_one_onion'}
+    # mdp_fn = LayoutGenerator.mdp_gen_fn_from_dict(mdp_gen_params)
+    # env = OvercookedEnv(mdp_fn, horizon=HORIZON)
+    base_mdp = OvercookedGridworld.from_layout_name(LAYOUT)
+    base_env = OvercookedEnv.from_mdp(base_mdp, horizon=HORIZON)
+
+    # Generate agents
+    q_agent = SoloQAgent(base_mdp,agent_index=0, save_agent_file=True)
+    stay_agent = StayAgent()
+    # agents = [CustomQAgent(mdp, is_learning_agent=True, save_agent_file=True), StayAgent()]
+
+    base_env.reset()
+    obs = q_agent.featurize(base_env.state)
+    print(f'Featurized Shape:{q_agent.get_featurized_shape()}')
+    print(f'Featurized Obs: {np.shape(obs)}: {obs}')
+
+    print(f'Q-table Shape: {np.shape(q_agent.Q_table)}')
+    q_agent.Q_table[tuple(obs)][0] = 1
+    q = q_agent.Q_table[tuple(obs)]
+
+    print(f'Q-val ({np.shape(q)}): {q}')
+    # Get the index of obs in the Q-table
+
 
 if __name__ == "__main__":
-    test_update()
-    #
-    # from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
-    # from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
-    #
-    # LAYOUT = "sanity_check_3_onion"; HORIZON = 500; ITERATIONS = 10_000
-    #
-    # # Generate MDP and environment----------------
-    # # mdp_gen_params = {"layout_name": 'cramped_room_one_onion'}
-    # # mdp_fn = LayoutGenerator.mdp_gen_fn_from_dict(mdp_gen_params)
-    # # env = OvercookedEnv(mdp_fn, horizon=HORIZON)
-    # base_mdp = OvercookedGridworld.from_layout_name(LAYOUT)
-    # base_env = OvercookedEnv.from_mdp(base_mdp, horizon=HORIZON)
-    #
-    # # Generate agents
-    # q_agent = SoloQAgent(base_mdp,agent_index=0, save_agent_file=True)
-    # stay_agent = StayAgent()
-    # # agents = [CustomQAgent(mdp, is_learning_agent=True, save_agent_file=True), StayAgent()]
-    #
-    # base_env.reset()
-    # obs = q_agent.featurize(base_env.state)
-    # print(f'Featurized Shape:{q_agent.get_featurized_shape()}')
-    # print(f'Obs: {np.shape(obs)}: {obs}')
-    #
-    # print(f'Q-table Shape: {np.shape(q_agent.Q_table)}')
-    # q_agent.Q_table[tuple(obs)][0] = 1
-    # q = q_agent.Q_table[tuple(obs)]
-    # #
-    # # q = q_agent.Q_table[tuple(obs)][0]
-    # print(f'Q-val ({np.shape(q)}): {q}')
-    # # Get the index of obs in the Q-table
+    test_featurize()
+    # test_update()
+
     #
     #
     #

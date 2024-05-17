@@ -2527,6 +2527,8 @@ class OvercookedGridworld(object):
 
             for loc in self.get_serving_locations():
                 state_mask_dict["serve_loc"][loc] = 1
+            for loc in self.get_water_locations():
+                state_mask_dict["water_loc"][loc] = 1
 
             # PLAYER LAYERS
             for i, player in enumerate(overcooked_state.players):

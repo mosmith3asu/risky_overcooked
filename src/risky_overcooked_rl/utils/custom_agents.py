@@ -72,7 +72,7 @@ class SoloQAgent(Agent):
     # Learning/Performance methods #########################
     ########################################################
 
-    def action(self, state,enable_explore=True):
+    def action(self, state,enable_explore=True,rationality=None):
         # TODO: player position is not enough to determine quality of action. What about if holding item, orientation/facing, ect...
 
         # return action to maximum Q table in setup
@@ -92,6 +92,7 @@ class SoloQAgent(Agent):
             action_info = {"action_probs": action_probs}
 
         else:
+            if rationality is None: rationality=self.rationality
             obs = self.featurize(state)
             qs = self.Q_table[tuple(obs)]
             # Boltzman Agent -----------
@@ -112,7 +113,7 @@ class SoloQAgent(Agent):
         return (self.action(state) for state in states)
 
     def softmax(self, x):
-        e_x = np.exp(x)
+        e_x = np.exp(x-np.max(x))
         return e_x / e_x.sum()
     def update(self, state, action, reward, next_state, explore_decay_prog,next_action=None):
         """

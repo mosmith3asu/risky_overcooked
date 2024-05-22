@@ -8,13 +8,10 @@ from itertools import count
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
-
+from datetime import datetime
 #######################################
 # Replay Memory #######################
 #######################################
-Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward', 'done'))
-
 
 class ReplayMemory(object):
 
@@ -23,10 +20,17 @@ class ReplayMemory(object):
 
     def push(self, *args):
         """Save a transition"""
-        self.memory.append(Transition(*args))
+        self.memory.append(args)
+
 
     def sample(self, batch_size):
-        return random.sample(self.memory, batch_size)
+        indices = np.random.randint(len(self.memory), size=batch_size)
+        batch = [self.memory[index] for index in indices]
+        states, actions, rewards, next_states, dones = [
+            np.array([experience[field_index] for experience in batch])
+            for field_index in range(5)]
+        return states, actions, rewards, next_states, dones
+        # return random.sample(self.memory, batch_size)
 
     def __len__(self):
         return len(self.memory)
@@ -56,6 +60,9 @@ class DQN(object):
         # # seed = custom_params["SEED"]
         #
         # Parameters
+        # from tensorflow.python.client import device_lib
+        # print(device_lib.list_local_devices())
+
         self.n_outputs = n_actions
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
         self.loss_fn = keras.losses.mean_squared_error
@@ -67,9 +74,9 @@ class DQN(object):
         # ### Create graph of the model ###
         # obs_inputs = tf.keras.Input(shape=obs_shape, name="input")
         # out = obs_inputs
-        # ####################################################
-        # ## Initial CNN "vision" network ####################
-        # # Apply initial conv layer with a larger kenel (why?)
+        # # ####################################################
+        # # ## Initial CNN "vision" network ####################
+        # # # Apply initial conv layer with a larger kenel (why?)
         # if num_convs > 0:
         #     out = tf.keras.layers.Conv2D(
         #             filters=num_filters,
@@ -78,8 +85,8 @@ class DQN(object):
         #             activation=tf.nn.leaky_relu,
         #             name="conv_initial",
         #         )(out)
-        #
-        # # Apply remaining conv layers, if any
+        # #
+        # # # Apply remaining conv layers, if any
         # for i in range(0, num_convs - 1):
         #     padding = "same" if i < num_convs - 2 else "valid"
         #     # tf.keras.layers.TimeDistributed(...
@@ -90,32 +97,35 @@ class DQN(object):
         #             activation=tf.nn.leaky_relu,
         #             name="conv_{}".format(i),
         #         )(out)
+        # #
+        # # # Flatten spatial features
+        # # out = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(out)
+        # out = tf.keras.layers.Flatten()(out)
         #
-        # # Flatten spatial features
-        # out = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(out)
-        #
-        #
-        # ####################################################
-        # # Apply dense hidden layers, if any ################
+        # #
+        # #
+        # # ####################################################
+        # # # Apply dense hidden layers, if any ################
         # for i in range(num_hidden_layers):
         #     out = tf.keras.layers.Dense(
         #             units=size_hidden_layers,
         #             activation=tf.nn.leaky_relu,
         #             name="fc_{0}".format(i),
         #         )(out)
-        #
-        #
-        # ####################################################
-        # # Linear last layer for action quality ############
-        # # layer_out = tf.keras.layers.Dense(self.num_outputs, name="logits")(out)
-        # # value_out = tf.keras.layers.Dense(self.n_outputs, name="values")(out)
+        # #
+        # #
+        # # ####################################################
+        # # # Linear last layer for action quality ############
+        # # # layer_out = tf.keras.layers.Dense(self.num_outputs, name="logits")(out)
+        # # # value_out = tf.keras.layers.Dense(self.n_outputs, name="values")(out)
         # value_out = tf.keras.layers.Dense(self.n_outputs, name="values", activation=None)(out)
-        #
-        # # self.cell_size = cell_size
+        # #
+        # # # self.cell_size = cell_size
         # self.base_model = tf.keras.Model(inputs=[obs_inputs], outputs=[value_out])
 
         # Alternative model declaration ####################
         self.base_model = keras.models.Sequential([
+            keras.layers.Input(shape=obs_shape, name="input"),
             keras.layers.Conv2D(filters=num_filters, kernel_size=[5, 5], padding="same", activation=tf.nn.leaky_relu,  name="conv_initial"),
             keras.layers.Conv2D(filters=num_filters, kernel_size=[3, 3], padding="same", activation=tf.nn.leaky_relu,  name="conv_0"),
             keras.layers.Conv2D(filters=num_filters, kernel_size=[3, 3], padding="valid", activation=tf.nn.leaky_relu, name="conv_1"),
@@ -123,7 +133,7 @@ class DQN(object):
             keras.layers.Dense(units=size_hidden_layers, activation=tf.nn.leaky_relu, name="fc_0"),
             keras.layers.Dense(units=size_hidden_layers, activation=tf.nn.leaky_relu, name="fc_1"),
             keras.layers.Dense(units=size_hidden_layers, activation=tf.nn.leaky_relu, name="fc_2"),
-            keras.layers.Dense(self.n_outputs,name="values") # activation=None
+            keras.layers.Dense(self.n_outputs,name="values",activation=None) #
         ])
 
         # self.base_model.summary()
@@ -132,10 +142,65 @@ class DQN(object):
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
-    def forward(self, x):
-        return self.base_model.predict(x)
+    # def forward(self, x):
+    #     return self.base_model.predict(x)
     def predict(self, x):
-        return self.forward(x)
+        """ Faster for small datasets"""
+        return self.base_model(x).numpy()
+        # return self.base_model.predict(x,verbose=None)
+    #
+    def predict_batch_nograd(self, x):
+        """ scales to large batch predictions better but does not provide gradient"""
+        return self.base_model.predict(x,verbose=None)
+
+    @property
+    def trainable_variables(self):
+        return self.base_model.trainable_variables
+
+
+class DQN_vector_feature(object):
+    """
+    Reference for CNN-DQN and DDQN: https://github.com/yxu1168/Reinforcement-Learning-DQN-for-ATARI-s-Pong-Game---TensorFlow-2.0-Keras
+    """
+
+    def __init__(self, obs_shape, n_actions,
+                 num_filters, num_convs,                #CNN params
+                 num_hidden_layers, size_hidden_layers, #MLP params
+                 learning_rate, seed,
+                 **kwargs):
+
+
+        self.n_outputs = n_actions
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        self.loss_fn = keras.losses.mean_squared_error
+        tf.random.set_seed(seed)
+        np.random.seed(seed)
+
+        # Alternative model declaration ####################
+        self.base_model = keras.models.Sequential([
+            keras.layers.Input(shape=obs_shape, name="input"),
+            keras.layers.Dense(units=size_hidden_layers, activation=tf.nn.leaky_relu, name="fc_0"),
+            keras.layers.Dense(units=size_hidden_layers, activation=tf.nn.leaky_relu, name="fc_1"),
+            keras.layers.Dense(units=size_hidden_layers, activation=tf.nn.leaky_relu, name="fc_2"),
+            keras.layers.Dense(self.n_outputs,name="values",activation=None) #
+        ])
+
+        # self.base_model.summary()
+
+
+
+    # Called with either one element to determine next action, or a batch
+    # during optimization. Returns tensor([[left0exp,right0exp]...]).
+    # def forward(self, x):
+    #     return self.base_model.predict(x)
+    def predict(self, x):
+        """ Faster for small datasets"""
+        # return self.base_model(x).numpy()
+        return self.base_model.predict(x,verbose=None)
+    #
+    def predict_batch_nograd(self, x):
+        """ scales to large batch predictions better but does not provide gradient"""
+        return self.base_model.predict(x,verbose=None)
 
     @property
     def trainable_variables(self):

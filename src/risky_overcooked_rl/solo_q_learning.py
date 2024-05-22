@@ -10,7 +10,7 @@ import os
 from tempfile import TemporaryFile
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
 from itertools import product,count
-from risky_overcooked_rl.custom_agents import SoloQAgent
+from risky_overcooked_rl.utils.custom_agents import SoloQAgent
 import matplotlib.pyplot as plt
 from develocorder import (
     LinePlot,
@@ -32,7 +32,10 @@ if __name__ == "__main__":
     # LAYOUT = "cramped_room_one_onion"
     # LAYOUT = "cramped_room"; HORIZON = 250; ITERATIONS = 10_000
     # LAYOUT = "sanity_check_3_onion"; HORIZON = 250; ITERATIONS = 10_000
-    LAYOUT = "sanity_check2"; HORIZON = 500; ITERATIONS = 10_000
+    # LAYOUT = "sanity_check2"; HORIZON = 500; ITERATIONS = 10_000
+    LAYOUT = "sanity_check3_single";HORIZON = 400;ITERATIONS = 10_000
+    # LAYOUT = "sanity_check3"; HORIZON = 500; ITERATIONS = 10_000
+    # LAYOUT = "cramped_room_single";HORIZON = 400;ITERATIONS = 10_000
 
     # Logger ----------------
     # axis labels
@@ -88,7 +91,7 @@ if __name__ == "__main__":
         if len(iter_rewards) % 50 == 0:
 
             # Test policy #########################
-            N_tests = 10
+            N_tests = 1
             test_reward = 0
             exploration_proba_OLD = q_agent.exploration_proba
             q_agent.exploration_proba = 0
@@ -96,13 +99,19 @@ if __name__ == "__main__":
                 env.reset()
                 for t in count():
                     state = env.state
-                    action1, _ = q_agent.action(state,enable_explore=False)
+                    action1, _ = q_agent.action(state,enable_explore=False,rationality='max')
                     action2, _ = stay_agent.action(state)
                     joint_action = (action1, action2)
                     next_state, reward, done, _ = env.step(joint_action)  # what is joint-action info?
                     total_updates += 1
                     # print(f"P(explore) {q_agent.exploration_proba}")
                     test_reward += reward
+                    pot_states = mdp.get_pot_states(state)
+                    # if len(pot_states["ready"])>0:
+                    #     soup = state.get_object(pot_states["ready"][0])
+                    #     soup.ingredients
+                    #     print("Soup is ready!")
+                    #     q_agent.featurize_masks(env.state)
 
                     if done:
                         break

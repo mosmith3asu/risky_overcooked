@@ -1105,7 +1105,7 @@ class OvercookedGridworld(object):
         num_items_for_soup=3,
         order_bonus=2,
         start_state=None,
-        old_dynamics=False,
+        old_dynamics=True, # old_dynamics=False,
         **kwargs
     ):
         """
@@ -2441,10 +2441,109 @@ class OvercookedGridworld(object):
             "Using the `lossless_state_encoding_shape` property is deprecated. Please use `get_lossless_state_encoding_shape` method instead",
             DeprecationWarning,
         )
-        return np.array(list(self.shape) + [26])
+        # return np.array(list(self.shape) + [26])
+        return np.array(list(self.shape) + [27]) # added water mask
+
 
     def get_lossless_state_encoding_shape(self):
-        return np.array(list(self.shape) + [26])
+        # return np.array(list(self.shape) + [26])
+        return np.array(list(self.shape) + [27]) # added water mask
+
+    # def lossless_state_encoding(self, overcooked_state, debug=False):
+    #     """ Old implementation that resolves bool check error from https://github.com/HumanCompatibleAI/overcooked_ai/blob/6eaceb0a9a2501f1b9fccbf4c7016d6662ed1108/overcooked_ai_py/mdp/overcooked_mdp.py """
+    #     """Featurizes a OvercookedState object into a stack of boolean masks that are easily readable by a CNN"""
+    #     assert type(debug) is bool
+    #     base_map_features = ["pot_loc", "counter_loc", "onion_disp_loc", "dish_disp_loc", "serve_loc"]
+    #     variable_map_features = ["onions_in_pot", "onions_cook_time", "onion_soup_loc", "dishes", "onions"]
+    #
+    #     all_objects = overcooked_state.all_objects_list
+    #
+    #     def make_layer(position, value):
+    #         layer = np.zeros(self.shape)
+    #         layer[position] = value
+    #         return layer
+    #
+    #     def process_for_player(primary_agent_idx):
+    #         # Ensure that primary_agent_idx layers are ordered before other_agent_idx layers
+    #         other_agent_idx = 1 - primary_agent_idx
+    #         ordered_player_features = ["player_{}_loc".format(primary_agent_idx),
+    #                                    "player_{}_loc".format(other_agent_idx)] + \
+    #                                   ["player_{}_orientation_{}".format(i, Direction.DIRECTION_TO_INDEX[d])
+    #                                    for i, d in itertools.product([primary_agent_idx, other_agent_idx],
+    #                                                                  Direction.ALL_DIRECTIONS)]
+    #
+    #         LAYERS = ordered_player_features + base_map_features + variable_map_features
+    #         state_mask_dict = {k: np.zeros(self.shape) for k in LAYERS}
+    #
+    #         # MAP LAYERS
+    #         for loc in self.get_counter_locations():
+    #             state_mask_dict["counter_loc"][loc] = 1
+    #
+    #         for loc in self.get_pot_locations():
+    #             state_mask_dict["pot_loc"][loc] = 1
+    #
+    #         for loc in self.get_onion_dispenser_locations():
+    #             state_mask_dict["onion_disp_loc"][loc] = 1
+    #
+    #         for loc in self.get_dish_dispenser_locations():
+    #             state_mask_dict["dish_disp_loc"][loc] = 1
+    #
+    #         for loc in self.get_serving_locations():
+    #             state_mask_dict["serve_loc"][loc] = 1
+    #
+    #         # PLAYER LAYERS
+    #         for i, player in enumerate(overcooked_state.players):
+    #             player_orientation_idx = Direction.DIRECTION_TO_INDEX[player.orientation]
+    #             state_mask_dict["player_{}_loc".format(i)] = make_layer(player.position, 1)
+    #             state_mask_dict["player_{}_orientation_{}".format(i, player_orientation_idx)] = make_layer(
+    #                 player.position, 1)
+    #
+    #         # OBJECT & STATE LAYERS
+    #         for obj in all_objects:
+    #             if obj.name == "soup":
+    #
+    #                 # soup_type, num_onions, cook_time = obj.state
+    #                 soup_type = "onion"
+    #                 if soup_type == "onion":
+    #                     if obj.position in self.get_pot_locations():
+    #                         # soup_type, num_onions, cook_time = obj.state
+    #                         rem_cook_time = obj.cook_time - obj._cooking_tick
+    #                         ingred_counts = Counter(obj.ingredients)
+    #                         # num_onions = len(obj.ingredients)
+    #                         state_mask_dict["onions_in_pot"] += make_layer(obj.position, ingred_counts['onion']) # state_mask_dict["onions_in_pot"] += make_layer(obj.position, num_onions)
+    #                         state_mask_dict["onions_cook_time"] += make_layer(obj.position, rem_cook_time) # state_mask_dict["onions_cook_time"] += make_layer(obj.position, cook_time)
+    #                     else:
+    #                         # If player soup is not in a pot, put it in separate mask
+    #                         state_mask_dict["onion_soup_loc"] += make_layer(obj.position, 1)
+    #                 else:
+    #                     raise ValueError("Unrecognized soup")
+    #
+    #             elif obj.name == "dish":
+    #                 state_mask_dict["dishes"] += make_layer(obj.position, 1)
+    #             elif obj.name == "onion":
+    #                 state_mask_dict["onions"] += make_layer(obj.position, 1)
+    #             else:
+    #                 raise ValueError("Unrecognized object")
+    #
+    #         if debug:
+    #             print(len(LAYERS))
+    #             print(len(state_mask_dict))
+    #             for k, v in state_mask_dict.items():
+    #                 print(k)
+    #                 print(np.transpose(v, (1, 0)))
+    #
+    #         # Stack of all the state masks, order decided by order of LAYERS
+    #         state_mask_stack = np.array([state_mask_dict[layer_id] for layer_id in LAYERS])
+    #         state_mask_stack = np.transpose(state_mask_stack, (1, 2, 0))
+    #         assert state_mask_stack.shape[:2] == self.shape
+    #         assert state_mask_stack.shape[2] == len(LAYERS)
+    #         # NOTE: currently not including time left or order_list in featurization
+    #         return np.array(state_mask_stack).astype(int)
+    #
+    #     # NOTE: Currently not very efficient, a decent amount of computation repeated here
+    #     num_players = len(overcooked_state.players)
+    #     final_obs_for_players = tuple(process_for_player(i) for i in range(num_players))
+    #     return final_obs_for_players
 
     def lossless_state_encoding(
         self, overcooked_state, horizon=400, debug=False
@@ -2527,8 +2626,6 @@ class OvercookedGridworld(object):
 
             for loc in self.get_serving_locations():
                 state_mask_dict["serve_loc"][loc] = 1
-            for loc in self.get_water_locations():
-                state_mask_dict["water_loc"][loc] = 1
 
             # PLAYER LAYERS
             for i, player in enumerate(overcooked_state.players):
@@ -2551,6 +2648,7 @@ class OvercookedGridworld(object):
                     # if Recipe.ONION in obj.ingredients:
                     # get the ingredients into a {object: number} dictionary
                     ingredients_dict = Counter(obj.ingredients)
+                    # assert np.all(np.array(list(ingredients_dict.values())) <= 1)
                     # assert "onion" in ingredients_dict.keys()
                     if obj.position in self.get_pot_locations():
                         if obj.is_idle:
@@ -2562,9 +2660,7 @@ class OvercookedGridworld(object):
                                 obj.position, ingredients_dict["tomato"]
                             )
                         else:
-                            state_mask_dict["onions_in_soup"] += make_layer(
-                                obj.position, ingredients_dict["onion"]
-                            )
+                            state_mask_dict["onions_in_soup"] += make_layer(obj.position, ingredients_dict["onion"] )
                             state_mask_dict["tomatoes_in_soup"] += make_layer(
                                 obj.position, ingredients_dict["tomato"]
                             )
@@ -2599,6 +2695,7 @@ class OvercookedGridworld(object):
                 else:
                     raise ValueError("Unrecognized object")
 
+
             if debug:
                 print("terrain----")
                 print(np.array(self.terrain_mtx))
@@ -2616,6 +2713,12 @@ class OvercookedGridworld(object):
             state_mask_stack = np.transpose(state_mask_stack, (1, 2, 0))
             assert state_mask_stack.shape[:2] == self.shape
             assert state_mask_stack.shape[2] == len(LAYERS)
+
+            #Remove of not testing
+            # print(LAYERS)
+            # assert np.all(state_mask_dict["tomatoes"]) == 0, 'Tomato in state'
+            # assert np.all(state_mask_dict["tomatoes_in_soup"]) == 0, 'Tomato in soup state'
+            # assert np.all(state_mask_dict["tomatoes_in_pot"]) == 0, 'Tomato in pot state'
             # NOTE: currently not including time left or order_list in featurization
             return np.array(state_mask_stack).astype(int)
 

@@ -27,13 +27,13 @@ class SoloDeepQAgent(Agent):
 
     def __init__(self, mdp, agent_index, model,
                  save_agent_file=False, load_learned_agent=False,
-                 config=None,verbose_load_config=True):
+                 config=None,verbose_load_config=True,featurize_fn='mask'):
         super(SoloDeepQAgent, self).__init__()
 
         # Learning Params ---------------
-        self.max_exploration_proba = 0.9
-        self.min_exploration_proba = 0.01
-        self.exploration_proba = self.max_exploration_proba
+        # self.max_exploration_proba = 0.9
+        # self.min_exploration_proba = 0.01
+        # self.exploration_proba = self.max_exploration_proba
         self.gamma = 0.95
         self.lr = 0.05
         self.rationality = 4.0
@@ -41,7 +41,7 @@ class SoloDeepQAgent(Agent):
         self.save_agent_file = save_agent_file
         self.tabular_dtype = np.float32
         self.horizon = 400
-        self.model = model # DQN model used for learning
+
 
         # Featurize Params ---------------
         self.my_index = agent_index
@@ -50,14 +50,18 @@ class SoloDeepQAgent(Agent):
         self.OBJ_TO_IDX = {o_name: idx for idx, o_name in enumerate(self.IDX_TO_OBJ)}
         self.reachable_counters = mdp.get_reachable_counters()
         self.featurize_dtype = np.int32
-        self.featurize_fn = 'mask'
+        self.featurize_fn = featurize_fn
 
         # Create learning environment ---------------
         self.mdp = mdp
         self.valid_actions = Action.ALL_ACTIONS
 
+        config['obs_shape'] =self.get_featurized_shape()
+
         if config is not None: self.load_config(config,verbose=verbose_load_config)
         else: warnings.warn("No config provided, using default values. Please ensure defaults are correct")
+
+        self.model = model(**config)  # DQN model used for learning
 
     def load_config(self, config,verbose=True):
         if verbose:
@@ -81,53 +85,73 @@ class SoloDeepQAgent(Agent):
     # Learning/Performance methods #########################
     ########################################################
 
-    def action(self, state,enable_explore=True):
+    def action(self, state,enable_explore=True,rationality=None):
         # TODO: player position is not enough to determine quality of action. What about if holding item, orientation/facing, ect...
-
-        # return action to maximum Q table in setup
-        # current_state = state.player_positions
-        # current_state = state.players_pos_and_or
-        # current_state_idx = self.valid_positions.index(current_state)
-        # current_state_idx = np.where(self.valid_positions == current_state)[0]
-
+        # DYNAMIC EXPLORATION E-GREEDY/BOLTZMAN
         # Epsilon greedy ----------------
-        if np.random.uniform(0, 1) < self.exploration_proba and enable_explore:
-            action_probs = np.zeros(Action.NUM_ACTIONS)
-            legal_actions = Action.ALL_ACTIONS
-            legal_actions_indices = np.array([Action.ACTION_TO_INDEX[motion_a] for motion_a in legal_actions])
-            action_probs[legal_actions_indices] = 1 / len(legal_actions)
+        # if np.random.uniform(0, 1) < self.exploration_proba and enable_explore:
+        #     action_probs = np.zeros(Action.NUM_ACTIONS)
+        #     legal_actions = Action.ALL_ACTIONS
+        #     legal_actions_indices = np.array([Action.ACTION_TO_INDEX[motion_a] for motion_a in legal_actions])
+        #     action_probs[legal_actions_indices] = 1 / len(legal_actions)
+        #
+        #     action = Action.sample(action_probs)
+        #     action_info = {"action_probs": action_probs}
+        #
+        # else:
+        #     # obs = state # for debugging
+        #     obs = self.featurize(state)
+        #     qs = self.model.predict(obs[np.newaxis]).flatten()
+        #     # Boltzman Agent -----------
+        #     if self.rationality == 'max':
+        #         action_idx = np.argmax(qs)
+        #         action = self.valid_actions[action_idx]
+        #         action_probs = np.eye(Action.NUM_ACTIONS)[action_idx]
+        #         action_info = {"action_probs": action_probs}
+        #     else:
+        #         # action_probs = np.exp(rationality * qs) / np.sum(np.exp(rationality * qs))
+        #         action_probs = self.softmax(self.rationality * qs)
+        #         action = Action.sample(action_probs)
+        #         action_info = {"action_probs": action_probs}
 
+        if rationality is None: rationality = self.rationality
+
+
+
+        if rationality == 'max':
+            obs = self.featurize(state)
+            # qs = self.model.predict(obs[np.newaxis]).flatten()
+            qs = self.model.predict(obs[np.newaxis]).flatten()
+            action_idx = np.argmax(qs)
+            # action = self.valid_actions[action_idx]
+            action = Action.INDEX_TO_ACTION[action_idx]
+            action_probs = np.eye(Action.NUM_ACTIONS)[action_idx]
+            action_info = {"action_probs": action_probs}
+        elif rationality == 'random' or rationality < 0:
+            action_probs = np.ones(len(self.valid_actions)) / len(self.valid_actions)
             action = Action.sample(action_probs)
             action_info = {"action_probs": action_probs}
-
         else:
             obs = self.featurize(state)
             qs = self.model.predict(obs[np.newaxis]).flatten()
-            # Boltzman Agent -----------
-            if self.rationality == 'max':
-                action_idx = np.argmax(qs)
-                action = self.valid_actions[action_idx]
-                action_probs = np.eye(Action.NUM_ACTIONS)[action_idx]
-                action_info = {"action_probs": action_probs}
-            else:
-                # action_probs = np.exp(rationality * qs) / np.sum(np.exp(rationality * qs))
-                action_probs = self.softmax(self.rationality * qs)
-                action = Action.sample(action_probs)
-                action_info = {"action_probs": action_probs}
-
+            # action_probs = np.exp(rationality * qs) / np.sum(np.exp(rationality * qs))
+            action_probs = self.softmax(self.rationality * qs)
+            action = Action.sample(action_probs)
+            action_info = {"action_probs": action_probs}
         return action, action_info
 
     def actions(self, states, agent_indices):
         return (self.action(state) for state in states)
 
     def softmax(self, x):
-        e_x = np.exp(x)
+        e_x = np.exp(x- np.max(x))
+        # e_x = np.exp(x)
         return e_x / e_x.sum()
 
     def update(self, experiences):
         """ Provides batch update to the DQN model """
         states, actions, rewards, next_states, dones = experiences
-        next_Q_values = self.model.predict(next_states)
+        next_Q_values =   self.model.predict_batch_nograd(next_states) #self.model.predict(next_states)
         max_next_Q_values = np.max(next_Q_values, axis=1)
         target_Q_values = (rewards + (1 - dones) * self.gamma * max_next_Q_values)
         target_Q_values = target_Q_values.reshape(-1, 1)
@@ -166,20 +190,25 @@ class SoloDeepQAgent(Agent):
         ordered_player_features = self.ordered_player_mask(overcooked_state)
         base_map_features = self.base_map_mask()
         variable_map_features = self.variable_map_mask(overcooked_state)
-        urgency_map_features = self.urgency_map_mask(overcooked_state)
+        # urgency_map_features = self.urgency_map_mask(overcooked_state)
         feature_masks = np.array(
             list(ordered_player_features.values()) +\
             list(base_map_features.values()) +\
-            list(variable_map_features.values()) +\
-            list(urgency_map_features.values())
+            list(variable_map_features.values()) #+\
+            # list(urgency_map_features.values())
         )
+        feature_mask_keys = tuple(
+            list(ordered_player_features.keys()) + \
+            list(base_map_features.keys()) + \
+            list(variable_map_features.keys())  # + \
+            # list(urgency_map_features.keys())
+        )
+
+        feature_masks = np.transpose(feature_masks, (1, 2, 0))
+        assert feature_masks.shape[:2] == self.mdp.shape
+        assert feature_masks.shape[2] == len(feature_mask_keys)
+
         if get_keys:
-            feature_mask_keys = tuple(
-                list(ordered_player_features.keys()) + \
-                list(base_map_features.keys()) + \
-                list(variable_map_features.keys()) + \
-                list(urgency_map_features.keys())
-            )
             return feature_masks,feature_mask_keys
         return feature_masks
 
@@ -190,16 +219,16 @@ class SoloDeepQAgent(Agent):
         :return: features: ordered_player_features
         """
         features = {
-            'player_0_loc': np.zeros(self.mdp.shape),
-            # 'player_1_loc': np.zeros(self.mdp.shape),
-            'player_0_orientation_0': np.zeros(self.mdp.shape),
-            'player_0_orientation_1': np.zeros(self.mdp.shape),
-            'player_0_orientation_2': np.zeros(self.mdp.shape),
-            'player_0_orientation_3': np.zeros(self.mdp.shape),
-            # 'player_1_orientation_0': np.zeros(self.mdp.shape),
-            # 'player_1_orientation_1': np.zeros(self.mdp.shape),
-            # 'player_1_orientation_2': np.zeros(self.mdp.shape),
-            # 'player_1_orientation_3': np.zeros(self.mdp.shape)
+            'player_0_loc': np.zeros(self.mdp.shape,dtype=np.int),
+            # 'player_1_loc': np.zeros(self.mdp.shape,dtype=np.int),
+            'player_0_orientation_0': np.zeros(self.mdp.shape,dtype=np.int),
+            'player_0_orientation_1': np.zeros(self.mdp.shape,dtype=np.int),
+            'player_0_orientation_2': np.zeros(self.mdp.shape,dtype=np.int),
+            'player_0_orientation_3': np.zeros(self.mdp.shape,dtype=np.int),
+            # 'player_1_orientation_0': np.zeros(self.mdp.shape,dtype=np.int),
+            # 'player_1_orientation_1': np.zeros(self.mdp.shape,dtype=np.int),
+            # 'player_1_orientation_2': np.zeros(self.mdp.shape,dtype=np.int),
+            # 'player_1_orientation_3': np.zeros(self.mdp.shape,dtype=np.int)
         }
         # Solo player observation ----------------
         player_idx = self.my_index
@@ -211,17 +240,19 @@ class SoloDeepQAgent(Agent):
         # for player_idx, player in enumerate(state.players):
         #     features[f'player_{player_idx}_loc'][player.position] = 1
         #     features[f'player_{player_idx}_orientation_{Direction.DIRECTION_TO_INDEX[player.orientation]}'][player.position] = 1
+
+
         return features
 
     def base_map_mask(self):
         features = {
-            "pot_loc":          np.zeros(self.mdp.shape),
-            "counter_loc":      np.zeros(self.mdp.shape),
-            "onion_disp_loc":   np.zeros(self.mdp.shape),
-            # "tomato_disp_loc":np.zeros(self.mdp.shape),
-            "dish_disp_loc":    np.zeros(self.mdp.shape),
-            "serve_loc":        np.zeros(self.mdp.shape),
-            "water_loc":        np.zeros(self.mdp.shape),
+            "pot_loc":          np.zeros(self.mdp.shape,dtype=np.int),
+            "counter_loc":      np.zeros(self.mdp.shape,dtype=np.int),
+            "onion_disp_loc":   np.zeros(self.mdp.shape,dtype=np.int),
+            # "tomato_disp_loc":np.zeros(self.mdp.shape,dtype=np.int),
+            "dish_disp_loc":    np.zeros(self.mdp.shape,dtype=np.int),
+            "serve_loc":        np.zeros(self.mdp.shape,dtype=np.int),
+            "water_loc":        np.zeros(self.mdp.shape,dtype=np.int),
         }
 
         for loc in self.mdp.get_pot_locations():                features["pot_loc"][loc] = 1
@@ -235,14 +266,14 @@ class SoloDeepQAgent(Agent):
 
     def variable_map_mask(self, state):
         features = {
-            "onions_in_pot": np.zeros(self.mdp.shape),
-            # "tomatoes_in_pot": np.zeros(self.mdp.shape),
-            "onions_in_soup": np.zeros(self.mdp.shape),            # val = [0,1,2,3]
-            # "tomatoes_in_soup": np.zeros(self.mdp.shape),
-            "soup_cook_time_remaining": np.zeros(self.mdp.shape),  # val = remaining game ticks
-            "soup_done": np.zeros(self.mdp.shape),                 # val = bool
-            "dishes": np.zeros(self.mdp.shape),
-            "onions": np.zeros(self.mdp.shape),
+            "onions_in_pot": np.zeros(self.mdp.shape,dtype=np.int),
+            # "tomatoes_in_pot": np.zeros(self.mdp.shape,dtype=np.int),
+            "onions_in_soup": np.zeros(self.mdp.shape,dtype=np.int),            # val = [0,1,2,3]
+            # "tomatoes_in_soup": np.zeros(self.mdp.shape,dtype=np.int),
+            "soup_cook_time_remaining": np.zeros(self.mdp.shape,dtype=np.int),  # val = remaining game ticks
+            "soup_done": np.zeros(self.mdp.shape,dtype=np.int),                 # val = bool
+            "dishes": np.zeros(self.mdp.shape,dtype=np.int),
+            "onions": np.zeros(self.mdp.shape,dtype=np.int),
             # "tomatoes": np.zeros(self.mdp.shape),
         }
         for obj in state.all_objects_list:
@@ -262,7 +293,7 @@ class SoloDeepQAgent(Agent):
                 else:
                     # If player soup is not in a pot, treat it like a soup that is cooked with remaining time 0
                     features["onions_in_soup"][obj.position] += ingredients_dict["onion"]
-                    features["tomatoes_in_soup"][obj.position] +=  ingredients_dict["tomato"]
+                    # features["tomatoes_in_soup"][obj.position] +=  ingredients_dict["tomato"]
                     features["soup_done"][obj.position] +=  1
 
             elif obj.name == "dish": features["dishes"][obj.position] += 1
@@ -273,7 +304,7 @@ class SoloDeepQAgent(Agent):
 
     def urgency_map_mask(self, state):
         features = {
-            "urgency": np.zeros(self.mdp.shape)
+            "urgency": np.zeros(self.mdp.shape,dtype=np.int)
         }
         if self.horizon - state.timestep < 40: features["urgency"] = np.ones(self.mdp.shape)
         return features
@@ -306,8 +337,8 @@ class SoloDeepQAgent(Agent):
         # partner_features = self.featurize_player(overcooked_state, self.partner_index)
         # world_features = self.featurize_world(overcooked_state)
         # return np.concatenate([ego_features, partner_features, world_features]).astype(self.featurize_dtype)
-        ego_features = self.featurize_player(overcooked_state, self.my_index)
-        world_features = self.featurize_world(overcooked_state)
+        ego_features = self.featurize_player_vector(overcooked_state, self.my_index)
+        world_features = self.featurize_world_vector(overcooked_state)
         return np.concatenate([ego_features, world_features]).astype(self.featurize_dtype)
 
     def featurize_player_vector(self, state, i):
@@ -431,7 +462,9 @@ class SoloDeepQAgent(Agent):
         # feature_dim = player_dim + player_dim + world_dim
         feature_dim = player_dim + world_dim
         assert len(feature_dim) == n_features, f"Feature dim {len(feature_dim)} != n_features {n_features}"
-        return feature_dim
+        # return feature_dim
+
+        return np.shape(feature_dim)
 
     ########################################################
     # Saving utils #########################################
@@ -466,7 +499,94 @@ class SoloDeepQAgent(Agent):
             self.q_table = pickle.load(f)
 
 
-def test_update():
+def verify_lossless_featurization(mdp, agent,state):
+    """ Verify that the lossless featurization is correct"""
+    primary_agent_idx = 0
+    other_agent_idx = 1
+    # Get baseline layer dict
+    # ordered_player_features = ["player_{}_loc".format(primary_agent_idx),
+    #                            "player_{}_loc".format(other_agent_idx)] + \
+    #                           ["player_{}_orientation_{}".format(i, Direction.DIRECTION_TO_INDEX[d])
+    #                            for i, d in product([primary_agent_idx, other_agent_idx],
+    #                                                          Direction.ALL_DIRECTIONS)]
+    #
+    # base_map_features = ["pot_loc", "counter_loc", "onion_disp_loc", "dish_disp_loc", "serve_loc"]
+    # variable_map_features = ["onions_in_pot", "onions_cook_time", "onion_soup_loc", "dishes", "onions"]
+    # urgency_features = ["urgency"]
+    # ordered_player_features = [
+    #                               "player_{}_loc".format(primary_agent_idx),
+    #                               "player_{}_loc".format(other_agent_idx),
+    #                           ] + [
+    #                               "player_{}_orientation_{}".format(i, Direction.DIRECTION_TO_INDEX[d])
+    #                               for i, d in product(
+    #         [primary_agent_idx, other_agent_idx],
+    #         Direction.ALL_DIRECTIONS,
+    #     )
+    #                           ]
+    # base_map_features = [
+    #     "pot_loc",
+    #     "counter_loc",
+    #     "onion_disp_loc",
+    #     "tomato_disp_loc",
+    #     "dish_disp_loc",
+    #     "serve_loc",
+    #     "water_loc"
+    # ]
+    # variable_map_features = [
+    #     "onions_in_pot",
+    #     "tomatoes_in_pot",
+    #     "onions_in_soup",
+    #     "tomatoes_in_soup",
+    #     "soup_cook_time_remaining",
+    #     "soup_done",
+    #     "dishes",
+    #     "onions",
+    #     "tomatoes",
+    # ]
+    # urgency_features = ["urgency"]
+    # baseline_LAYERS = ordered_player_features  + base_map_features + variable_map_features + urgency_features
+    baseline_LAYERS = ['player_0_loc', 'player_1_loc', 'player_0_orientation_0', 'player_0_orientation_1', 'player_0_orientation_2',
+     'player_0_orientation_3', 'player_1_orientation_0', 'player_1_orientation_1', 'player_1_orientation_2',
+     'player_1_orientation_3', 'pot_loc', 'counter_loc', 'onion_disp_loc', 'tomato_disp_loc', 'dish_disp_loc',
+     'serve_loc', 'onions_in_pot', 'tomatoes_in_pot', 'onions_in_soup', 'tomatoes_in_soup', 'soup_cook_time_remaining',
+     'soup_done', 'dishes', 'onions', 'tomatoes', 'urgency']
+
+    # for name in baseline_LAYERS:
+    #     print(f'LAYERS: {name}')
+    # print(f'LAYERS Len: {len(baseline_LAYERS)}')
+
+    # Get the lossless state encoding
+    obs_baseline = mdp.lossless_state_encoding(state)[0]
+    # Get the lossless state encoding from the agent
+    obs_agent,obs_agent_keys = agent.featurize_mask(state,get_keys=True)
+
+    # Check if all layers are present and correct
+    # for i,layer in enumerate(baseline_LAYERS):
+    #     if layer not in obs_agent_keys:
+    #         print(f'lAYE not in Custom: {layer}')
+    #         # raise AssertionError(f'Key not in baseline: {key}')
+    #     else:
+    #         i_agent = np.where(np.array(obs_agent_keys)==layer)[0][0]
+    #         is_same = np.all(obs_baseline[...,i]==obs_agent[...,i_agent])
+    #         print(f'Layer Check: [{layer} {obs_agent_keys[i_agent]}: {is_same}')
+    #         if not is_same:
+    #             print(f'Baseline:\n {obs_baseline[...,i]}')
+    #             print(f'Obs:\n {obs_agent[...,i_agent]}')
+
+
+    # Check if all are bool
+    layer_names = [baseline_LAYERS,obs_agent_keys]
+    for j,obs in enumerate([obs_baseline,obs_agent]):
+        if not np.all(np.array(obs) <= 1):
+            for i in range(obs.shape[-1]):
+                a = obs[..., i]
+                if not np.all(a <= 1) and not layer_names[j][i] in ['soup_cook_time_remaining','onions_in_pot','onions_in_soup']:
+                    print(f'(MDP) Non-bool lossless encoding {np.max(a)} @ feature {i}:{baseline_LAYERS[i]}')
+                    print(np.transpose(obs[..., i]))
+                    raise AssertionError(f'({["MDP","Agent"][j]}) Non-bool lossless encoding {np.max(a)} @ feature {i}:{layer_names[j][i]}')
+    # assert False
+    return True
+def test_update(n_tests = 100):
     model_config = {
         "obs_shape": [18, 5, 3],
         "n_actions": 6,
@@ -489,10 +609,11 @@ def test_update():
     base_mdp = OvercookedGridworld.from_layout_name(LAYOUT)
     env = OvercookedEnv.from_mdp(base_mdp, horizon=HORIZON)
     # reply_memory = ReplayMemory(capacity=1000)
+    # print(f'Layout: {LAYOUT} | Shape: {base_mdp.shape} | Iterations: {ITERATIONS}'')
 
     # Generate agents
-    model = DQN(**model_config)
-    q_agent = SoloDeepQAgent(base_mdp,agent_index=0,model=model)
+    # model = DQN(**model_config)
+    q_agent = SoloDeepQAgent(base_mdp,agent_index=0,model=DQN,config=model_config)
     stay_agent = StayAgent()
     # agents = [CustomQAgent(mdp, is_learning_agent=True, save_agent_file=True), StayAgent()]
 
@@ -504,31 +625,46 @@ def test_update():
     # explore_decay_prog = 0.5
     # q_agent.update(state, action, reward, next_state, explore_decay_prog)
 
-    env.reset()
 
-    cum_reward = 0
-    for t in count():
-        state = env.state
-        # q_agent.model.predict(q_agent.featurize(state)[np.newaxis])
-        action1, _ = q_agent.action(state)
-        action2, _ = stay_agent.action(state)
-        joint_action = (action1, action2)
-        next_state, reward, done, info = env.step(joint_action)  # what is joint-action info?
-        reward += info["shaped_r_by_agent"][0]
-        # if  info["shaped_r_by_agent"][0] != 0:
-        #     print(f"Shaped reward {info['shaped_r_by_agent'][0]}")
-        # q_agent.update(state, action1, reward, next_state, explore_decay_prog=total_updates / (HORIZON * ITERATIONS))
-        # cum_reward += reward
+    for test in range(n_tests):
+        env.reset()
+        cum_reward = 0
+        for t in count():
+            state = env.state
+            # q_agent.model.predict(q_agent.featurize(state)[np.newaxis])
+            action1, _ = q_agent.action(state)
+            action2, _ = stay_agent.action(state)
+            joint_action = (action1, action2)
+            next_state, reward, done, info = env.step(joint_action)  # what is joint-action info?
+            reward += info["shaped_r_by_agent"][0]
+            # if  info["shaped_r_by_agent"][0] != 0:
+            #     print(f"Shaped reward {info['shaped_r_by_agent'][0]}")
+            # q_agent.update(state, action1, reward, next_state, explore_decay_prog=total_updates / (HORIZON * ITERATIONS))
+            # cum_reward += reward
 
 
-        # reply_memory.push(q_agent.featurize(state), Action.ACTION_TO_INDEX[action1], reward, q_agent.featurize(next_state), done)
-        replay_memory.append((q_agent.featurize(state), Action.ACTION_TO_INDEX[action1], reward, q_agent.featurize(next_state), done))
-        if done:
-            break
+            # reply_memory.push(q_agent.featurize(state), Action.ACTION_TO_INDEX[action1], reward, q_agent.featurize(next_state), done)
+            replay_memory.append((q_agent.featurize(state), Action.ACTION_TO_INDEX[action1], reward, q_agent.featurize(next_state), done))
+            # print(base_mdp.get_recipe_value(state))
+            for obj in state.all_objects_list:
+                if 'soup' ==obj.name:
+                    if obj.is_cooking:
+                        assert len(obj.ingredients)==3, 'Cooking soup should have 3 ingredients'
+                        print('Cooking soup')
+                    if obj.is_ready:
+                        print('Soup is ready')
+                    # print(f'Soup: {obj.ingredients} | is cooking={obj.is_cooking} | is ready={obj.is_ready} | is idle={obj.is_idle}')
 
-    # experineces = reply_memory.sample(model_config['minibatch_size'])
-    experineces = sample_experiences(model_config['minibatch_size'])
-    q_agent.update(experineces)
+            verify_lossless_featurization(base_mdp, q_agent, state)
+            if done:
+                break
+        # print(f'Obs shape:{np.shape(q_agent.featurize(state))}')
+
+        # experineces = reply_memory.sample(model_config['minibatch_size'])
+        experineces = sample_experiences(model_config['minibatch_size'])
+        q_agent.update(experineces)
+
+        print(f"Test {test} passed")
 
 def test_featurize():
     config = {

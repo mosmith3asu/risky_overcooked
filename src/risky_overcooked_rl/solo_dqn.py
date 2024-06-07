@@ -4,7 +4,7 @@ from risky_overcooked_py.mdp.actions import Action, Direction
 from risky_overcooked_py.agents.benchmarking import AgentEvaluator,LayoutGenerator
 from risky_overcooked_py.agents.agent import Agent, AgentPair,StayAgent, RandomAgent, GreedyHumanModel
 from risky_overcooked_rl.utils.custom_deep_agents import SoloDeepQAgent
-from risky_overcooked_rl.utils.deep_models import DQN,ReplayMemory
+from risky_overcooked_rl.utils.deep_models_tf import DQN,ReplayMemory
 from risky_overcooked_rl.utils.rl_logger import FunctionTimer
 # from risky_overcooked_py.mdp.overcooked_mdp import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv

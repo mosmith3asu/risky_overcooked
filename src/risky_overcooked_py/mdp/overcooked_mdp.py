@@ -1154,6 +1154,11 @@ class OvercookedGridworld(object):
         # determines whether to start cooking automatically once 3 items are in the pot
         self.old_dynamics = old_dynamics
 
+        # Custom additions ----
+        self.reachable_counters = self.get_reachable_counters()
+        self.IDX_TO_OBJ = ["onion", "dish", "soup"]
+        self.OBJ_TO_IDX = {o_name: idx for idx, o_name in enumerate(self.IDX_TO_OBJ)}
+
     @staticmethod
     def from_layout_name(layout_name, **params_to_overwrite):
         """
@@ -2434,6 +2439,125 @@ class OvercookedGridworld(object):
     ###################
     # STATE ENCODINGS #
     ###################
+    def get_lossless_vector_encoding_shape(self,n_players=2):
+        v = self.get_lossless_vector_encoding(self.get_standard_start_state(),n_players=n_players)
+        return v.shape
+
+    def get_lossless_vector_encoding(self,overcooked_state,n_players=2,featurize_dtype=np.int32):
+        """
+        Takes in OvercookedState object and converts to observation index conducive to learning
+        :param overcooked_state: OvercookedState object
+        :return: observation feature vector for ego player
+            ego_features: len = 2+4+3 = 9
+                - pi_position: length 2 list of x,y position of player i
+                - pi_orientation: length 4 one-hot-encoding of direction currently facing
+                - pi_obj: length n_asset (3=|onion,plate,soup|) one-hot-encoding of object currently holding
+            partner_features: len = 2+4+3 = 9
+                - pj_position: length 2 list of x,y position of player i
+                - pj_orientation: length 4 one-hot-encoding of direction currently facing
+                - pj_obj: length n_asset (3=|onion,plate,soup|) one-hot-encoding of object currently holding
+                TODO: Reduce feature space by removing orientation from partner player (pj)?
+            world_features: n_counter+n_pot
+                - counter_status: length n_counter of asset labels on counters {'nothing': 0, 'onion': 1, 'dish': 2, 'soup': 3}
+                - pot_status: length n_pot of asset labels in pots {'0 onion': 0, '1 onion': 1, '2 onion': 2, '3 onion': 3, 'ready': 4}
+
+            OTHER POSSIBLE FEATURES:
+                - distance each static asset: d_asset = [dx,dy] (len = n_asset x 2) to contextualize goals
+                    Assets: pot, ingrediant source, serving counter, trash, puddle/water
+        """
+        def featurize_player_vector(state, i):
+            """
+            Features:
+                - pi_position: length 2 list of x,y position of player i
+                - pi_orientation: length 4 one-hot-encoding of direction currently facing
+                - pi_holding: length n_asset (3=|onion,plate,soup|) one-hot-encoding of object currently holding
+            """
+            player_features = {}
+            player = state.players[i]
+            # Get position features ---------------
+            player_features["p{}_position".format(i)] = np.array(player.position)
+
+            # Get orientation features ---------------
+            orientation_idx = Direction.DIRECTION_TO_INDEX[player.orientation]
+            player_features["p{}_orientation".format(i)] = np.eye(4)[orientation_idx]
+
+            # Get holding features (1-HOT)---------------
+            obj = player.held_object
+            if obj is None: player_features["p{}_objs".format(i)] = np.zeros(len(self.IDX_TO_OBJ))
+            else: player_features["p{}_objs".format(i)] = np.eye(len(self.IDX_TO_OBJ))[self.OBJ_TO_IDX[obj.name]]
+
+            # Create feature vector ---------------
+            player_feature_vector = np.concatenate([player_features["p{}_position".format(i)],
+                                                    player_features["p{}_orientation".format(i)],
+                                                    player_features["p{}_objs".format(i)]])
+
+            return player_feature_vector
+        def featurize_world_vector(state):
+            """
+            Features:
+                - counter_status: length n_counter of asset labels on counters {'nothing': 0, 'onion': 1, 'dish': 2, 'soup': 3}
+                TODO: make 1-hot encoding of counter status/decouple corralation between counter and object?
+                - pot_status: length n_pot of asset labels in pots
+                    {'empty': 0, '1 onion': 1, '2 onion': 2, '3 onion/cooking': 3, 'ready': 4}
+                    {'empty': 0, 'X items': X,..., 'cooking': 3, 'ready': 4}
+                TODO: remove number of items in pot and instead just label as {'empty': 0, 'not_full':1, 'full':2, 'cooking':3, 'ready':4}
+
+            # Other pot state info cmds
+            # pot_states = self.mdp.get_pot_states(overcooked_state)
+            # is_empty = int(pot_loc in self.mdp.get_empty_pots(pot_states))
+            # is_full = int(pot_loc in self.mdp.get_full_but_not_cooking_pots(pot_states))
+            # is_cooking = int(pot_loc in self.mdp.get_cooking_pots(pot_states))
+            # is_ready = int(pot_loc in self.mdp.get_ready_pots(pot_states))
+            # is_partially_ful = int(pot_loc in self.mdp.get_partially_full_pots(pot_states))
+
+            :param overcooked_state: OvercookedState object
+            :return: world_feature_vector
+            """
+            world_features = {}
+
+            # get counter status feature vector (LABELED) ---------------
+            # counter_locs = self.reachable_counters # self.mdp.get_counter_locations()
+            # counter_labels = np.zeros(len(counter_locs))
+            # counter_objs = self.mdp.get_counter_objects_dict(overcooked_state) # dictionary of pos:objects
+            # for counter_loc, counter_obj in counter_objs.items():
+            #     counter_labels[counter_locs.index(counter_loc)] = self.OBJ_TO_IDX[counter_obj]
+            # world_features["counter_status"] = counter_labels
+
+            # get counter status feature vector (1-Hot) ---------------
+            counter_locs = self.reachable_counters  # self.mdp.get_counter_locations()
+            counter_indicator_arr = np.zeros([len(counter_locs), len(self.IDX_TO_OBJ)])
+            counter_objs = self.get_counter_objects_dict(state)  # dictionary of pos:objects
+            for counter_obj, counter_loc in counter_objs.items():
+                iobj = self.OBJ_TO_IDX[counter_obj]
+                icounter = counter_locs.index(counter_loc[0])
+                counter_indicator_arr[icounter, iobj] = 1
+            world_features["counter_status"] = counter_indicator_arr.flatten()
+
+            # get pot status feature vector ---------------
+            req_ingredients = self.recipe_config['num_items_for_soup']  # number of ingrediants before cooking
+            pot_locs = self.get_pot_locations()
+            pot_labels = np.zeros(len(pot_locs))
+            for pot_index, pot_loc in enumerate(pot_locs):
+                is_empty = not state.has_object(pot_loc)
+                if is_empty: pot_labels[pot_index] = 0
+                else:
+                    soup = state.get_object(pot_loc)
+                    if soup.is_ready: pot_labels[pot_index] = req_ingredients + 1
+                    elif soup.is_cooking: pot_labels[pot_index] = req_ingredients
+                    elif len(soup.ingredients) > 0: pot_labels[pot_index] = len(soup.ingredients)
+                    else:  raise ValueError(f"Invalid pot state {soup}")
+
+            world_features["pot_status"] = pot_labels
+
+            # Create feature vector ---------------
+            world_feature_vector = np.concatenate([world_features['counter_status'], world_features['pot_status']])
+            return world_feature_vector
+        features = []
+        for iplayer in range(n_players):
+            features.append(featurize_player_vector(overcooked_state, iplayer))
+        features.append(featurize_world_vector(overcooked_state))
+        return np.concatenate(features).astype(featurize_dtype)
+
 
     @property
     def lossless_state_encoding_shape(self):

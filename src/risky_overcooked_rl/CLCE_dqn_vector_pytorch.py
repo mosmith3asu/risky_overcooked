@@ -28,15 +28,16 @@ config = {
         "seed": 41,
 
         # Env Params ############################
-        'LAYOUT': "risky_cramped_room_single", 'HORIZON': 200, 'ITERATIONS': 10_000,
+        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 10_000,
+        # 'LAYOUT': "risky_cramped_room_single", 'HORIZON': 200, 'ITERATIONS': 10_000,
         # 'LAYOUT': "cramped_room_single", 'HORIZON': 200, 'ITERATIONS': 10_000,
         # 'LAYOUT': "sanity_check3_single", 'HORIZON': 400, 'ITERATIONS': 500,
         # 'LAYOUT': "sanity_check4_single", 'HORIZON': 300, 'ITERATIONS': 5_000,
         # 'LAYOUT': "sanity_check3",
         # 'LAYOUT': "sanity_check2",
-        'n_players': 1,                     # number of players in the environment
+        'n_players': 2,                     # number of players in the environment
         'n_player_features': 9,             # number of features in the player vector encoding (FIXED)
-        "n_actions": 6,                     # number of actions in the action space
+        "n_actions": 36,                    # number of actions in the action space
         "obs_shape": None,                  # set dynamically during runtime (leave as None)
         "perc_random_start": 0.80,          # percentage of iterations to randomize start state
         'featurize_fn': 'handcraft_vector', # what type of encoding to use
@@ -140,9 +141,10 @@ def main():
             # Take actions and form observations
             state = env.state
             obs = mdp.get_lossless_vector_encoding(state, n_players=n_players)
-            action1, action_info1 = q_agent.action(obs, epsilon = epsilon)
-            action2, _ = stay_agent.action(state)
-            joint_action = (action1, action2)
+            joint_action,joint_action_info = q_agent.action(obs, epsilon = epsilon)
+            # action1, action_info1 = q_agent.action(obs, epsilon = epsilon)
+            # action2, _ = stay_agent.action(state)
+            # joint_action = (action1, action2)
             next_state, reward, done, info = env.step(joint_action)
 
             if done:
@@ -153,11 +155,13 @@ def main():
 
             # Push experience to replay memory
             replay_memory.push(torch.tensor(obs, dtype=torch.float32, device=q_agent.device).unsqueeze(0),
-                               torch.tensor([[action_info1['action_index']]], dtype=torch.int64, device=device),
+                               # torch.tensor([[action_info1['action_index']]], dtype=torch.int64, device=device),
+                               torch.tensor([[joint_action_info['action_index']]], dtype=torch.int64, device=device),
                                next_obs,
                                torch.tensor([reward + shaped_reward], device=device))
             # Log rewards
-            shaped_reward += r_shape_scale*info["shaped_r_by_agent"][0]
+            shaped_reward += r_shape_scale * np.sum(info["shaped_r_by_agent"])/2
+            # shaped_reward += r_shape_scale*info["shaped_r_by_agent"][0]
             cum_reward += reward
 
             # Optimize model
@@ -194,9 +198,10 @@ def main():
                     if debug: print(f'Test policy: test {test}, t {t}')
                     state = env.state
                     obs = mdp.get_lossless_vector_encoding(state, n_players=n_players)
-                    action1, action_info1 = q_agent.action(obs, rationality=test_rationality)
-                    action2, action_info2 = stay_agent.action(state)
-                    joint_action = (action1, action2)
+                    joint_action, joint_action_info = q_agent.action(obs, epsilon=epsilon)
+                    # action1, action_info1 = q_agent.action(obs, epsilon = epsilon)
+                    # action2, _ = stay_agent.action(state)
+                    # joint_action = (action1, action2)
                     next_state, reward, done, info = env.step(joint_action)
                     test_reward += reward
                     test_shaped_reward +=  info["shaped_r_by_agent"][0]

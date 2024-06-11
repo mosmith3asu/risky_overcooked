@@ -7,6 +7,7 @@ from collections import Counter
 import tensorflow as tf
 import torch
 import random
+import itertools
 
 class SoloDeepQAgent(Agent):
     """An agent randomly picks motion actions.
@@ -33,7 +34,15 @@ class SoloDeepQAgent(Agent):
         self.featurize_fn = config['featurize_fn']
         self.n_players = config['n_players']
         self.n_player_features = config['n_players']
+        self.n_actions = config['n_actions']
+        if self.n_actions == 36:
+            self.action_space = list(itertools.product(*[Action.ALL_ACTIONS for _ in range(2)]))
+        else:
+            self.action_space = Action.ALL_ACTIONS
+
         self.load_config(config,verbose=verbose_load_config)
+
+
 
         # Model Params ----------------
         self.target_net = target_net
@@ -89,17 +98,20 @@ class SoloDeepQAgent(Agent):
                     obs = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
                 qA = self.policy_net(obs)
                 ai = qA.max(1).indices.view(1, 1).numpy().flatten()[0]
-                action_probs = np.zeros(len(Action.ALL_ACTIONS))
-                action_probs[ai] = 1
-                action = Action.sample(action_probs)
+                action = self.action_space[ai]
+                action_probs = np.eye(self.n_actions)[ai]
+                # action_probs[ai] = 1
+                # action = Action.sample(action_probs)
                 action_info = {"action_probs": action_probs, "action_index": ai}
 
         # random exploration agent ----------------
         elif rationality == 'random' or rationality < 0:
             # Random Exploration ---
-            action_probs = np.ones(len(Action.ALL_ACTIONS)) / len(Action.ALL_ACTIONS)
-            action = Action.sample(action_probs)
-            ai = Action.ACTION_TO_INDEX[action]
+            action_probs = np.ones(self.n_actions) / self.n_actions
+            ai = np.random.choice(np.arange(self.n_actions), p=action_probs)
+            action = self.action_space[ai]
+            # action = Action.sample(action_probs)
+            # ai = Action.ACTION_TO_INDEX[action]
             action_info = {"action_probs": action_probs, "action_index": ai}
 
         # Boltzmann Sampling -----

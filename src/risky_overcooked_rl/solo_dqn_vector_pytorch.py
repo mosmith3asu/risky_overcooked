@@ -3,20 +3,21 @@ from risky_overcooked_py.agents.agent import Agent, AgentPair,StayAgent, RandomA
 from risky_overcooked_rl.utils.custom_deep_agents import SoloDeepQAgent
 from risky_overcooked_rl.utils.deep_models_pytorch import ReplayMemory,DQN_vector_feature,optimize_model,soft_update,device
 from risky_overcooked_rl.utils.state_utils import StartStateManager
+from risky_overcooked_rl.utils.rl_logger import RLLogger
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,SoupState
 from itertools import count
 import matplotlib.pyplot as plt
-from develocorder import (
-    LinePlot,
-    Heatmap,
-    FilteredLinePlot,
-    DownsampledLinePlot,
-    set_recorder,
-    record,
-    set_update_period,
-    set_num_columns,
-)
+# from develocorder import (
+#     LinePlot,
+#     Heatmap,
+#     FilteredLinePlot,
+#     DownsampledLinePlot,
+#     set_recorder,
+#     record,
+#     set_update_period,
+#     set_num_columns,
+# )
 
 import torch
 import torch.optim as optim
@@ -88,11 +89,11 @@ def main():
     test_rationality = config['test_rationality']
 
     # Logger ----------------
-    set_recorder(reward=FilteredLinePlot(filter_size=config['logger_filter_size'],
-                                         xlabel="Iteration",  ylabel=f"Score ({LAYOUT}|{ALGORITHM})"))
-    set_recorder(shaped_reward=FilteredLinePlot(filter_size=config['logger_filter_size'],
-                                                xlabel="Iteration",  ylabel=f"Shaped Score ({LAYOUT}|{ALGORITHM})"))
-    set_update_period(config['logger_update_period'])  # [seconds]
+    logger = RLLogger(rows=2, cols=1)
+    logger.add_lineplot('test_reward', xlabel='iter', ylabel='$R_{test}$', filter_window=10, display_raw=True, loc=(0, 1))
+    logger.add_lineplot('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=10, display_raw=True, loc=(1, 1))
+    # logger.add_lineplot('shaped_reward', xlabel='iter', ylabel='$R_{shape}$', filter_window=10, display_raw=True,  loc=(2, 1))
+    logger.add_table('Params', config)
 
     # Generate MDP and environment----------------
     mdp = OvercookedGridworld.from_layout_name(LAYOUT)
@@ -115,8 +116,10 @@ def main():
     # MAIN LOOP ##########################################################################
     ######################################################################################
     steps_done = 0
-    iter_rewards = []
+    train_rewards = [] # buffer to store last batch of train rewards
     for iter in range(ITERATIONS):
+        logger.spin() # refresh logger figure events
+
         # Calc Decay Parameters ----------------
         EPS_DECAY = int((-1. * ITERATIONS)/np.log(EPS_ERR))
         epsilon = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)
@@ -136,6 +139,7 @@ def main():
         ##############################################
         cum_reward = 0
         shaped_reward = 0
+
         for t in count():
             # Take actions and form observations
             state = env.state
@@ -159,6 +163,7 @@ def main():
             # Log rewards
             shaped_reward += r_shape_scale*info["shaped_r_by_agent"][0]
             cum_reward += reward
+            train_rewards.append(cum_reward)
 
             # Optimize model
             if len(replay_memory) > 0.25*minibatch_size:
@@ -202,14 +207,14 @@ def main():
                     test_shaped_reward +=  info["shaped_r_by_agent"][0]
                     if done: break
                     env.state = next_state
-            record(reward=test_reward / N_tests)
-            record(shaped_reward=test_shaped_reward / N_tests)
+            logger.log(test_reward=[iter, test_reward / N_tests], train_reward=[iter, np.mean(train_rewards)])
             print(f"\nTest: | nTests= {N_tests} | Ave Reward = {test_reward / N_tests} | Ave Shaped Reward = {test_shaped_reward / N_tests}\n")
-            # ftimer.report()
+            train_rewards = [] # reset train rewards buffer
+
         # -------------------------------
-    fig,ax = plt.subplots()
-    ax.plot(iter_rewards)
-    plt.show()
+    # fig,ax = plt.subplots()
+    # ax.plot(iter_rewards)
+    # plt.show()
 
 
 if __name__ == "__main__":

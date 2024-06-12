@@ -8,9 +8,9 @@ import datetime
 import os
 from risky_overcooked_rl.utils.deep_models import DQN,ReplayMemory
 from collections import Counter, defaultdict
-import tensorflow as tf
+import torch
 from itertools import product,count
-
+import random
 from collections import namedtuple, deque
 replay_memory = deque(maxlen=20000)
 def sample_experiences(batch_size):
@@ -25,9 +25,9 @@ class SoloDeepQAgent(Agent):
     """An agent randomly picks motion actions.
     Note: Does not perform interat actions, unless specified"""
 
-    def __init__(self, mdp, agent_index, model,
+    def __init__(self, mdp, agent_index, policy_net, # model,
                  save_agent_file=False, load_learned_agent=False,
-                 config=None,verbose_load_config=True,featurize_fn='mask'):
+                 config=None,verbose_load_config=True):
         super(SoloDeepQAgent, self).__init__()
 
         # Learning Params ---------------
@@ -50,18 +50,22 @@ class SoloDeepQAgent(Agent):
         self.OBJ_TO_IDX = {o_name: idx for idx, o_name in enumerate(self.IDX_TO_OBJ)}
         self.reachable_counters = mdp.get_reachable_counters()
         self.featurize_dtype = np.int32
-        self.featurize_fn = featurize_fn
+        self.featurize_fn = config['featurize_fn']
 
         # Create learning environment ---------------
         self.mdp = mdp
-        self.valid_actions = Action.ALL_ACTIONS
+        # self.valid_actions = Action.ALL_ACTIONS
+        self.action_space = Action.ALL_ACTIONS
 
         config['obs_shape'] =self.get_featurized_shape()
 
         if config is not None: self.load_config(config,verbose=verbose_load_config)
         else: warnings.warn("No config provided, using default values. Please ensure defaults are correct")
 
-        self.model = model(**config)  # DQN model used for learning
+        self.policy_net = policy_net
+        self.device = config['device']
+
+        # self.model = model(**config)  # DQN model used for learning
 
     def load_config(self, config,verbose=True):
         if verbose:
@@ -84,61 +88,101 @@ class SoloDeepQAgent(Agent):
     ########################################################
     # Learning/Performance methods #########################
     ########################################################
-
-    def action(self, state,enable_explore=True,rationality=None):
-        # TODO: player position is not enough to determine quality of action. What about if holding item, orientation/facing, ect...
+    def action(self, state, exp_prob=0, rationality='max',debug=False):
+    # def action(self, state,enable_explore=True,rationality=None):
         # DYNAMIC EXPLORATION E-GREEDY/BOLTZMAN
         # Epsilon greedy ----------------
-        # if np.random.uniform(0, 1) < self.exploration_proba and enable_explore:
-        #     action_probs = np.zeros(Action.NUM_ACTIONS)
-        #     legal_actions = Action.ALL_ACTIONS
-        #     legal_actions_indices = np.array([Action.ACTION_TO_INDEX[motion_a] for motion_a in legal_actions])
-        #     action_probs[legal_actions_indices] = 1 / len(legal_actions)
+
+        # if rationality is None: rationality = self.rationality
         #
+        # if rationality == 'max':
+        #     obs = self.featurize(state)
+        #     # qs = self.model.predict(obs[np.newaxis]).flatten()
+        #     qs = self.model.predict(obs[np.newaxis]).flatten()
+        #     action_idx = np.argmax(qs)
+        #     # action = self.valid_actions[action_idx]
+        #     action = Action.INDEX_TO_ACTION[action_idx]
+        #     action_probs = np.eye(Action.NUM_ACTIONS)[action_idx]
+        #     action_info = {"action_probs": action_probs}
+        # elif rationality == 'random' or rationality < 0:
+        #     action_probs = np.ones(len(self.valid_actions)) / len(self.valid_actions)
         #     action = Action.sample(action_probs)
         #     action_info = {"action_probs": action_probs}
-        #
         # else:
-        #     # obs = state # for debugging
         #     obs = self.featurize(state)
         #     qs = self.model.predict(obs[np.newaxis]).flatten()
-        #     # Boltzman Agent -----------
-        #     if self.rationality == 'max':
-        #         action_idx = np.argmax(qs)
-        #         action = self.valid_actions[action_idx]
-        #         action_probs = np.eye(Action.NUM_ACTIONS)[action_idx]
-        #         action_info = {"action_probs": action_probs}
-        #     else:
-        #         # action_probs = np.exp(rationality * qs) / np.sum(np.exp(rationality * qs))
-        #         action_probs = self.softmax(self.rationality * qs)
-        #         action = Action.sample(action_probs)
-        #         action_info = {"action_probs": action_probs}
+        #     # action_probs = np.exp(rationality * qs) / np.sum(np.exp(rationality * qs))
+        #     action_probs = self.softmax(self.rationality * qs)
+        #     action = Action.sample(action_probs)
+        #     action_info = {"action_probs": action_probs}
+        # return action, action_info
+    # def action(self, state, exp_prob,debug=False,rationality=None):
+        """
+        :param state: OvercookedState object
+        :param exp_prob: probability of random exploration {0: always exploit, 1: always explore}
+        :param rationality: if not exploring, Boltzmann rationality temperature ('max' if argmax)
+        :return: action, action_info = {"action_index": int, "action_probs": np.ndarray}
+        """
+        # global steps_done
+        sample = random.random()
 
-        if rationality is None: rationality = self.rationality
+        # EXPLORE ----------------
+        if sample < exp_prob:
+            action_probs = np.ones(len(self.action_space)) / len(self.action_space)
+            ai = np.random.choice(np.arange(len(self.action_space)), p=action_probs)
+            action = self.action_space[ai]
 
-
-
-        if rationality == 'max':
-            obs = self.featurize(state)
-            # qs = self.model.predict(obs[np.newaxis]).flatten()
-            qs = self.model.predict(obs[np.newaxis]).flatten()
-            action_idx = np.argmax(qs)
-            # action = self.valid_actions[action_idx]
-            action = Action.INDEX_TO_ACTION[action_idx]
-            action_probs = np.eye(Action.NUM_ACTIONS)[action_idx]
-            action_info = {"action_probs": action_probs}
-        elif rationality == 'random' or rationality < 0:
-            action_probs = np.ones(len(self.valid_actions)) / len(self.valid_actions)
-            action = Action.sample(action_probs)
-            action_info = {"action_probs": action_probs}
+        # EXPLOIT ----------------
         else:
+            # obs = self.mdp.get_lossless_encoding_vector(state)
+            # obs = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
             obs = self.featurize(state)
-            qs = self.model.predict(obs[np.newaxis]).flatten()
-            # action_probs = np.exp(rationality * qs) / np.sum(np.exp(rationality * qs))
-            action_probs = self.softmax(self.rationality * qs)
-            action = Action.sample(action_probs)
-            action_info = {"action_probs": action_probs}
+            with torch.no_grad():
+                if rationality == 'max':
+                    ai = self.policy_net(obs).max(1).indices.view(1, 1).numpy().flatten()[0]
+                    action_probs = np.eye(len(self.action_space))[ai]
+                    action = self.action_space[ai]
+                else:
+                    qA = self.policy_net(obs).numpy().flatten()
+                    action_probs = self.softmax(rationality * qA)
+                    ai = np.random.choice(self.action_space, p=action_probs)
+                    action = self.action_space[ai]
+
+                    # return torch.tensor([[ai]], device=device, dtype=torch.long)
+        # RETURN ----------------
+        action_info = {"action_index": ai, "action_probs": action_probs}
         return action, action_info
+
+        # if rationality is not None:
+        #     if rationality == 'max':
+        #         with torch.no_grad():
+        #             # t.max(1) will return the largest column value of each row.
+        #             # second column on max result is index of where max element was
+        #             # found, so we pick action with the larger expected reward.
+        #             # return policy_net(state).max(1).indices.view(1, 1).numpy().flatten()[0]
+        #             return policy_net(state).max(1).indices.view(1, 1)
+        #     else:
+        #         with torch.no_grad():
+        #             qA = policy_net(state).numpy().flatten()
+        #             ex = np.exp(rationality * (qA - np.max(qA)))
+        #             pA = ex / np.sum(ex)
+        #             action = Action.sample(pA)
+        #             ai = Action.ACTION_TO_INDEX[action]
+        #             return torch.tensor([[ai]], device=device, dtype=torch.long)
+        # elif sample < exp_prob:
+        #     # return np.random.choice(np.arange(n_actions))
+        #     action = Action.sample(np.ones(n_actions) / n_actions)
+        #     ai = Action.ACTION_TO_INDEX[action]
+        #     return torch.tensor([[ai]], device=device, dtype=torch.long)
+        #     # return torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
+        # else:
+        #     if debug: print('Greedy')
+        #     with torch.no_grad():
+        #         # t.max(1) will return the largest column value of each row.
+        #         # second column on max result is index of where max element was
+        #         # found, so we pick action with the larger expected reward.
+        #         # return policy_net(state).max(1).indices.view(1, 1).numpy().flatten()[0]
+        #         return policy_net(state).max(1).indices.view(1, 1)
 
     def actions(self, states, agent_indices):
         return (self.action(state) for state in states)
@@ -175,15 +219,19 @@ class SoloDeepQAgent(Agent):
         """ Generate either a feature vector or series of masks for CNN"""
         if self.featurize_fn.lower() in ['mask', 'lossless']:
             return self.featurize_mask(overcooked_state)
-        elif self.featurize_fn.lower() in ['handcraft_vector']:
-            return self.featurize_vector(overcooked_state)
+        elif self.featurize_fn.lower() in ['handcraft_vector','vector']:
+            # return self.featurize_vector(overcooked_state)
+            obs = self.mdp.get_lossless_encoding_vector(overcooked_state)
+            obs = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
+            return obs
 
     def get_featurized_shape(self):
         """ Get the shape of either type of the featurized state"""
         if self.featurize_fn.lower() in ['mask', 'lossless']:
             return np.shape(self.featurize_mask(self.mdp.get_standard_start_state()))
         elif self.featurize_fn.lower() in ['handcraft_vector']:
-            return self.get_featurized_vector_shape()
+            # return self.get_featurized_vector_shape()
+            return self.mdp.get_lossless_encoding_vector_shape()
 
     # Mask Featurization ###############################
     def featurize_mask(self, overcooked_state, get_keys=False):
@@ -203,10 +251,13 @@ class SoloDeepQAgent(Agent):
             list(variable_map_features.keys())  # + \
             # list(urgency_map_features.keys())
         )
-
-        feature_masks = np.transpose(feature_masks, (1, 2, 0))
-        assert feature_masks.shape[:2] == self.mdp.shape
-        assert feature_masks.shape[2] == len(feature_mask_keys)
+        # !! IF USING PYTORCH !!
+        assert feature_masks.shape[1:] == self.mdp.shape
+        assert feature_masks.shape[0] == len(feature_mask_keys)
+        # !!! if using tensorflow!!!!
+        # feature_masks = np.transpose(feature_masks, (1, 2, 0))
+        # assert feature_masks.shape[:2] == self.mdp.shape
+        # assert feature_masks.shape[2] == len(feature_mask_keys)
 
         if get_keys:
             return feature_masks,feature_mask_keys

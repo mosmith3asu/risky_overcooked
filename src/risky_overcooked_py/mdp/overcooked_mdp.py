@@ -1154,6 +1154,9 @@ class OvercookedGridworld(object):
         # determines whether to start cooking automatically once 3 items are in the pot
         self.old_dynamics = old_dynamics
 
+        # ADDED
+        self.reachable_counters = self.get_reachable_counters()
+
     @staticmethod
     def from_layout_name(layout_name, **params_to_overwrite):
         """
@@ -2434,6 +2437,76 @@ class OvercookedGridworld(object):
     ###################
     # STATE ENCODINGS #
     ###################
+    def get_lossless_encoding_vector_shape(self):
+        return self.get_lossless_encoding_vector(self.get_standard_start_state()).shape
+    def get_lossless_encoding_vector(self, overcooked_state,is_reversed=False):
+        features = {}
+        IDX_TO_OBJ = ["onion", "dish", "soup"]
+        OBJ_TO_IDX = {o_name: idx for idx, o_name in enumerate(IDX_TO_OBJ)}
+
+        # PLAYER FEATURES #########################################
+        players = overcooked_state.players
+        for i,player in enumerate(reversed(players) if is_reversed else players):
+            # Get position features ---------------
+            features["p{}_position".format(i)] = np.array(player.position)
+
+            # Get orientation features ---------------
+            orientation_idx = Direction.DIRECTION_TO_INDEX[player.orientation]
+            features["p{}_orientation".format(i)] = np.eye(4)[orientation_idx]
+
+            # Get holding features (1-HOT)---------------
+            obj = player.held_object
+            if obj is None:
+                held_obj_name = "none"
+                features["p{}_objs".format(i)] = np.zeros(len(IDX_TO_OBJ))
+            else:
+                held_obj_name = obj.name
+                obj_idx = OBJ_TO_IDX[held_obj_name]
+                features["p{}_objs".format(i)] = np.eye(len(IDX_TO_OBJ))[obj_idx]
+
+            # Create feature vector ---------------
+            # player_feature_vector = np.concatenate([player_features["p{}_position".format(i)],
+            #                                         player_features["p{}_orientation".format(i)],
+            #                                         player_features["p{}_objs".format(i)]])
+
+        # WORLD FEATURES #########################################
+        # get counter status feature vector (1-Hot) ---------------
+        counter_locs = self.reachable_counters  # self.mdp.get_counter_locations()
+        counter_indicator_arr = np.zeros([len(counter_locs), len(IDX_TO_OBJ)])
+        counter_objs = self.get_counter_objects_dict(overcooked_state)  # dictionary of pos:objects
+        for counter_obj, counter_loc in counter_objs.items():
+            iobj = OBJ_TO_IDX[counter_obj]
+            icounter = counter_locs.index(counter_loc[0])
+            counter_indicator_arr[icounter, iobj] = 1
+        features["counter_status"] = counter_indicator_arr.flatten()
+
+        # get pot status feature vector ---------------
+        req_ingredients = self.recipe_config['num_items_for_soup']  # number of ingrediants before cooking
+        pot_locs = self.get_pot_locations()
+        pot_labels = np.zeros(len(pot_locs))
+        for pot_index, pot_loc in enumerate(pot_locs):
+            is_empty = not overcooked_state.has_object(pot_loc)
+            if is_empty:
+                pot_labels[pot_index] = 0
+            else:
+                soup = overcooked_state.get_object(pot_loc)
+                if soup.is_ready:
+                    pot_labels[pot_index] = req_ingredients + 1
+                elif soup.is_cooking:
+                    pot_labels[pot_index] = req_ingredients
+                elif len(soup.ingredients) > 0:
+                    pot_labels[pot_index] = len(soup.ingredients)
+                else:
+                    raise ValueError(f"Invalid pot state {soup}")
+
+        features["pot_status"] = pot_labels
+
+        # Create feature vector ---------------
+        feature_vector = np.concatenate([item for item in features.values()])
+        return feature_vector
+
+
+
 
     @property
     def lossless_state_encoding_shape(self):

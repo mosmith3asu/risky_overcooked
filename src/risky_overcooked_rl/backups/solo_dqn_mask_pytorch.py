@@ -4,8 +4,8 @@ from risky_overcooked_py.agents.benchmarking import AgentEvaluator,LayoutGenerat
 from risky_overcooked_py.agents.agent import Agent, AgentPair,StayAgent, RandomAgent, GreedyHumanModel
 from risky_overcooked_rl.utils.custom_deep_agents import SoloDeepQAgent
 # from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature
-from risky_overcooked_rl.utils.deep_models_pytorch import ReplayMemory,DQN_vector_feature,device,optimize_model,soft_update#,select_action
-from risky_overcooked_rl.utils.rl_logger import RLLogger
+from risky_overcooked_rl.utils.deep_models_pytorch import ReplayMemory,DQN_mask_feature,Transition,device
+
 from risky_overcooked_rl.utils.rl_logger import FunctionTimer
 # from risky_overcooked_py.mdp.overcooked_mdp import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
@@ -17,16 +17,16 @@ from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,Overcooke
 from itertools import product,count
 # import matplotlib.pyplot as plt
 import warnings
-# from develocorder import (
-#     LinePlot,
-#     Heatmap,
-#     FilteredLinePlot,
-#     DownsampledLinePlot,
-#     set_recorder,
-#     record,
-#     set_update_period,
-#     set_num_columns,
-# )
+from develocorder import (
+    LinePlot,
+    Heatmap,
+    FilteredLinePlot,
+    DownsampledLinePlot,
+    set_recorder,
+    record,
+    set_update_period,
+    set_num_columns,
+)
 import random
 import torch
 import torch.nn as nn
@@ -35,53 +35,49 @@ import math
 
 debug = False
 config = {
-        'ALGORITHM': 'solo_dqn_vector_egreedy',
+        'ALGORITHM': 'solo_dqn_mask_egreedy',
         "seed": 41,
 
         # Env Params
-        'LAYOUT': "cramped_room_single", 'HORIZON': 200, 'ITERATIONS': 3_000,
-        # 'LAYOUT': "sanity_check3_single", 'HORIZON': 200, 'ITERATIONS': 500,
+        # 'LAYOUT': "cramped_room_single", 'HORIZON': 200, 'ITERATIONS': 5_000,
+        'LAYOUT': "sanity_check3_single", 'HORIZON': 200, 'ITERATIONS': 1_000,
         # 'LAYOUT': "sanity_check4_single", 'HORIZON': 300, 'ITERATIONS': 5_000,
-        # 'LAYOUT': "sanity_check3",
-        # 'LAYOUT': "sanity_check2",
         'init_reward_shaping_scale': 1.0,
         "obs_shape": None, #TODO: how was this computing with incorrect dimensions? [18,5,4]
         "n_actions": 6,
-        "perc_random_start": 0.01,
+        "perc_random_start": 0.00,
         'done_after_delivery': False,
         'start_with_soup': False,
-        'featurize_fn': 'handcraft_vector',
+        'featurize_fn': 'mask', #'handcraft_vector'
 
         # Learning Params
-        'max_exploration_proba': 1.0,
+        'max_exploration_proba': 0.9,
         'min_exploration_proba': 0.1,
-        'gamma': 0.95,
-        'tau': 0.005,# 0.005,# soft update of target network
+        'gamma': 0.99,
+        'tau': 0.005,# soft update of target network
         # "learning_rate": 1e-2,
         # "learning_rate": 1e-3,
         "learning_rate": 1e-4,
         # "learning_rate": 5e-5,
         # "learning_rate": 1e-5,
-        'rationality': 'max', #  base rationality if not specified, ='max' for argmax
+        'rationality': 10,#'max', #  base rationality if not specified, ='max' for argmax
         'exp_rationality_range': [10,10],  # exploring rationality
         "num_filters": 25,  # CNN params
         "num_convs": 3,  # CNN params
         "num_hidden_layers": 3,  # MLP params
-        "size_hidden_layers": 256,#32,  # MLP params
+        "size_hidden_layers": 32,#32,  # MLP params
         "device": device,
 
 
         # "n_mini_batch": 1,
         "n_mini_batch": 1,
         "minibatch_size": 256,
-        "replay_memory_size": 15_000,
+        "replay_memory_size": 20_000,
 
         # Evaluation Params
         'test_interval': 10,
         'N_tests': 1,
-        'test_rationality': 'max',  # rationality for explotation during testing
-        'train_rationality': 'max', # rationality for explotation during training
-
+        'test_rationality': 'max',
         'logger_filter_size': 10,
         'logger_update_period': 1,  # [seconds]
     }
@@ -138,6 +134,75 @@ def random_start_state(mdp,rnd_obj_prob_thresh=0.25):
     return random_state
 
 
+def select_action(state,policy_net,exp_prob,n_actions=6,debug=False):
+    # global steps_done
+    sample = random.random()
+    # eps_threshold = EPS_END + (EPS_START - EPS_END) * \
+    #     math.exp(-1. * steps_done / EPS_DECAY)
+    # steps_done += 1
+    if sample < exp_prob:
+        # return np.random.choice(np.arange(n_actions))
+        action = Action.sample(np.ones(n_actions)/n_actions)
+        ai = Action.ACTION_TO_INDEX[action]
+        return torch.tensor([[ai]], device=device, dtype=torch.long)
+        # return torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
+    else:
+        if debug: print('Greedy')
+        with torch.no_grad():
+            # t.max(1) will return the largest column value of each row.
+            # second column on max result is index of where max element was
+            # found, so we pick action with the larger expected reward.
+            # return policy_net(state).max(1).indices.view(1, 1).numpy().flatten()[0]
+            return policy_net(state).max(1).indices.view(1, 1)
+
+
+
+def optimize_model(policy_net,target_net,optimizer,memory,BATCH_SIZE,GAMMA):
+    if len(memory) < BATCH_SIZE:
+        return
+    transitions = memory.sample(BATCH_SIZE)
+    # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
+    # detailed explanation). This converts batch-array of Transitions
+    # to Transition of batch-arrays.
+    batch = Transition(*zip(*transitions))
+
+    # Compute a mask of non-final states and concatenate the batch elements
+    # (a final state would've been the one after which simulation ended)
+    non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                          batch.next_state)), device=device, dtype=torch.bool)
+    non_final_next_states = torch.cat([s for s in batch.next_state
+                                                if s is not None])
+    state_batch = torch.cat(batch.state)
+    action_batch = torch.cat(batch.action)
+    reward_batch = torch.cat(batch.reward)
+
+    # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
+    # columns of actions taken. These are the actions which would've been taken
+    # for each batch state according to policy_net
+    state_action_values = policy_net(state_batch).gather(1, action_batch)#.unsqueeze(0)
+
+    # Compute V(s_{t+1}) for all next states.
+    # Expected values of actions for non_final_next_states are computed based
+    # on the "older" target_net; selecting their best reward with max(1).values
+    # This is merged based on the mask, such that we'll have either the expected
+    # state value or 0 in case the state was final.
+    next_state_values = torch.zeros(BATCH_SIZE, device=device)
+    with torch.no_grad():
+        next_state_values[non_final_mask] = target_net(non_final_next_states).max(1).values
+    # Compute the expected Q values
+    expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+
+    # Compute Huber loss
+    criterion = nn.SmoothL1Loss()
+    loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+
+    # Optimize the model
+    optimizer.zero_grad()
+    loss.backward()
+    # In-place gradient clipping
+    torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
+    optimizer.step()
+
 
 def main():
     ALGORITHM = config['ALGORITHM']
@@ -158,24 +223,22 @@ def main():
     GAMMA = config['gamma']
     LR = config['learning_rate']
     TAU = config['tau']
-    EPS_DECAY = 1000
     replay_memory_size = config['replay_memory_size']
     done_after_delivery = config['done_after_delivery']
     start_with_soup = config['start_with_soup']
-    test_rationality = config['test_rationality']
-    train_rationality = config['train_rationality']
-
 
 
     if start_with_soup:
         warnings.warn("Starting with soup")
 
     # Logger ----------------
-    logger = RLLogger(rows = 2,cols = 1)
-    logger.add_lineplot('test_reward',xlabel='iter',ylabel='$R_{test}$',filter_window=10,display_raw=True, loc = (0,1))
-    logger.add_lineplot('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=10, display_raw=True, loc=(1,1))
-    # logger.add_lineplot('shaped_reward', xlabel='iter', ylabel='$R_{shape}$', filter_window=10, display_raw=True,  loc=(2, 1))
-    logger.add_table('Params',config)
+    set_recorder(reward=FilteredLinePlot(filter_size=config['logger_filter_size'],
+                                           xlabel="Iteration (test)",
+                                           ylabel=f"Score ({LAYOUT}|{ALGORITHM})"))
+    set_recorder(train_reward=FilteredLinePlot(filter_size=config['logger_filter_size'],
+                                           xlabel="Iteration (test)",
+                                           ylabel=f"Score ({LAYOUT}|{ALGORITHM})"))
+    set_update_period(config['logger_update_period'])  # [seconds]
 
     # Generate MDP and environment----------------
     mdp = OvercookedGridworld.from_layout_name(LAYOUT)
@@ -183,27 +246,20 @@ def main():
     # model = DQN(**config)
     replay_memory = ReplayMemory(replay_memory_size)
 
-
-    # Initialize policy and target networks
-    obs_shape = mdp.get_lossless_encoding_vector_shape(); config['obs_shape'] = obs_shape
-    policy_net = DQN_vector_feature(obs_shape, config['n_actions'],size_hidden_layers=config['size_hidden_layers']).to(device)
-    target_net = DQN_vector_feature(obs_shape, config['n_actions'],size_hidden_layers=config['size_hidden_layers']).to(device)
-    target_net.load_state_dict(policy_net.state_dict())
-    optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
-
-
     # Generate agents
-    # q_agent = SoloDeepQAgent(mdp,agent_index=0,model=DQN_vector_feature, config=config)
-    q_agent = SoloDeepQAgent(mdp,agent_index=0,policy_net=policy_net, config=config)
-    # obs_shape = q_agent.get_featurized_shape()
+    q_agent = SoloDeepQAgent(mdp,agent_index=0,model=DQN_mask_feature, config=config)
+    obs_shape = q_agent.get_featurized_shape()
     stay_agent = StayAgent()
 
+    policy_net = DQN_mask_feature(obs_shape, config['n_actions'],num_filters=config['num_filters'],size_hidden_layers=config['size_hidden_layers']).to(device)
+    target_net = DQN_mask_feature(obs_shape, config['n_actions'],num_filters=config['num_filters'],size_hidden_layers=config['size_hidden_layers']).to(device)
+    target_net.load_state_dict(policy_net.state_dict())
+    optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 
     steps_done = 0
     iter_rewards = []
     train_rewards = []
     for iter in range(ITERATIONS):
-        logger.spin()
         # ftimer.clear()
         # r_shape_scale = init_reward_shaping_scale-(iter/ITERATIONS)*(init_reward_shaping_scale-0)
 
@@ -249,13 +305,11 @@ def main():
 
         for t in count():
             state = env.state
-            # obs = q_agent.featurize(state)
-            # obs = mdp.get_lossless_encoding_vector(state)
-            # obs = torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
-            # ai1 = select_action(obs,policy_net,exploration_proba)#.numpy().flatten()[0]
-            # action1 = Action.INDEX_TO_ACTION[ai1.numpy().flatten()[0]]
+            obs = q_agent.featurize(state)
+            obs = torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
+            ai1 = select_action(obs,policy_net,exploration_proba)#.numpy().flatten()[0]
+            action1 = Action.INDEX_TO_ACTION[ai1.numpy().flatten()[0]]
             # action1, _ = q_agent.action(state,rationality=exp_rationality)
-            action1, action_info1 = q_agent.action(state,exp_prob=exploration_proba,rationality=train_rationality)
             action2, _ = stay_agent.action(state)
             joint_action = (action1, action2)
             next_state, reward, done, info = env.step(joint_action) # what is joint-action info?
@@ -266,33 +320,27 @@ def main():
             shaped_reward += r_shape_scale*info["shaped_r_by_agent"][0]
             cum_reward += reward
 
+            if done:
+                next_obs = None
+            else:
+                next_obs = q_agent.featurize(next_state)
+                next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
 
-            if done: next_obs = None
-            else: next_obs = q_agent.featurize(next_state)
-                # next_obs = q_agent.featurize(next_state)
-                # next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
-
-            replay_memory.push(q_agent.featurize(state),
-                               torch.tensor([action_info1['action_index']], dtype=torch.int64, device=device).unsqueeze(0),
+            replay_memory.push(obs,
+                               ai1,#torch.tensor([ai1], dtype=torch.int64, device=device),
                                next_obs,
-                               torch.tensor([reward + shaped_reward], device=device))
-
-            # replay_memory.push(obs,
-            #                    ai1,#torch.tensor([ai1], dtype=torch.int64, device=device),
-            #                    next_obs,
-            #                    torch.tensor([reward + shaped_reward],device=device))
+                               torch.tensor([reward + shaped_reward],device=device))
             if len(replay_memory) > 0.25*minibatch_size:
                 for _ in range(n_mini_batch):
                     optimize_model(policy_net,target_net,optimizer,replay_memory,minibatch_size,GAMMA)
 
             #Soft update of the target network 's weights
             # θ′ ← τ θ + (1 −τ )θ′
-            # target_net_state_dict = target_net.state_dict()
-            # policy_net_state_dict = policy_net.state_dict()
-            # for key in policy_net_state_dict:
-            #     target_net_state_dict[key] = policy_net_state_dict[key] * TAU + target_net_state_dict[key] * (1 - TAU)
-            # target_net.load_state_dict(target_net_state_dict)
-            target_net = soft_update(policy_net,target_net,TAU)
+            target_net_state_dict = target_net.state_dict()
+            policy_net_state_dict = policy_net.state_dict()
+            for key in policy_net_state_dict:
+                target_net_state_dict[key] = policy_net_state_dict[key] * TAU + target_net_state_dict[key] * (1 - TAU)
+            target_net.load_state_dict(target_net_state_dict)
 
             # if len(replay_memory) > 0.5*config["replay_memory_size"]:
             #     experiences = replay_memory.sample(minibatch_size)
@@ -307,7 +355,7 @@ def main():
             env.state = next_state
 
 
-        train_rewards.append(cum_reward+shaped_reward)
+        train_rewards.append(cum_reward)
         print(f"Iteration {iter} "
               f"| train reward: {round(cum_reward,3)} "
               f"| shaped reward: {round(shaped_reward,3)} "
@@ -343,14 +391,12 @@ def main():
                 for t in count():
                     if debug: print(f'Test policy: test {test}, t {t}')
                     state = env.state
-                    # obs = q_agent.featurize(state)
-                    # obs = mdp.get_lossless_encoding_vector(state)
-                    # obs = torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
-                    # ai1 = select_action(obs, policy_net, 0,rationality=config['test_rationality'])  # .numpy().flatten()[0]
-                    # action1 = Action.INDEX_TO_ACTION[ai1.numpy().flatten()[0]]
-                    # # state = env.state
-                    # # action1, _ = q_agent.action(state,rationality=config['test_rationality'])
-                    action1, action_info1 = q_agent.action(state,exp_prob=0,rationality=test_rationality)
+                    obs = q_agent.featurize(state)
+                    obs = torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
+                    ai1 = select_action(obs, policy_net, 0)  # .numpy().flatten()[0]
+                    action1 = Action.INDEX_TO_ACTION[ai1.numpy().flatten()[0]]
+                    # state = env.state
+                    # action1, _ = q_agent.action(state,rationality=config['test_rationality'])
 
                     action2, _ = stay_agent.action(state)
                     joint_action = (action1, action2)
@@ -360,9 +406,7 @@ def main():
                     if done: break
 
                     # env.state = next_state
-            logger.log(test_reward=[iter, test_reward / N_tests], train_reward=[iter, np.mean(train_rewards)])
-            logger.draw()
-            # record(train_reward=np.mean(train_rewards),reward=test_reward / N_tests)#,shaped_reward=test_shaped_reward / N_tests
+            record(train_reward=np.mean(train_rewards),reward=test_reward / N_tests)#,shaped_reward=test_shaped_reward / N_tests
             # record(reward=test_reward / N_tests)
             # record(shaped_reward=test_shaped_reward / N_tests)
             print(f"\nTest: | nTests= {N_tests} | Ave Reward = {test_reward / N_tests} | Ave Shaped Reward = {test_shaped_reward / N_tests}\n")

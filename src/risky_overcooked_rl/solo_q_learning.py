@@ -10,7 +10,7 @@ import os
 from tempfile import TemporaryFile
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
 from itertools import product,count
-from risky_overcooked_rl.utils.custom_agents import SoloQAgent
+from risky_overcooked_rl.utils.custom_tabular_agents import SoloQAgent
 import matplotlib.pyplot as plt
 from develocorder import (
     LinePlot,

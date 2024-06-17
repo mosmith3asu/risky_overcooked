@@ -31,7 +31,10 @@ class RLLogger(object):
         # self.subfigs = self.root_fig.subfigures(2, 2, wspace=0.07, width_ratios=[1.5, 1.],height_ratios=[5,1])
         # self.plot_fig = self.subfigs[0,0]
         # self.settings_fig = self.subfigs[0,1]
-        # self.interface_fig = self.subfigs[1, 0]
+        # self.status_fig = self.subfigs[1, 0]
+        # self.interface_fig = self.subfigs[1, 1]
+
+
 
         # axs0 = self.subfigs[0].subplots(2, 2)
         self.settings_fig.set_facecolor('lightgray')
@@ -159,10 +162,11 @@ class RLLogger(object):
     def spin(self):
         self.plot_fig.canvas.flush_events()
 
-    def halt(self):
+    def wait_for_close(self,enable=True):
         """Stops the program to wait for user input (i.e. save model, save plot, close, ect..)"""
-        plt.ioff()
-        plt.show()
+        if enable:
+            plt.ioff()
+            plt.show()
 
 def test_logger():
     config = {'p1':1,'p2':2}
@@ -176,9 +180,9 @@ def test_logger():
     logger.add_lineplot('test_reward',xlabel='iter',ylabel='$R_{test}$',filter_window=10,display_raw=True,loc = (0,1))
     logger.add_lineplot('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=10, display_raw=True,loc=(1,1))
     logger.add_table('Params',config)
-    logger.add_button('Save',callback)
-    logger.add_button('Close', callback)
-    T = 1000
+    # logger.add_button('Save',callback)
+    # logger.add_button('Close', callback)
+    T = 5
     for i in range(T):
         d = np.random.randint(0,10)
         logger.log(test_reward=[i,d],train_reward=[i, d+2])
@@ -189,6 +193,7 @@ def test_logger():
         # fig.canvas.flush_events()
         time.sleep(0.1)
         print(i)
+    logger.wait_for_close(enable=True)
 
 #
 # class RLLogger(object):

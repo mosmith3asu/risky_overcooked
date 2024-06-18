@@ -1,8 +1,6 @@
 import numpy as np
 import time
 import matplotlib.pyplot as plt
-import pandas as pd
-import textwrap
 from matplotlib.widgets import Button
 
 class RLLogger(object):
@@ -110,6 +108,7 @@ class RLLogger(object):
         tbl.auto_set_font_size(False)
 
         self.axs[key].axis('off')
+
 
     def add_lineplot(self, key,
                      xlabel='', ylabel='', title='',

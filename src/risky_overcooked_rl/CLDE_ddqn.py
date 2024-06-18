@@ -1,7 +1,7 @@
 import numpy as np
 from risky_overcooked_py.agents.agent import Agent, AgentPair,StayAgent, RandomAgent, GreedyHumanModel
 from risky_overcooked_rl.utils.custom_deep_agents import SoloDeepQAgent,SelfPlay_DeepAgentPair
-from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature,device,optimize_model,soft_update#,select_action
+from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature,device,optimize_model,soft_update
 from risky_overcooked_rl.utils.rl_logger import RLLogger
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
@@ -17,12 +17,13 @@ config = {
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
 
         # Env Params ----------------
-        'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
-        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
+        # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
+        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
-        "perc_random_start": 0.01,          # percentage of ITERATIONS with random start states
-        "equalib_sol": "pareto",               # equilibrium solution for testing
+        # "perc_random_start": 0.01,          # percentage of ITERATIONS with random start states
+        "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
+        "equalib_sol": "qre",               # equilibrium solution for testing
 
         # Learning Params ----------------
         'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)
@@ -160,25 +161,23 @@ def main():
         # Simulate Episode ----------------
         cum_reward = 0
         shaped_reward = np.zeros(2)
+        state = env.state
+        obs = agent_pair.featurize(state)
         for t in count():
-            state = env.state
-            # action1, action_info1 = q_agent1.action(state, exp_prob=exploration_proba, rationality=train_rationality)
-            # action2, action_info2 = q_agent2.action(state, exp_prob=exploration_proba, rationality=train_rationality)
-            # joint_action = (action1, action2)
-            # joint_action_idxs = (Action.ACTION_TO_INDEX[action1], Action.ACTION_TO_INDEX[action2])
-            # joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(joint_action_idxs)
-            joint_action, action_info = agent_pair.action(state,exp_prob=exploration_proba)
+            # state = env.state
+            # obs = agent_pair.featurize(state)
+            # joint_action, action_info = agent_pair.action(state,exp_prob=exploration_proba)
+            joint_action, action_info = agent_pair.action(obs,exp_prob=exploration_proba)
             joint_action_idx = action_info['action_index']
 
             next_state, reward, done, info = env.step(joint_action)
-            # shaped_reward += r_shape_scale*info["shaped_r_by_agent"][0]
             shaped_reward += r_shape_scale * np.array(info["shaped_r_by_agent"])
             cum_reward += reward
             if done: next_obs = None
-            else: next_obs = q_agent1.featurize(next_state)
+            else: next_obs = agent_pair.featurize(next_state)
 
             # Store the transition in memory (featurized tensors) ----------------
-            replay_memory.push(q_agent1.featurize(state),
+            replay_memory.push(obs,#q_agent1.featurize(state),
                                torch.tensor([joint_action_idx], dtype=torch.int64, device=device).unsqueeze(0),
                                next_obs,
                                torch.tensor(np.array([reward + shaped_reward]), device=device))
@@ -195,6 +194,7 @@ def main():
             target_net = soft_update(policy_net,target_net,TAU)
 
             if done:  break
+            obs = next_obs
 
 
         train_rewards.append(cum_reward+shaped_reward)
@@ -219,11 +219,7 @@ def main():
                 for t in count():
                     if debug: print(f'Test policy: test {test}, t {t}')
                     state = env.state
-                    # action1, action_info1 = q_agent1.action(state,exp_prob=0,rationality=test_rationality)
-                    # action2, action_info2 = q_agent2.action(state,exp_prob=0,rationality=test_rationality)
-                    # joint_action = (action1, action2)
                     joint_action, action_info = agent_pair.action(state, exp_prob=exploration_proba)
-                    # joint_action, action_info1 = q_agent1.action(state, exp_prob=0,  rationality=test_rationality)
                     next_state, reward, done, info = env.step(joint_action)
                     test_reward += reward
                     test_shaped_reward +=  info["shaped_r_by_agent"][0]

@@ -2,10 +2,12 @@ import itertools
 import warnings
 
 import numpy as np
+from risky_overcooked_py.mdp.overcooked_mdp import OvercookedState
 from risky_overcooked_py.mdp.actions import Action, Direction
 from risky_overcooked_py.agents.agent import Agent, AgentPair,StayAgent, RandomAgent, GreedyHumanModel
 import pickle
-from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature,device,optimize_model,soft_update#,select_action
+from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature
+
 import os
 
 from collections import Counter, defaultdict
@@ -129,17 +131,28 @@ class SoloDeepQAgent(Agent):
         """ Generate a feature vector"""
         obs = self.mdp.get_lossless_encoding_vector(overcooked_state)
         if as_tensor: obs = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
-
-        if self.my_index == 1:
-            # reverse state
-            obs = torch.cat([obs[:, self.N_PLAYER_FEAT:2 * self.N_PLAYER_FEAT],
-                             obs[:, :self.N_PLAYER_FEAT],
-                             obs[:, 2 * self.N_PLAYER_FEAT:]], dim=1)
+        if self.my_index == 1:  obs = self.reverse_state_obs(obs)
         return obs
 
     def get_featurized_shape(self):
         """ Get the shape of either type of the featurized state"""
         return self.mdp.get_lossless_encoding_vector_shape()
+
+    def handle_state_obs_type(self,state):
+        """change ambigous type of state/obs into tensor obs encoding"""
+        if isinstance(state,OvercookedState): # is an overcooked state object
+            return self.featurize(state)
+        elif isinstance(state,np.ndarray): # is an encoding vector but np array
+            return torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
+        elif isinstance(state,torch.Tensor): # already a encoding tensor
+            return state
+        else: raise ValueError(f'Unknown state type: {type(state)}')
+
+    def reverse_state_obs(self,obs):
+        obs = torch.cat([obs[:, self.N_PLAYER_FEAT:2 * self.N_PLAYER_FEAT],
+                         obs[:, :self.N_PLAYER_FEAT],
+                         obs[:, 2 * self.N_PLAYER_FEAT:]], dim=1)
+        return obs
 
     ########################################################
     # Saving utils #########################################
@@ -176,11 +189,24 @@ class SoloDeepQAgent(Agent):
 
 class SelfPlay_DeepAgentPair(object):
     def __init__(self,agent1,agent2,equalib='nash'):
+        super(SelfPlay_DeepAgentPair, self).__init__()
         self.agents = [agent1,agent2]
         assert equalib.lower() in ['nash','pareto','qre'], 'Unknown Equlibrium'
-        self.equalib = equalib # equalibrium solution
+        self.equalib = equalib                      # equalibrium solution
+        self.mdp = agent1.mdp                       # same for both agents
+        self.device = agent1.device                 # same for both agents
+        self.N_PLAYER_FEAT = agent1.N_PLAYER_FEAT   # same for both agents
+        self.my_index = -1 # used for interfacing with Agent class utils
+
 
         self.action_space = list(itertools.product(Action.ALL_ACTIONS, repeat=2))
+
+        # Grab methods from other class (may induce errors w. agent index?)
+        self.featurize = agent1.featurize
+        self.reverse_state_obs = agent1.reverse_state_obs
+        self.handle_state_obs_type = agent1.handle_state_obs_type
+
+
     # Joint action ########################################
     def action(self, state, exp_prob=0, rationality='max', debug=False):
         """
@@ -198,10 +224,13 @@ class SelfPlay_DeepAgentPair(object):
 
         # EXPLOIT ----------------
         else:
+            obs = self.handle_state_obs_type(state) # make correct type
+
             # Get normal form game
             flattened_game = np.zeros((2,len(self.action_space)))
             for ip,agent in enumerate(self.agents):
-                obs = agent.featurize(state) # TODO: super inefficient to recalc this instead of inverting
+                if ip == 1: obs = self.reverse_state_obs(obs) # make into ego observation
+                # obs = agent.featurize(state) # TODO: super inefficient to recalc this instead of inverting
                 with torch.no_grad():
                     qAA = agent.policy_net(obs).numpy().flatten() #quality of joint actions
                     flattened_game[ip,:] = qAA
@@ -210,6 +239,7 @@ class SelfPlay_DeepAgentPair(object):
             # Apply equlibrium solution
             if self.equalib.lower() == 'nash':      action_idxs = self.nash(NF_game)
             elif self.equalib.lower() == 'pareto':  action_idxs = self.pareto(NF_game)
+            elif self.equalib.lower() == 'qre':     action_idxs = self.pareto(NF_game)
             else: AssertionError(f'Unknown equalibrium: {self.equalib}')
             action = [Action.INDEX_TO_ACTION[ai] for ai in action_idxs]
             joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
@@ -218,17 +248,56 @@ class SelfPlay_DeepAgentPair(object):
         # RETURN ----------------
         action_info = {"action_index": joint_action_idx, "action_probs": action_probs}
         return action, action_info
-        # # get quality of each action for each agent
-        # for agent in enumerate(self.agents):
-        #     agent.policy_net.eval()
-        #
-        # # actions = [agent.action(state,exp_prob=exp_prob,rationality=rationality) for agent in self.agents]
-        # qA = [age]
-        #
-        # return actions
+
+    # def featurize(self, overcooked_state, as_tensor=True):
+    #     """ Generate a feature vector"""
+    #     obs = self.mdp.get_lossless_encoding_vector(overcooked_state)
+    #     if as_tensor: obs = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
+    #     return obs
+
+    # def handle_state_obs_type(self,state):
+    #     """if is OvercookedState, change to featurized vector"""
+    #     if isinstance(state,OvercookedState): # is an overcooked state object
+    #         return self.featurize(state)
+    #     elif isinstance(state,np.ndarray): # is an encoding vector but np array
+    #         return torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
+    #     elif isinstance(state,torch.Tensor): # already a encoding tensor
+    #         return state
+    #     else: raise ValueError(f'Unknown state type: {type(state)}')
+    #
+    # def reverse_state_obs(self,obs):
+    #     obs = torch.cat([obs[:, self.N_PLAYER_FEAT:2 * self.N_PLAYER_FEAT],
+    #                      obs[:, :self.N_PLAYER_FEAT],
+    #                      obs[:, 2 * self.N_PLAYER_FEAT:]], dim=1)
+    #     return obs
+    ########################################################
+    # Equilibrium ########################################
+    ########################################################
+    def quantal_response(self,game,soph=1):
+        """quantal response equalibrium with k-order ToM (sophistication)"""
+        def invert_game(g):
+            "inverts perspective of the game"
+            return np.array([g[1, :].T, g[0, :].T])
+        def QRE(game, k):
+            """recursive function resolving k-order ToM"""
+            if k == 0: partner_dist = (np.arange(np.shape(game)[1])).reshape(1, np.shape(game)[1])
+            else: partner_dist = QRE(invert_game(game), k - 1)
+            weighted_game = game[0] * partner_dist
+            Exp_qAi = np.sum(weighted_game, axis=1)
+            return softmax(Exp_qAi)
+        na = np.shape(game)[1]
+        pdA1 = QRE(game,k=soph)
+        pdA2 = QRE(invert_game(game),k=soph)
+        a1 = np.random.choice(np.arange(na),p=pdA1)
+        a2 = np.random.choice(np.arange(na),p=pdA2)
+        action_idxs = (a1,a2)
+        return action_idxs
 
 
-    # Equalibriums ########################################
+
+        raise NotImplementedError()
+
+
     def nash(self,game):
         raise NotImplementedError()
 
@@ -242,17 +311,19 @@ class SelfPlay_DeepAgentPair(object):
         return action_idxs
 
 
-    def update(self,policy_net, target_net, optimizer, transitions, GAMMA):
-        """Could grab policy and target net from the agents"""
+    # def update(self,policy_net, target_net, optimizer, transitions, GAMMA):
+    #     """Could grab policy and target net from the agents"""
+    #
+    #
+    #     optimize_model(policy_net, target_net, optimizer, transitions, GAMMA)
+    #
 
 
-        optimize_model(policy_net, target_net, optimizer, transitions, GAMMA)
 
 
-
-
-
-
+def softmax(x):
+    e_x = np.exp(x - np.max(x))
+    return e_x / e_x.sum()
 
 # def test_featurize():
 #     config = {

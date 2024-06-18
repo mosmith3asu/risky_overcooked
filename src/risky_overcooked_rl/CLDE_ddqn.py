@@ -1,10 +1,11 @@
 import numpy as np
 from risky_overcooked_py.agents.agent import Agent, AgentPair,StayAgent, RandomAgent, GreedyHumanModel
-from risky_overcooked_rl.utils.custom_deep_agents import SoloDeepQAgent
+from risky_overcooked_rl.utils.custom_deep_agents import SoloDeepQAgent,SelfPlay_DeepAgentPair
 from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature,device,optimize_model,soft_update#,select_action
 from risky_overcooked_rl.utils.rl_logger import RLLogger
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
+from risky_overcooked_py.mdp.actions import Action
 from itertools import product,count
 import torch
 import torch.optim as optim
@@ -12,15 +13,16 @@ import math
 from datetime import datetime
 debug = False
 config = {
-        'ALGORITHM': 'CLCE_DDQN',
+        'ALGORITHM': 'CLDE_DDQN',
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
 
         # Env Params ----------------
         'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
-        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 3_000,
+        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
         "perc_random_start": 0.01,          # percentage of ITERATIONS with random start states
+        "equalib_sol": "pareto",               # equilibrium solution for testing
 
         # Learning Params ----------------
         'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)
@@ -107,12 +109,11 @@ def main():
     TAU = config['tau']
     replay_memory_size = config['replay_memory_size']
     test_rationality = config['test_rationality']
+    equalib_sol = config['equalib_sol']
     train_rationality = config['train_rationality']
     init_reward_shaping_scale = 1                   # decaying reward shaping weight
     N_tests = 1 if test_rationality=='max' else 3   # number of tests (only need 1 with max rationality)
     test_interval = 10                              # test every n iterations
-
-
 
 
     # Generate MDP and environment----------------
@@ -128,8 +129,9 @@ def main():
     optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 
     # Generate agents ----------------
-    q_agent = SoloDeepQAgent(mdp,agent_index=0,policy_net=policy_net, config=config)
-    stay_agent = StayAgent()
+    q_agent1 = SoloDeepQAgent(mdp,agent_index=0,policy_net=policy_net, config=config)
+    q_agent2 = SoloDeepQAgent(mdp,agent_index=1,policy_net=policy_net, config=config)
+    agent_pair = SelfPlay_DeepAgentPair(q_agent1,q_agent2,equalib=equalib_sol)
 
     # Initiate Logger ----------------
     logger = RLLogger(rows = 2,cols = 1)
@@ -157,31 +159,36 @@ def main():
 
         # Simulate Episode ----------------
         cum_reward = 0
-        shaped_reward = 0
+        shaped_reward = np.zeros(2)
         for t in count():
             state = env.state
-            # action1, action_info1 = q_agent.action(state, exp_prob=exploration_proba, rationality=train_rationality)
-            # action2, _ = stay_agent.action(state)
+            # action1, action_info1 = q_agent1.action(state, exp_prob=exploration_proba, rationality=train_rationality)
+            # action2, action_info2 = q_agent2.action(state, exp_prob=exploration_proba, rationality=train_rationality)
             # joint_action = (action1, action2)
-            joint_action, action_info1 = q_agent.action(state, exp_prob=exploration_proba, rationality=train_rationality)
-            next_state, reward, done, info = env.step(joint_action) # what is joint-action info?
+            # joint_action_idxs = (Action.ACTION_TO_INDEX[action1], Action.ACTION_TO_INDEX[action2])
+            # joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(joint_action_idxs)
+            joint_action, action_info = agent_pair.action(state,exp_prob=exploration_proba)
+            joint_action_idx = action_info['action_index']
+
+            next_state, reward, done, info = env.step(joint_action)
             # shaped_reward += r_shape_scale*info["shaped_r_by_agent"][0]
-            shaped_reward += r_shape_scale * np.mean(info["shaped_r_by_agent"])
+            shaped_reward += r_shape_scale * np.array(info["shaped_r_by_agent"])
             cum_reward += reward
             if done: next_obs = None
-            else: next_obs = q_agent.featurize(next_state)
+            else: next_obs = q_agent1.featurize(next_state)
 
             # Store the transition in memory (featurized tensors) ----------------
-            replay_memory.push(q_agent.featurize(state),
-                               torch.tensor([action_info1['action_index']], dtype=torch.int64, device=device).unsqueeze(0),
+            replay_memory.push(q_agent1.featurize(state),
+                               torch.tensor([joint_action_idx], dtype=torch.int64, device=device).unsqueeze(0),
                                next_obs,
-                               torch.tensor([reward + shaped_reward], device=device))
+                               torch.tensor(np.array([reward + shaped_reward]), device=device))
 
             # Optimize Model ----------------
             if len(replay_memory) > minibatch_size:
                 for _ in range(n_mini_batch):
                     transitions = replay_memory.sample(minibatch_size)
-                    optimize_model(policy_net, target_net, optimizer, transitions, GAMMA)
+                    for ip in range(2): # optimize for each player
+                        optimize_model(policy_net, target_net, optimizer, transitions, GAMMA,player=ip)
                     # optimize_model(policy_net,target_net,optimizer,replay_memory,minibatch_size,GAMMA)
 
             # Soft update of the target network  ----------------
@@ -193,7 +200,7 @@ def main():
         train_rewards.append(cum_reward+shaped_reward)
         print(f"Iteration {iter} "
               f"| train reward: {round(cum_reward,3)} "
-              f"| shaped reward: {round(shaped_reward,3)} "
+              f"| shaped reward: {np.round(shaped_reward,3)} "
               f"| memory len {len(replay_memory)} "
               f"| reward shaping scale {round(r_shape_scale,3)} "
               f"| Explore Prob {exploration_proba} "
@@ -212,10 +219,11 @@ def main():
                 for t in count():
                     if debug: print(f'Test policy: test {test}, t {t}')
                     state = env.state
-                    # action1, action_info1 = q_agent.action(state,exp_prob=0,rationality=test_rationality)
-                    # action2, _ = stay_agent.action(state)
+                    # action1, action_info1 = q_agent1.action(state,exp_prob=0,rationality=test_rationality)
+                    # action2, action_info2 = q_agent2.action(state,exp_prob=0,rationality=test_rationality)
                     # joint_action = (action1, action2)
-                    joint_action, action_info1 = q_agent.action(state, exp_prob=0,  rationality=test_rationality)
+                    joint_action, action_info = agent_pair.action(state, exp_prob=exploration_proba)
+                    # joint_action, action_info1 = q_agent1.action(state, exp_prob=0,  rationality=test_rationality)
                     next_state, reward, done, info = env.step(joint_action)
                     test_reward += reward
                     test_shaped_reward +=  info["shaped_r_by_agent"][0]

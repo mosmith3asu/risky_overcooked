@@ -1591,13 +1591,13 @@ class OvercookedGridworld(object):
 
         return sparse_reward, shaped_reward
 
-    def resolve_enter_water(self, state, new_state,events_infos):
+    def resolve_enter_water(self, state, new_state,events_infos, p_slip = 0.5):
         """
         If a player enters a puddle, they have a p_slip chance to drop their held item
         and experince slight delay in action.
         """
 
-        p_slip = 0.5
+
         # all_objects = list(new_state.objects.values())
         for player_idx,player in enumerate(new_state.players):
             old_player_state = state.players[player_idx]

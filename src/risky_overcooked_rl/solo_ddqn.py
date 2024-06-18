@@ -4,7 +4,7 @@ from risky_overcooked_py.agents.benchmarking import AgentEvaluator,LayoutGenerat
 from risky_overcooked_py.agents.agent import Agent, AgentPair,StayAgent, RandomAgent, GreedyHumanModel
 from risky_overcooked_rl.utils.custom_deep_agents import SoloDeepQAgent
 # from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature
-from risky_overcooked_rl.utils.deep_models_pytorch import ReplayMemory,DQN_vector_feature,device,optimize_model,soft_update#,select_action
+from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature,device,optimize_model,soft_update#,select_action
 from risky_overcooked_rl.utils.rl_logger import RLLogger
 from risky_overcooked_rl.utils.rl_logger import FunctionTimer
 # from risky_overcooked_py.mdp.overcooked_mdp import OvercookedEnv
@@ -201,9 +201,11 @@ def main():
                                torch.tensor([reward + shaped_reward], device=device))
 
             # Optimize Model ----------------
-            if len(replay_memory) > 0.25*minibatch_size:
+            if len(replay_memory) > minibatch_size:
                 for _ in range(n_mini_batch):
-                    optimize_model(policy_net,target_net,optimizer,replay_memory,minibatch_size,GAMMA)
+                    transitions = replay_memory.sample(minibatch_size)
+                    optimize_model(policy_net, target_net, optimizer, transitions, GAMMA)
+                    # optimize_model(policy_net,target_net,optimizer,replay_memory,minibatch_size,GAMMA)
 
             # Soft update of the target network  ----------------
             target_net = soft_update(policy_net,target_net,TAU)

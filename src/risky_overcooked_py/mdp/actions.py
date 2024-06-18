@@ -53,6 +53,12 @@ class Action(object):
     INDEX_TO_ACTION_INDEX_PAIRS = [
         v for v in itertools.product(range(len(INDEX_TO_ACTION)), repeat=2)
     ]
+
+    # Reverse the index of joint actions i(ego,partner) -> i(partner,ego)
+    # REVERSE_INDEX_ACTION_PAIRS = [
+    #     INDEX_TO_ACTION_INDEX_PAIRS.index((aa[1],aa[0])) for aa in INDEX_TO_ACTION_INDEX_PAIRS
+    # ]
+
     ACTION_TO_INDEX = {a: i for i, a in enumerate(INDEX_TO_ACTION)}
     MOTION_ACTIONS = Direction.ALL_DIRECTIONS + [STAY]
     ACTION_TO_CHAR = {
@@ -129,3 +135,8 @@ class Action(object):
     def uniform_probs_over_actions():
         num_acts = len(Action.ALL_ACTIONS)
         return np.ones(num_acts) / num_acts
+
+    @staticmethod
+    def reverse_joint_action_index(aa_idx):
+        aa =  Action.INDEX_TO_ACTION_INDEX_PAIRS[aa_idx]
+        return Action.INDEX_TO_ACTION_INDEX_PAIRS.index((aa[1], aa[0]))

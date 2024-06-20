@@ -18,12 +18,13 @@ config = {
 
         # Env Params ----------------
         # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
-        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
+        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 10_000,
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
-        # "perc_random_start": 0.01,          # percentage of ITERATIONS with random start states
-        "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
-        "equalib_sol": "qre",               # equilibrium solution for testing
+        "perc_random_start": 0.01,          # percentage of ITERATIONS with random start states
+        # "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
+        "equalib_sol": "QRE2",               # equilibrium solution for testing
+        # "equalib_sol": "NASH",               # equilibrium solution for testing
 
         # Learning Params ----------------
         'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)

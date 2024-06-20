@@ -7,22 +7,13 @@ from risky_overcooked_py.mdp.actions import Action, Direction
 from risky_overcooked_py.agents.agent import Agent, AgentPair,StayAgent, RandomAgent, GreedyHumanModel
 import pickle
 from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature
-
+import nashpy as nash
 import os
 
 from collections import Counter, defaultdict
 import torch
 from itertools import product,count
 import random
-from collections import namedtuple, deque
-# replay_memory = deque(maxlen=20000)
-# def sample_experiences(batch_size):
-#     indices = np.random.randint(len(replay_memory), size=batch_size)
-#     batch = [replay_memory[index] for index in indices]
-#     states, actions, rewards, next_states, dones = [
-#         np.array([experience[field_index] for experience in batch])
-#         for field_index in range(5)]
-#     return states, actions, rewards, next_states, dones
 
 class SoloDeepQAgent(Agent):
     """An agent randomly picks motion actions.
@@ -191,7 +182,8 @@ class SelfPlay_DeepAgentPair(object):
     def __init__(self,agent1,agent2,equalib='nash'):
         super(SelfPlay_DeepAgentPair, self).__init__()
         self.agents = [agent1,agent2]
-        assert equalib.lower() in ['nash','pareto','qre'], 'Unknown Equlibrium'
+        # assert equalib.lower() in ['nash','pareto','qre'], 'Unknown Equlibrium'
+        assert equalib.lower() in ['nash', 'pareto'] or 'qre' in equalib.lower(), 'Unknown Equlibrium'
         self.equalib = equalib                      # equalibrium solution
         self.mdp = agent1.mdp                       # same for both agents
         self.device = agent1.device                 # same for both agents
@@ -239,8 +231,8 @@ class SelfPlay_DeepAgentPair(object):
             # Apply equlibrium solution
             if self.equalib.lower() == 'nash':      action_idxs = self.nash(NF_game)
             elif self.equalib.lower() == 'pareto':  action_idxs = self.pareto(NF_game)
-            elif self.equalib.lower() == 'qre':     action_idxs = self.pareto(NF_game)
-            else: AssertionError(f'Unknown equalibrium: {self.equalib}')
+            elif 'qre' in self.equalib.lower() :    action_idxs = self.quantal_response(NF_game)
+            else: raise ValueError(f'Unknown equalibrium: {self.equalib}')
             action = [Action.INDEX_TO_ACTION[ai] for ai in action_idxs]
             joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
             action_probs = None
@@ -249,31 +241,10 @@ class SelfPlay_DeepAgentPair(object):
         action_info = {"action_index": joint_action_idx, "action_probs": action_probs}
         return action, action_info
 
-    # def featurize(self, overcooked_state, as_tensor=True):
-    #     """ Generate a feature vector"""
-    #     obs = self.mdp.get_lossless_encoding_vector(overcooked_state)
-    #     if as_tensor: obs = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
-    #     return obs
-
-    # def handle_state_obs_type(self,state):
-    #     """if is OvercookedState, change to featurized vector"""
-    #     if isinstance(state,OvercookedState): # is an overcooked state object
-    #         return self.featurize(state)
-    #     elif isinstance(state,np.ndarray): # is an encoding vector but np array
-    #         return torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
-    #     elif isinstance(state,torch.Tensor): # already a encoding tensor
-    #         return state
-    #     else: raise ValueError(f'Unknown state type: {type(state)}')
-    #
-    # def reverse_state_obs(self,obs):
-    #     obs = torch.cat([obs[:, self.N_PLAYER_FEAT:2 * self.N_PLAYER_FEAT],
-    #                      obs[:, :self.N_PLAYER_FEAT],
-    #                      obs[:, 2 * self.N_PLAYER_FEAT:]], dim=1)
-    #     return obs
     ########################################################
     # Equilibrium ########################################
     ########################################################
-    def quantal_response(self,game,soph=1):
+    def quantal_response(self,game,soph=2):
         """quantal response equalibrium with k-order ToM (sophistication)"""
         def invert_game(g):
             "inverts perspective of the game"
@@ -285,6 +256,9 @@ class SelfPlay_DeepAgentPair(object):
             weighted_game = game[0] * partner_dist
             Exp_qAi = np.sum(weighted_game, axis=1)
             return softmax(Exp_qAi)
+        # check if last character in self.equalib is an integer
+        if self.equalib[-1].isnumeric():  # if sophistication is specified
+            soph = int(self.equalib[-1])
         na = np.shape(game)[1]
         pdA1 = QRE(game,k=soph)
         pdA2 = QRE(invert_game(game),k=soph)
@@ -294,12 +268,24 @@ class SelfPlay_DeepAgentPair(object):
         return action_idxs
 
 
-
-        raise NotImplementedError()
-
-
     def nash(self,game):
-        raise NotImplementedError()
+        na = np.shape(game)[1]
+        rps = nash.Game(game[0,:], game[1,:])
+
+        # find all equalibriums
+        # eqs = list(rps.support_enumeration())
+        eqs = list(rps.vertex_enumeration())
+
+        # select equalibrium with highest pareto efficiency
+        pareto_efficiencies = [np.sum(rps[eq[0], eq[1]]) for eq in eqs]
+        best_eq_idx = pareto_efficiencies.index(max(pareto_efficiencies))
+        mixed_eq = np.abs(eqs[best_eq_idx])
+
+        # Sample actions according to equalib
+        a1 = np.random.choice(np.arange(na), p=mixed_eq[0])
+        a2 = np.random.choice(np.arange(na), p=mixed_eq[1])
+        action_idxs = (a1,a2)
+        return action_idxs
 
     def pareto(self,game):
         """
@@ -324,6 +310,21 @@ class SelfPlay_DeepAgentPair(object):
 def softmax(x):
     e_x = np.exp(x - np.max(x))
     return e_x / e_x.sum()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # def test_featurize():
 #     config = {

@@ -17,8 +17,8 @@ config = {
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
 
         # Env Params ----------------
-        # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
-        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 10_000,
+        'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
+        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 10_000,
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
         "perc_random_start": 0.01,          # percentage of ITERATIONS with random start states

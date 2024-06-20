@@ -1,5 +1,10 @@
 import numpy as np
 
+
+def invert_game(g):
+    "inverts perspective of the game"
+    return np.array([g[1, :].T, g[0, :].T])
+
 def softmax(x):
     ex = np.exp(x-np.max(x))
     return ex/np.sum(ex)
@@ -31,25 +36,27 @@ def main():
     # A = np.repeat(np.arange(6).reshape(1,6),6,axis=0).reshape([1,6,6])
     B = np.repeat(np.arange(6).reshape(1,6).T,6,axis=1).reshape([1,6,6])
     game = np.vstack([A,B])
+
+    print(np.all(invert_game(invert_game(game))==game))
     # print(game.shape)
     # print(A)
     # print(B)
-    na = np.shape(game)[1]
-
-    inv_game = np.array([game[1,:].T,game[0,:].T,])
-    print(inv_game.shape)
-
-    # pdj = (np.arange(na)).reshape(1,na)
-    # weighted_game = game[0]*pdj
-    # Exp_qAi = np.sum(weighted_game,axis=1)
-    # print(Exp_qAi)
-
-    print(step_QRE(game,k=5))
-    # sum of ego agent is row
-    # qsumi = np.sum(game,axis=1)[0]
-    # qAi_given_pdj = pdj*np.sum(game,axis=-1)[0]
+    # na = np.shape(game)[1]
     #
-    # Exp_qAi_given_pdj = pdj*np.sum(game,axis=-1)[0]
-    # print(qAi_given_pdj)
+    # inv_game = np.array([game[1,:].T,game[0,:].T,])
+    # print(inv_game.shape)
+    #
+    # # pdj = (np.arange(na)).reshape(1,na)
+    # # weighted_game = game[0]*pdj
+    # # Exp_qAi = np.sum(weighted_game,axis=1)
+    # # print(Exp_qAi)
+    #
+    # print(step_QRE(game,k=5))
+    # # sum of ego agent is row
+    # # qsumi = np.sum(game,axis=1)[0]
+    # # qAi_given_pdj = pdj*np.sum(game,axis=-1)[0]
+    # #
+    # # Exp_qAi_given_pdj = pdj*np.sum(game,axis=-1)[0]
+    # # print(qAi_given_pdj)
 if __name__ == "__main__":
     main()

@@ -2,9 +2,10 @@ import numpy as np
 import time
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
+from collections import deque
 
 class RLLogger(object):
-    def __init__(self, rows, cols, lw=0.5, figsize=(10, 5)):
+    def __init__(self, rows, cols,num_iterations=None, lw=0.5, figsize=(10, 5)):
         self.logs = {}
         self.sig_digs = 4
         self.filter_widows = {}
@@ -15,26 +16,43 @@ class RLLogger(object):
         self.filtered_lines = {}
         self.trackers = {}
         self.interfaces = {}
+        self.status = {}
         self.axs = {}
         self.iax = 0  # index counter for plot
         self.rows = rows
         self.cols = cols
+        self.num_iterations = num_iterations
+        self.iter_count = 0 # number of iterations in loop
         plt.ion()
+
+        self.last_iteration_time = None
 
         self.root_fig = plt.figure(figsize=figsize, constrained_layout=True)
 
-        self.subfigs = self.root_fig.subfigures(1, 2, wspace=0.07, width_ratios=[1.5, 1.])
-        self.plot_fig = self.subfigs[0]
-        self.settings_fig = self.subfigs[1]
+        # self.subfigs = self.root_fig.subfigures(1, 2, wspace=0.00, width_ratios=[1.5, 1.])
+        # self.plot_fig = self.subfigs[0]
+        # self.settings_fig = self.subfigs[1]
+
         # self.subfigs = self.root_fig.subfigures(2, 2, wspace=0.07, width_ratios=[1.5, 1.],height_ratios=[5,1])
         # self.plot_fig = self.subfigs[0,0]
         # self.settings_fig = self.subfigs[0,1]
         # self.status_fig = self.subfigs[1, 0]
         # self.interface_fig = self.subfigs[1, 1]
 
+        self.subfigs = self.root_fig.subfigures(1, 2, wspace=0.00, width_ratios=[1.5, 1.])
+        self.plot_fig = self.subfigs[0]
+        self.subfigs =  self.subfigs[1].subfigures(2, 1, wspace=0.00, height_ratios=[10, 1])
+        self.settings_fig = self.subfigs[0]
+        self.status_fig = self.subfigs[1]
+
+
+
 
 
         # axs0 = self.subfigs[0].subplots(2, 2)
+        # self.interface_fig.set_facecolor('lightgray')
+        # self.status_fig.set_facecolor('lightgray')
+        # self.status_fig.suptitle('Status')
         self.settings_fig.set_facecolor('lightgray')
         self.settings_fig.suptitle('Settings')
         # self.subfigs[0].suptitle('subfigs[0]\nLeft side')
@@ -64,6 +82,62 @@ class RLLogger(object):
         else:
             return x
 
+    ###########################################################
+    # Status Methods ############################################
+    def add_status(self,key='status', iteration_timer=True,progress=True,remaining_time=True,ncols=2,fnt_size=6):
+        assert self.num_iterations is not None, 'Number of iterations must be set to use status'
+        self.status['Prog:'] = 0
+        self.status['S/iter'] = deque([time.time()], maxlen=10)
+        self.status['Time Left'] = 0
+        self.axs[key] = self.status_fig.add_subplot(1, 1, 1)
+        # self.axs[key].set_title('Status')
+        data_dict = {'Prog':0,'S/iter':0,'Time Left':0}
+        items = list(data_dict.items())
+        data = []
+        nrows = len(data_dict) // ncols
+        ncols = np.sum([iteration_timer,progress,remaining_time])
+        for r in range(nrows):
+            row = []
+            for c in range(ncols):
+                i = r * ncols + c
+                k, v = items[i]
+                row.append(f'{k}: {v}')
+            data.append(row)
+        tbl = self.axs[key].table(cellText=data, fontsize=fnt_size, loc='center', cellLoc='left')
+        tbl.auto_set_font_size(False)
+
+        self.axs[key].axis('off')
+        self.status['tbl'] = tbl
+
+        for key, cell in tbl.get_celld().items():
+            cell.set_linewidth(0)
+        tbl.auto_set_column_width([0, 1])
+
+    def start_iteration(self):
+        self.last_iteration_time = time.time()
+    def end_iteration(self,advance_iteration =True):
+        dt = time.time() - self.last_iteration_time
+        self.status['S/iter'].append(dt)
+        if advance_iteration: self.iter_count += 1
+    def draw_status(self):
+        tbl = self.status['tbl']
+        s_per_iter = np.mean(self.status["S/iter"])
+        rem_time = (self.num_iterations-self.iter_count)* s_per_iter
+        # reformat rem_time into hours, minutes, seconds
+        hours = rem_time // 3600
+        rem_time = rem_time % 3600
+        minutes = rem_time // 60
+        rem_time = rem_time % 60
+        seconds = rem_time
+        rem_time = f'{int(hours)}:{int(minutes)}:{int(seconds)}'
+        tbl.get_celld()[(0, 0)].get_text().set_text(f'Progress: {100*self.iter_count/self.num_iterations}%')
+        tbl.get_celld()[(0, 1)].get_text().set_text(f'S/iter: {np.round(s_per_iter,2)}')
+        tbl.get_celld()[(0, 2)].get_text().set_text(f'Time Left: {rem_time}')
+
+
+
+    ###########################################################
+    # Construction ############################################
     def add_tracker(self, key, vals, max_iterations,
                     xlabel='', ylabel='', title='',
                     loc=None, ):
@@ -140,6 +214,9 @@ class RLLogger(object):
         self.axs[bname] = self.interface_fig.add_axes([])
         self.interfaces[bname] = Button(self.axs[bname], label)
         self.interfaces[bname].on_clicked(callback)
+
+    ###########################################################
+    # Render Utils ############################################
     def draw(self):
         for key, data in self.logs.items():
             x = data[:, 0]
@@ -157,6 +234,7 @@ class RLLogger(object):
             self.filtered_lines[key].set_data(x, y)
         self.plot_fig.canvas.draw()
         self.plot_fig.canvas.flush_events()
+        self.draw_status()
 
     def spin(self):
         self.plot_fig.canvas.flush_events()
@@ -173,16 +251,18 @@ def test_logger():
     def callback(event):
         print('clicked')
 
-
+    T = 1000
     data = []
-    logger = RLLogger(rows = 2,cols = 1)
+    logger = RLLogger(rows = 2,cols = 1,num_iterations=T)
     logger.add_lineplot('test_reward',xlabel='iter',ylabel='$R_{test}$',filter_window=10,display_raw=True,loc = (0,1))
     logger.add_lineplot('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=10, display_raw=True,loc=(1,1))
     logger.add_table('Params',config)
+    logger.add_status()
     # logger.add_button('Save',callback)
     # logger.add_button('Close', callback)
-    T = 5
+
     for i in range(T):
+        logger.start_iteration()
         d = np.random.randint(0,10)
         logger.log(test_reward=[i,d],train_reward=[i, d+2])
         logger.draw()
@@ -191,6 +271,8 @@ def test_logger():
         # fig.canvas.draw()
         # fig.canvas.flush_events()
         time.sleep(0.1)
+
+        logger.end_iteration()
         print(i)
     logger.wait_for_close(enable=True)
 

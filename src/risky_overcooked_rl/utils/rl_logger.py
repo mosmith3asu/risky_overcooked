@@ -316,6 +316,7 @@ class RLLogger(object):
             self.filtered_lines[key].set_data(x, y)
         self.plot_fig.canvas.draw()
         self.plot_fig.canvas.flush_events()
+
         self.draw_status()
 
     def spin(self):

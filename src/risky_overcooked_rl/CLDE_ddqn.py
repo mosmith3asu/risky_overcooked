@@ -2,7 +2,7 @@ import numpy as np
 from risky_overcooked_py.agents.agent import Agent, AgentPair,StayAgent, RandomAgent, GreedyHumanModel
 from risky_overcooked_rl.utils.custom_deep_agents import SoloDeepQAgent,SelfPlay_DeepAgentPair
 from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature,device,optimize_model,soft_update
-from risky_overcooked_rl.utils.rl_logger import RLLogger
+from risky_overcooked_rl.utils.rl_logger import RLLogger,TrajectoryVisualizer
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
 from risky_overcooked_py.mdp.actions import Action
@@ -17,18 +17,19 @@ config = {
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
 
         # Env Params ----------------
-        'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 10_000,
-        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 10_000,
+        # 'LAYOUT': "risky_coordination_ring", 'HORIZON': 200, 'ITERATIONS': 5_000,
+        # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
+        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
         "perc_random_start": 0.01,          # percentage of ITERATIONS with random start states
         # "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
-        "equalib_sol": "QRE5",               # equilibrium solution for testing
+        "equalib_sol": "QRE2",               # equilibrium solution for testing
         # "equalib_sol": "NASH",               # equilibrium solution for testing
 
         # Learning Params ----------------
         'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)
-        'gamma': 0.95,                      # discount factor
+        'gamma': 0.99,                      # discount factor
         'tau': 0.005,                       # soft update weight of target network
         "lr": 1e-4,                         # learning rate
         "num_hidden_layers": 3,             # MLP params
@@ -136,12 +137,13 @@ def main():
     agent_pair = SelfPlay_DeepAgentPair(q_agent1,q_agent2,equalib=equalib_sol)
 
     # Initiate Logger ----------------
-    logger = RLLogger(rows = 2,cols = 1,num_iterations=ITERATIONS)
-    logger.add_lineplot('test_reward',xlabel='iter',ylabel='$R_{test}$',filter_window=10,display_raw=True, loc = (0,1))
-    logger.add_lineplot('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=10, display_raw=True, loc=(1,1))
-    logger.add_table('Params',config)
+    traj_visualizer = TrajectoryVisualizer(env)
+    logger = RLLogger(rows=2, cols=1, num_iterations=ITERATIONS)
+    logger.add_lineplot('test_reward', xlabel='iter', ylabel='$R_{test}$', filter_window=10, display_raw=True,  loc=(0, 1))
+    logger.add_lineplot('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=10, display_raw=True,   loc=(1, 1))
+    logger.add_table('Params', config)
     logger.add_status()
-
+    logger.add_button('Preview Game', callback=traj_visualizer.preview_qued_trajectory)
 
     ##############################################
     # TRAIN LOOP #################################
@@ -208,8 +210,8 @@ def main():
               f"| reward shaping scale {round(r_shape_scale,3)} "
               f"| Explore Prob {exploration_proba} "
               )
-        logger.end_iteration()
 
+        logger.end_iteration()
         ##############################################
         # Test policy ################################
         ##############################################
@@ -217,22 +219,26 @@ def main():
             if debug: print('Test policy')
             test_reward = 0
             test_shaped_reward = 0
+
             for test in range(N_tests):
+                state_history = []
                 env.reset()
                 for t in count():
                     if debug: print(f'Test policy: test {test}, t {t}')
                     state = env.state
+                    state_history.append(state.deepcopy())
                     joint_action, action_info = agent_pair.action(state, exp_prob=exploration_proba)
                     next_state, reward, done, info = env.step(joint_action)
                     test_reward += reward
                     test_shaped_reward +=  info["shaped_r_by_agent"][0]
                     if done: break
+                traj_visualizer.que_trajectory(state_history)
 
-                    # env.state = next_state
             logger.log(test_reward=[iter, test_reward / N_tests], train_reward=[iter, np.mean(train_rewards)])
             logger.draw()
             print(f"\nTest: | nTests= {N_tests} | Ave Reward = {test_reward / N_tests} | Ave Shaped Reward = {test_shaped_reward / N_tests}\n")
             train_rewards = []
+
         # -------------------------------
 
     # Halt Program Until Close Plot ----------------

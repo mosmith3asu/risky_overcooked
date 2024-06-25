@@ -2,7 +2,7 @@ import numpy as np
 from risky_overcooked_py.agents.agent import Agent, AgentPair,StayAgent, RandomAgent, GreedyHumanModel
 from risky_overcooked_rl.utils.custom_deep_agents import SoloDeepQAgent,SelfPlay_DeepAgentPair
 from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature,device,optimize_model,soft_update
-from risky_overcooked_rl.utils.rl_logger import RLLogger
+from risky_overcooked_rl.utils.rl_logger import RLLogger, TrajectoryVisualizer
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
 from risky_overcooked_py.mdp.actions import Action
@@ -42,6 +42,59 @@ config = {
         'test_rationality': 'max',  # rationality for exploitation during testing
         'train_rationality': 'max', # rationality for exploitation during training
     }
+def preview_state_history(env,state_history):
+    from risky_overcooked_py.visualization.state_visualizer import StateVisualizer
+    import matplotlib.pyplot as plt
+    from matplotlib.widgets import Button, Slider
+    import pygame
+    import cv2
+    import copy
+
+    def update(val):
+        t = int(time_slider.val)
+        infos = ["", ""]
+        # onion_slips = trajs['ep_infos'][0][99]['episode']['ep_game_stats']['onion_slip']
+        # empty_slips = trajs['ep_infos'][0][99]['episode']['ep_game_stats']['empty_slip']
+        #
+        # for player_idx in range(2):
+        #     if t in onion_slips[player_idx]:
+        #         infos[player_idx] += "Onion Slip"
+        #     elif t in empty_slips[player_idx]:
+        #         infos[player_idx] += "Empty Slip"
+        ax.set_title(infos[0] + " | " + infos[1])
+        img.set_data(imgs[t])
+        # line.set_ydata(f(t, amp_slider.val, freq_slider.val))
+        fig.canvas.draw_idle()
+
+
+    visualizer = StateVisualizer()
+    imgs = []
+    for state in state_history:
+        image = visualizer.render_state(state = state, grid=env.mdp.terrain_mtx)
+        buffer = pygame.surfarray.array3d(image)
+        image = copy.deepcopy(buffer)
+        image = np.flip(np.rot90(image, 3), 1)
+        image = cv2.resize(image, (2 * 528, 2 * 464))
+        imgs.append(image)
+
+    fig, ax = plt.subplots()
+    plt.subplots_adjust(bottom=0.2)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    axfreq = fig.add_axes([0.125, 0.1, 0.9 - 0.125, 0.03])
+    time_slider = Slider(
+        ax=axfreq,
+        label='t',
+        valmin=0,
+        valmax=len(imgs) - 1,
+        valinit=0,
+    )
+    img = ax.imshow(imgs[0])
+    time_slider.on_changed(update)
+    # plt.ioff()
+    plt.show()
+    # plt.ion()
 
 def random_start_state(mdp,rnd_obj_prob_thresh=0.25):
     # Random position
@@ -131,16 +184,19 @@ def main():
     optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 
     # Generate agents ----------------
-    q_agent1 = SoloDeepQAgent(mdp,agent_index=0,policy_net=policy_net, config=config)
-    q_agent2 = SoloDeepQAgent(mdp,agent_index=1,policy_net=policy_net, config=config)
+    q_agent1 = SoloDeepQAgent(mdp,agent_index=0,policy_net=policy_net,target_net=target_net,optimizer=optimizer, config=config)
+    q_agent2 = SoloDeepQAgent(mdp,agent_index=1,policy_net=policy_net,target_net=target_net,optimizer=optimizer, config=config)
     agent_pair = SelfPlay_DeepAgentPair(q_agent1,q_agent2,equalib=equalib_sol)
 
     # Initiate Logger ----------------
+    traj_visualizer = TrajectoryVisualizer(env)
     logger = RLLogger(rows = 2,cols = 1,num_iterations=ITERATIONS)
     logger.add_lineplot('test_reward',xlabel='iter',ylabel='$R_{test}$',filter_window=10,display_raw=True, loc = (0,1))
     logger.add_lineplot('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=10, display_raw=True, loc=(1,1))
     logger.add_table('Params',config)
     logger.add_status()
+    logger.add_button('Preview Game',callback=traj_visualizer.preview_qued_trajectory)
+
 
 
     ##############################################
@@ -148,6 +204,7 @@ def main():
     ##############################################
     steps_done = 0
     train_rewards = []
+
     for iter in range(ITERATIONS):
         logger.start_iteration()
         # Step Decaying Params ----------------
@@ -162,6 +219,7 @@ def main():
         if iter/ITERATIONS < perc_random_start: env.state = random_start_state(mdp)
 
         # Simulate Episode ----------------
+        state_history = []
         cum_reward = 0
         shaped_reward = np.zeros(2)
         state = env.state
@@ -172,6 +230,7 @@ def main():
             # joint_action, action_info = agent_pair.action(state,exp_prob=exploration_proba)
             joint_action, action_info = agent_pair.action(obs,exp_prob=exploration_proba)
             joint_action_idx = action_info['action_index']
+            state_history.append(env.state.deepcopy())
 
             next_state, reward, done, info = env.step(joint_action)
             shaped_reward += r_shape_scale * np.array(info["shaped_r_by_agent"])
@@ -198,6 +257,7 @@ def main():
 
             if done:  break
             obs = next_obs
+        # preview_state_history(env, state_history)
 
 
         train_rewards.append(cum_reward+shaped_reward)
@@ -219,9 +279,11 @@ def main():
             test_shaped_reward = 0
             for test in range(N_tests):
                 env.reset()
+                state_history = []
                 for t in count():
                     if debug: print(f'Test policy: test {test}, t {t}')
                     state = env.state
+                    state_history.append(state.deepcopy())
                     joint_action, action_info = agent_pair.action(state, exp_prob=exploration_proba)
                     next_state, reward, done, info = env.step(joint_action)
                     test_reward += reward
@@ -229,6 +291,8 @@ def main():
                     if done: break
 
                     # env.state = next_state
+                # traj_visualizer.preview_trajectory(state_history)
+                traj_visualizer.que_trajectory(state_history)
             logger.log(test_reward=[iter, test_reward / N_tests], train_reward=[iter, np.mean(train_rewards)])
             logger.draw()
             print(f"\nTest: | nTests= {N_tests} | Ave Reward = {test_reward / N_tests} | Ave Shaped Reward = {test_shaped_reward / N_tests}\n")

@@ -3,6 +3,87 @@ import time
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 from collections import deque
+from risky_overcooked_py.visualization.state_visualizer import StateVisualizer
+import matplotlib.pyplot as plt
+from matplotlib.widgets import Button, Slider
+import pygame
+import cv2
+import copy
+
+class TrajectoryVisualizer(object):
+    def __init__(self,env,blocking=True):
+        self.env = env
+        self.blocking = blocking
+        self.slider_xpad = 0.2
+        self.qued_trajector = []
+
+        # self.spawn_figure()
+
+    def spawn_figure(self):
+        self.fig, self.ax = plt.subplots()
+        plt.subplots_adjust(bottom=0.2)
+        # self.fig.close()
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
+
+        self.imgs = []
+        self.visualizer = StateVisualizer()
+        self.env.reset()
+        tmp_image = self.render_image(self.env.state)
+        self.img = self.ax.imshow(tmp_image)
+        axfreq = self.fig.add_axes([self.slider_xpad, 0.1, 0.9 - self.slider_xpad, 0.03])
+        self.time_slider = Slider(
+            ax=axfreq,
+            label='t',
+            valmin=0,
+            valmax=self.env.horizon - 1,
+            valinit=0,
+        )
+        self.fig_number = self.fig.number
+    def render_image(self,state):
+        image = self.visualizer.render_state(state=state, grid=self.env.mdp.terrain_mtx)
+        buffer = pygame.surfarray.array3d(image)
+        image = copy.deepcopy(buffer)
+        image = np.flip(np.rot90(image, 3), 1)
+        image = cv2.resize(image, (2 * 528, 2 * 464))
+        return image
+
+    def update_slider(self,val):
+        t = int(self.time_slider.val)
+        infos = ["", ""]
+        # onion_slips = trajs['ep_infos'][0][99]['episode']['ep_game_stats']['onion_slip']
+        # empty_slips = trajs['ep_infos'][0][99]['episode']['ep_game_stats']['empty_slip']
+        #
+        # for player_idx in range(2):
+        #     if t in onion_slips[player_idx]:
+        #         infos[player_idx] += "Onion Slip"
+        #     elif t in empty_slips[player_idx]:
+        #         infos[player_idx] += "Empty Slip"
+        self.ax.set_title(infos[0] + " | " + infos[1])
+        self.img.set_data(self.imgs[t])
+        # line.set_ydata(f(t, amp_slider.val, freq_slider.val))
+        # self.fig.canvas.draw_idle()
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+
+    def que_trajectory(self,state_history):
+        self.qued_trajectory = state_history
+
+    def preview_qued_trajectory(self,*args):
+        self.preview_trajectory(self.qued_trajectory)
+
+    def preview_trajectory(self,state_history):
+        if self.blocking: self.spawn_figure()
+        self.imgs = []
+        for state in state_history:
+            self.imgs.append(self.render_image(state))
+        self.time_slider.on_changed(self.update_slider)
+
+        self.fig.show()
+        if self.blocking:
+            while plt.fignum_exists(self.fig_number):
+                self.fig.canvas.flush_events()
+                time.sleep(0.1)
 
 class RLLogger(object):
     def __init__(self, rows, cols,num_iterations=None, lw=0.5, figsize=(10, 5)):
@@ -40,7 +121,7 @@ class RLLogger(object):
         # self.interface_fig = self.subfigs[1, 1]
 
         self.subfigs = self.root_fig.subfigures(1, 2, wspace=0.00, width_ratios=[1.5, 1.])
-        self.plot_fig = self.subfigs[0]
+        self.plot_fig,self.interface_fig = self.subfigs[0].subfigures(2, 1, wspace=0.00, height_ratios=[10, 1])
         self.subfigs =  self.subfigs[1].subfigures(2, 1, wspace=0.00, height_ratios=[10, 1])
         self.settings_fig = self.subfigs[0]
         self.status_fig = self.subfigs[1]
@@ -130,7 +211,7 @@ class RLLogger(object):
         rem_time = rem_time % 60
         seconds = rem_time
         rem_time = f'{int(hours)}:{int(minutes)}:{int(seconds)}'
-        tbl.get_celld()[(0, 0)].get_text().set_text(f'Progress: {100*self.iter_count/self.num_iterations}%')
+        tbl.get_celld()[(0, 0)].get_text().set_text(f'Progress: {np.round(100*self.iter_count/self.num_iterations,2)}%')
         tbl.get_celld()[(0, 1)].get_text().set_text(f'S/iter: {np.round(s_per_iter,2)}')
         tbl.get_celld()[(0, 2)].get_text().set_text(f'Time Left: {rem_time}')
 
@@ -211,7 +292,8 @@ class RLLogger(object):
         # axprev = self.interface_fig.add_axes([0.7, 0.05, 0.1, 0.075])
         n_buttons = len(self.interfaces)
         # self.axs[bname] = self.interface_fig.add_subplot(1, n_buttons+1, n_buttons+1)
-        self.axs[bname] = self.interface_fig.add_axes([])
+        # self.axs[bname] = self.interface_fig.add_axes([])
+        self.axs[bname] = self.interface_fig.add_axes([0.1, 0.1, 0.25, 0.9])
         self.interfaces[bname] = Button(self.axs[bname], label)
         self.interfaces[bname].on_clicked(callback)
 

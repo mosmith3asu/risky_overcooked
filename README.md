@@ -135,14 +135,12 @@ However, the lossless mask encoding they used may be feasible but has been shown
 ### Other modifications to the MDP
 - The ```OvercookedGridworld.old_dynamics=True``` method was enabled
 - Added ```state_manager``` to handle randomized start states external to MDP
-
+  - Added `OvercookedGridworld.one_step_lookahead()` to return the next states given each joint action and their probabilities
 ### Agents
 - Agents now use a losslsess vector encoding of the state space
   - base repository either uses a vector encoding (with losses) or a lossless mask encoding
 
 ---
 ## To Do
-- Super inneficiently calling lossless encoding multiple times
-  - SOL: calc once at end of each mdp.transition and store as self.lossless_state to retreive precalculated vector whenever called
 - When slipping in puddle, agent will lose `slipped_moves_lossed=2` moves (i.e. not be able to move for 2 tics) to incur risk when not holding object
 - Improve state encoding to include pot cooking tic

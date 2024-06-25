@@ -53,6 +53,9 @@ class Action(object):
     INDEX_TO_ACTION_INDEX_PAIRS = [
         v for v in itertools.product(range(len(INDEX_TO_ACTION)), repeat=2)
     ]
+    ALL_JOINT_ACTIONS = [
+        v for v in itertools.product(ALL_ACTIONS, repeat=2)
+    ]
 
     # Reverse the index of joint actions i(ego,partner) -> i(partner,ego)
     # REVERSE_INDEX_ACTION_PAIRS = [

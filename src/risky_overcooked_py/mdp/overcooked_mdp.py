@@ -1156,6 +1156,7 @@ class OvercookedGridworld(object):
 
         # ADDED
         self.reachable_counters = self.get_reachable_counters()
+        self.p_slip = 0.5
 
     @staticmethod
     def from_layout_name(layout_name, **params_to_overwrite):
@@ -1591,11 +1592,12 @@ class OvercookedGridworld(object):
 
         return sparse_reward, shaped_reward
 
-    def resolve_enter_water(self, state, new_state,events_infos, p_slip = 0.5):
+    def resolve_enter_water(self, state, new_state,events_infos):
         """
         If a player enters a puddle, they have a p_slip chance to drop their held item
         and experince slight delay in action.
         """
+        p_slip = self.p_slip
 
 
         # all_objects = list(new_state.objects.values())
@@ -2433,6 +2435,118 @@ class OvercookedGridworld(object):
             grid_string += "Bonus orders: {}\n".format(state.bonus_orders)
         # grid_string += "State potential value: {}\n".format(self.potential_function(state))
         return grid_string
+
+    ###################
+    # one-step ahead #
+    ###################
+    def one_step_lookahead(self,state,joint_action = None,encoded=True):
+        """
+
+        :param state:
+        :param joint_action: if None, return all possible outcomes from all joint actions
+        :return: {joint_action, next_state, p_next_state}
+        """
+        old_state = state.deepcopy()
+        outcomes = []
+        joint_actions = Action.ALL_JOINT_ACTIONS if joint_action is None else [joint_action]
+        for joint_action in joint_actions:
+            next_state,mdp_infos = self.get_state_transition(old_state, joint_action,False)
+
+            # check if player moved into puddle ----------------
+            player_in_water = []
+            Wlocs = self.get_water_locations()
+            for player in next_state.players:
+                player_in_water.append(player.position in Wlocs)
+
+            # Check if player was holding object ----------------
+            # stepping in water without object is equivalent to not stepping in water
+            for ip, player in enumerate(state.players):
+                if player_in_water[ip] and not player.has_object():
+                    player_in_water[ip] = False
+
+
+            # ENUMERATE ALL POSSIBLE OUTCOMES ----------------
+            if np.all(player_in_water == [False, False]):
+                p_next_state = 1
+                next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                outcomes.append([joint_action, next_obs, p_next_state])
+
+            # if p1 slipped but not p2
+            elif np.all(player_in_water == [True, False]):
+                # TODO: check if mutable object is causing problems
+                ip = 0; p_next_state = self.p_slip
+                # Lost object
+                if next_state.players[ip].has_object(): next_state.players[ip].remove_object()
+                next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                outcomes.append([joint_action, next_obs, p_next_state])
+                # Held object object
+                if not next_state.players[ip].has_object():
+                    old_obj = state.players[ip].get_object(); next_state.players[ip].set_object(old_obj)
+                next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                outcomes.append([joint_action, next_obs, p_next_state])
+
+            # if p2 slipped but not p1
+            elif np.all(player_in_water == [True, False]):
+                # TODO: check if mutable object is causing problems
+                ip = 1;  p_next_state = self.p_slip
+                if next_state.players[ip].has_object(): next_state.players[ip].remove_object()
+                next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                outcomes.append([joint_action, next_obs, p_next_state])
+                # Held object object
+                if not next_state.players[ip].has_object():
+                    old_obj = state.players[ip].get_object(); next_state.players[ip].set_object(old_obj)
+                next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                outcomes.append([joint_action, next_obs, p_next_state])
+
+
+            # both players slipped
+            elif np.all(player_in_water==[True, True]):
+                p_next_state = self.p_slip * self.p_slip
+
+                # Both lost object
+                for ip in range(2):
+                    if next_state.players[ip].has_object(): next_state.players[ip].remove_object()
+                next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                outcomes.append([joint_action, next_obs, p_next_state])
+
+                # P1 lost object, P2 held object
+                if next_state.players[0].has_object():
+                    next_state.players[0].remove_object()
+                if not next_state.players[1].has_object():
+                    old_obj = state.players[1].get_object()
+                    next_state.players[1].set_object(old_obj)
+                next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                outcomes.append([joint_action, next_obs, p_next_state])
+
+                # P1 held object, P2 lost object
+                if not next_state.players[0].has_object():
+                    old_obj = state.players[0].get_object()
+                    next_state.players[0].set_object(old_obj)
+                if next_state.players[1].has_object():
+                    next_state.players[1].remove_object()
+                next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                outcomes.append([joint_action, next_obs, p_next_state])
+
+                # Both held object
+                if not next_state.players[0].has_object():
+                    old_obj = state.players[0].get_object()
+                    next_state.players[0].set_object(old_obj)
+                if not next_state.players[1].has_object():
+                    old_obj = state.players[1].get_object()
+                    next_state.players[1].set_object(old_obj)
+                next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                outcomes.append([joint_action, next_obs, p_next_state])
+
+        return outcomes
+
+
+
+
+
+
+
+
+
 
     ###################
     # STATE ENCODINGS #

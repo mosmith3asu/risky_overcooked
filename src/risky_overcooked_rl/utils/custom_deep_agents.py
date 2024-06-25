@@ -5,9 +5,13 @@ import numpy as np
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedState
 from risky_overcooked_py.mdp.actions import Action, Direction
 from risky_overcooked_py.agents.agent import Agent, AgentPair,StayAgent, RandomAgent, GreedyHumanModel
+import torch.nn as nn
 import pickle
-from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature
-import nashpy as nash
+from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature,Transition,TD_Target_Transition
+try:
+    import nashpy as nash
+except:
+    warnings.warn('nashpy not imported')
 import os
 
 from collections import Counter, defaultdict
@@ -19,7 +23,8 @@ class SoloDeepQAgent(Agent):
     """An agent randomly picks motion actions.
     Note: Does not perform interat actions, unless specified"""
 
-    def __init__(self, mdp, agent_index, policy_net, # model,
+    def __init__(self, mdp, agent_index,
+                 policy_net, target_net,optimizer,# model,
                  save_agent_file=False, load_learned_agent=False,
                  config=None,verbose_load_config=True):
         super(SoloDeepQAgent, self).__init__()
@@ -41,6 +46,9 @@ class SoloDeepQAgent(Agent):
         else: warnings.warn("No config provided, using default values. Please ensure defaults are correct")
 
         self.policy_net = policy_net
+        self.target_net = target_net
+        self.optimizer = optimizer
+        self.gamma = config['gamma']
         self.device = config['device']
 
         # self.model = model(**config)  # DQN model used for learning
@@ -106,10 +114,133 @@ class SoloDeepQAgent(Agent):
         e_x = np.exp(x- np.max(x))
         return e_x / e_x.sum()
 
-    def update(self, transitions,GAMMA):
+    ########################################################
+    # OMPTIMATION ##########################################
+    def transition_optimization(self, transitions):
+        GAMMA = self.gamma
+        optimizer = self.optimizer
+        policy_net = self.policy_net
+        target_net = self.target_net
+        N_PLAYER_FEAT = 9  # number of features for each player
+        player = self.my_index
+        batch = Transition(*zip(*transitions))
+        BATCH_SIZE = len(transitions)
+
+        # Compute a mask of non-final states and concatenate the batch elements
+        # (a final state would've been the one after which simulation ended)
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_state)), device=self.device,
+                                      dtype=torch.bool)
+        non_final_next_states = torch.cat([s for s in batch.next_state if s is not None])
+        state_batch = torch.cat(batch.state)
+        action_batch = torch.cat(batch.action)
+
+        if player == 1:  # invert the player features
+            # switch the first and next 9 player features in state_batch
+            state_batch = torch.cat([state_batch[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+                                     state_batch[:, :N_PLAYER_FEAT],
+                                     state_batch[:, 2 * N_PLAYER_FEAT:]], dim=1)
+
+            # switch the joint_action index to (partner, ego)
+            action_batch = torch.tensor(
+                [Action.reverse_joint_action_index(action_batch[i]) for i in range(BATCH_SIZE)]).unsqueeze(1)
+
+            # switch the first and next 9 player features in non_final_next_states
+            non_final_next_states = torch.cat([non_final_next_states[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+                                               non_final_next_states[:, :N_PLAYER_FEAT],
+                                               non_final_next_states[:, 2 * N_PLAYER_FEAT:]], dim=1)
+
+        reward_batch = torch.cat(batch.reward)
+        if len(reward_batch.shape) != 1:  # not centralized/solo agent (multi-agent)
+            reward_batch = reward_batch[:, player]
+
+        # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
+        # columns of actions taken. These are the actions which would've been taken
+        # for each batch state according to policy_net
+        state_action_values = policy_net(state_batch).gather(1, action_batch)  # .unsqueeze(0)
+
+        # Compute V(s_{t+1}) for all next states.
+        # Expected values of actions for non_final_next_states are computed based
+        # on the "older" target_net; selecting their best reward with max(1).values
+        # This is merged based on the mask, such that we'll have either the expected
+        # state value or 0 in case the state was final.
+        next_state_values = torch.zeros(BATCH_SIZE, device=self.device)
+        with torch.no_grad():
+            next_state_values[non_final_mask] = target_net(non_final_next_states).max(1).values
+        # Compute the expected Q values
+        expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+
+        # Compute Huber loss
+        criterion = nn.SmoothL1Loss()
+        loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+
+        # Optimize the model
+        optimizer.zero_grad()
+        loss.backward()
+        # In-place gradient clipping
+        torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
+        optimizer.step()
+
+    def td_targets_optimization(self,transitions):
+        optimizer = self.optimizer
+        policy_net = self.policy_net
+        player = self.my_index
+        N_PLAYER_FEAT = 9  # number of features for each player
+
+        batch = TD_Target_Transition(*zip(*transitions))
+        BATCH_SIZE = len(transitions)
+
+        # Compute a mask of non-final states and concatenate the batch elements
+        # (a final state would've been the one after which simulation ended)
+        # non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_state)), device=device, dtype=torch.bool)
+        # non_final_next_states = torch.cat([s for s in batch.next_state  if s is not None])
+        state_batch = torch.cat(batch.state)
+        action_batch = torch.cat(batch.action)
+
+        if player == 1:  # invert the player features
+            # switch the first and next 9 player features in state_batch
+            state_batch = torch.cat([state_batch[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+                                     state_batch[:, :N_PLAYER_FEAT],
+                                     state_batch[:, 2 * N_PLAYER_FEAT:]], dim=1)
+
+            # switch the joint_action index to (partner, ego)
+            action_batch = torch.tensor(
+                [Action.reverse_joint_action_index(action_batch[i]) for i in range(BATCH_SIZE)]).unsqueeze(1)
+
+        TD_Target_batch = torch.cat(batch.TD_Target)
+        if len(TD_Target_batch.shape) != 1:  # not centralized/solo agent (multi-agent)
+            TD_Target_batch = TD_Target_batch[:, player]
+
+        # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
+        # columns of actions taken. These are the actions which would've been taken
+        # for each batch state according to policy_net
+        state_action_values = policy_net(state_batch).gather(1, action_batch)  # .unsqueeze(0)
+
+        # # Compute V(s_{t+1}) for all next states.
+        # # Expected values of actions for non_final_next_states are computed based
+        # # on the "older" target_net; selecting their best reward with max(1).values
+        # # This is merged based on the mask, such that we'll have either the expected
+        # # state value or 0 in case the state was final.
+        # next_state_values = torch.zeros(BATCH_SIZE, device=device)
+        # with torch.no_grad():
+        #     next_state_values[non_final_mask] = target_net(non_final_next_states).max(1).values
+        # # Compute the expected Q values
+        # expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+
+        # Compute Huber loss
+        criterion = nn.SmoothL1Loss()
+        loss = criterion(state_action_values, TD_Target_batch.unsqueeze(1))
+
+        # Optimize the model
+        optimizer.zero_grad()
+        loss.backward()
+        # In-place gradient clipping
+        torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
+        optimizer.step()
+    def update(self, transitions):
         """ Provides batch update to the DQN model """
         # optimize_model(self.policy_net, self.target_net, self.optimizer, transitions, GAMMA)
-        raise NotImplementedError
+        self.transition_optimization(transitions)
+        # raise NotImplementedError
 
     def valuation_fun(self, td_target):
         """ Applies CPT (if specified) to the target Q values"""
@@ -189,6 +320,7 @@ class SelfPlay_DeepAgentPair(object):
         self.device = agent1.device                 # same for both agents
         self.N_PLAYER_FEAT = agent1.N_PLAYER_FEAT   # same for both agents
         self.my_index = -1 # used for interfacing with Agent class utils
+        self.gamma = agent1.gamma
 
 
         self.action_space = list(itertools.product(Action.ALL_ACTIONS, repeat=2))
@@ -200,19 +332,22 @@ class SelfPlay_DeepAgentPair(object):
 
 
     # Joint action ########################################
-    def action(self, state, exp_prob=0, rationality='max', debug=False):
+    def action(self, state, exp_prob=0, rationality='max', debug=False,use_target_network=False):
         """
+        Need to return action probabilities under joint policy for CPT-expectation
         :param state: OvercookedState object
         :return: joint action for each agent
         """
         # global steps_done
         sample = random.random()
 
+
         # EXPLORE ----------------
         if sample < exp_prob:
-            action_probs = np.ones(len(self.action_space)) / len(self.action_space)
-            joint_action_idx = np.random.choice(np.arange(len(self.action_space)), p=action_probs)
+            joint_action_prob = np.ones(len(self.action_space)) / len(self.action_space)
+            joint_action_idx = np.random.choice(np.arange(len(self.action_space)), p=joint_action_prob)
             action = self.action_space[joint_action_idx]
+            joint_action_Q= None
 
         # EXPLOIT ----------------
         else:
@@ -224,38 +359,44 @@ class SelfPlay_DeepAgentPair(object):
                 if ip == 1: obs = self.reverse_state_obs(obs) # make into ego observation
                 # obs = agent.featurize(state) # TODO: super inefficient to recalc this instead of inverting
                 with torch.no_grad():
-                    qAA = agent.policy_net(obs).numpy().flatten() #quality of joint actions
+                    if use_target_network: qAA = agent.target_net(obs).numpy().flatten() #quality of joint actions
+                    else:  qAA = agent.policy_net(obs).numpy().flatten() #quality of joint actions
                     flattened_game[ip,:] = qAA
             NF_game = flattened_game.reshape([2, 6,6]) # normal form bi-matrix game
-
+            joint_action_Q = flattened_game
             # Apply equlibrium solution
-            if self.equalib.lower() == 'nash':      action_idxs = self.nash(NF_game)
-            elif self.equalib.lower() == 'pareto':  action_idxs = self.pareto(NF_game)
-            elif 'qre' in self.equalib.lower() :    action_idxs = self.quantal_response(NF_game)
+            if self.equalib.lower() == 'nash':      action_idxs, action_probs = self.nash(NF_game)
+            elif self.equalib.lower() == 'pareto':  action_idxs, action_probs = self.pareto(NF_game)
+            elif 'qre' in self.equalib.lower() :    action_idxs, action_probs = self.quantal_response(NF_game)
             else: raise ValueError(f'Unknown equalibrium: {self.equalib}')
             action = [Action.INDEX_TO_ACTION[ai] for ai in action_idxs]
             joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
-            action_probs = None
+            joint_action_prob = [np.product(pp) for pp in itertools.product(*action_probs)]
+
+
 
         # RETURN ----------------
-        action_info = {"action_index": joint_action_idx, "action_probs": action_probs}
+        action_info = {"action_index": joint_action_idx, "action_probs": joint_action_prob,
+                       'joint_action_Q':joint_action_Q}
         return action, action_info
+
+
 
     ########################################################
     # Equilibrium ########################################
     ########################################################
-    def quantal_response(self,game,soph=2):
+    def quantal_response(self,game,soph=2,rationality=2):
         """quantal response equalibrium with k-order ToM (sophistication)"""
         def invert_game(g):
             "inverts perspective of the game"
             return np.array([g[1, :].T, g[0, :].T])
         def QRE(game, k):
             """recursive function resolving k-order ToM"""
-            if k == 0: partner_dist = (np.arange(np.shape(game)[1])).reshape(1, np.shape(game)[1])
+            if k == 0: partner_dist = np.ones(np.shape(game)[1]) / np.shape(game)[1]
             else: partner_dist = QRE(invert_game(game), k - 1)
             weighted_game = game[0] * partner_dist
             Exp_qAi = np.sum(weighted_game, axis=1)
-            return softmax(Exp_qAi)
+            return softmax(rationality*Exp_qAi)
         # check if last character in self.equalib is an integer
         if self.equalib[-1].isnumeric():  # if sophistication is specified
             soph = int(self.equalib[-1])
@@ -265,7 +406,8 @@ class SelfPlay_DeepAgentPair(object):
         a1 = np.random.choice(np.arange(na),p=pdA1)
         a2 = np.random.choice(np.arange(na),p=pdA2)
         action_idxs = (a1,a2)
-        return action_idxs
+        action_probs = [pdA1,pdA2]
+        return action_idxs, action_probs
 
 
     def nash(self,game):
@@ -285,7 +427,8 @@ class SelfPlay_DeepAgentPair(object):
         a1 = np.random.choice(np.arange(na), p=mixed_eq[0])
         a2 = np.random.choice(np.arange(na), p=mixed_eq[1])
         action_idxs = (a1,a2)
-        return action_idxs
+        action_probs = mixed_eq
+        return action_idxs, action_probs
 
     def pareto(self,game):
         """
@@ -294,17 +437,36 @@ class SelfPlay_DeepAgentPair(object):
         """
         cum_payoff_matrix = np.sum(game,axis=0)
         action_idxs = np.unravel_index(cum_payoff_matrix.argmax(), cum_payoff_matrix.shape)
-        return action_idxs
+        action_probs = [np.eye(np.shape(game)[1])[action_idxs[0]],np.eye(np.shape(game)[1])[action_idxs[1]]]
+        return action_idxs, action_probs
 
+    ########################################################
+    # OPTIMIZATIONS #######################################
+    ########################################################
+    def one_step_ahead_td_target(self,state,reward,joint_action_idx):
+        expQ = np.zeros(2)
+        prospects = self.mdp.one_step_lookahead(state.deepcopy(),
+                                           joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx])
 
-    # def update(self,policy_net, target_net, optimizer, transitions, GAMMA):
-    #     """Could grab policy and target net from the agents"""
-    #
-    #
-    #     optimize_model(policy_net, target_net, optimizer, transitions, GAMMA)
-    #
+        for p in prospects:
+            P_st_prime = p[2]
+            st_prime = p[1]
+            _, next_action_info = self.action(st_prime, exp_prob=0, use_target_network=True)
+            joint_action_prob = next_action_info['action_probs']
+            joint_action_Q = next_action_info['joint_action_Q']
+            vals_st_prime = np.sum(joint_action_prob * joint_action_Q, axis=1)
+            expQ += P_st_prime * vals_st_prime
+        TD_Targets = reward + self.gamma * expQ
+        for ip, agent in enumerate(self.agents):
+            TD_Targets[ip] = agent.valuation_fun(TD_Targets[ip])
 
+        return TD_Targets
 
+    def update(self,transitions,use_TD_targets=True):
+        for agent in self.agents:
+            if use_TD_targets: agent.td_targets_optimization(transitions)
+            else: raise NotImplementedError()
+            # agent.update(transitions)
 
 
 def softmax(x):

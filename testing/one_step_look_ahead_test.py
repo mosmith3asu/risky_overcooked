@@ -1,8 +1,8 @@
 import numpy as np
 from risky_overcooked_py.agents.agent import Agent, AgentPair,StayAgent, RandomAgent, GreedyHumanModel
 from risky_overcooked_rl.utils.custom_deep_agents import SoloDeepQAgent,SelfPlay_DeepAgentPair
-from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature,device,optimize_model,soft_update
-from risky_overcooked_rl.utils.rl_logger import RLLogger
+from risky_overcooked_rl.utils.deep_models import ReplayMemory_CPT,DQN_vector_feature,device,optimize_model_td_targets,soft_update
+from risky_overcooked_rl.utils.rl_logger import RLLogger,TrajectoryVisualizer
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
 from risky_overcooked_py.mdp.actions import Action
@@ -17,13 +17,14 @@ config = {
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
 
         # Env Params ----------------
-        'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 10_000,
-        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 10_000,
+        # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
+        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 3_000,
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
         "perc_random_start": 0.01,          # percentage of ITERATIONS with random start states
         # "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
-        "equalib_sol": "QRE5",               # equilibrium solution for testing
+        "equalib_sol": "pareto",               # equilibrium solution for testing
+        # "equalib_sol": "QRE5",               # equilibrium solution for testing
         # "equalib_sol": "NASH",               # equilibrium solution for testing
 
         # Learning Params ----------------
@@ -36,7 +37,7 @@ config = {
         "device": device,
         "n_mini_batch": 1,              # number of mini-batches per iteration
         "minibatch_size": 256,          # size of mini-batches
-        "replay_memory_size": 15_000,   # size of replay memory
+        "replay_memory_size": 10_000,   # size of replay memory
 
         # Evaluation Param ----------------
         'test_rationality': 'max',  # rationality for exploitation during testing
@@ -121,7 +122,7 @@ def main():
     # Generate MDP and environment----------------
     mdp = OvercookedGridworld.from_layout_name(LAYOUT)
     env = OvercookedEnv.from_mdp(mdp, horizon=HORIZON)
-    replay_memory = ReplayMemory(replay_memory_size)
+    replay_memory = ReplayMemory_CPT(replay_memory_size)
 
     # Initialize policy and target networks ----------------
     obs_shape = mdp.get_lossless_encoding_vector_shape(); config['obs_shape'] = obs_shape
@@ -131,16 +132,18 @@ def main():
     optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 
     # Generate agents ----------------
-    q_agent1 = SoloDeepQAgent(mdp,agent_index=0,policy_net=policy_net, config=config)
-    q_agent2 = SoloDeepQAgent(mdp,agent_index=1,policy_net=policy_net, config=config)
+    q_agent1 = SoloDeepQAgent(mdp,agent_index=0,policy_net=policy_net,target_net=target_net,optimizer=optimizer, config=config)
+    q_agent2 = SoloDeepQAgent(mdp,agent_index=1,policy_net=policy_net,target_net=target_net,optimizer=optimizer, config=config)
     agent_pair = SelfPlay_DeepAgentPair(q_agent1,q_agent2,equalib=equalib_sol)
 
     # Initiate Logger ----------------
-    logger = RLLogger(rows = 2,cols = 1,num_iterations=ITERATIONS)
-    logger.add_lineplot('test_reward',xlabel='iter',ylabel='$R_{test}$',filter_window=10,display_raw=True, loc = (0,1))
-    logger.add_lineplot('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=10, display_raw=True, loc=(1,1))
-    logger.add_table('Params',config)
+    traj_visualizer = TrajectoryVisualizer(env)
+    logger = RLLogger(rows=2, cols=1, num_iterations=ITERATIONS)
+    logger.add_lineplot('test_reward', xlabel='iter', ylabel='$R_{test}$', filter_window=10, display_raw=True, loc=(0, 1))
+    logger.add_lineplot('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=10, display_raw=True, loc=(1, 1))
+    logger.add_table('Params', config)
     logger.add_status()
+    logger.add_button('Preview Game', callback=traj_visualizer.preview_qued_trajectory)
 
 
     ##############################################
@@ -164,12 +167,10 @@ def main():
         # Simulate Episode ----------------
         cum_reward = 0
         shaped_reward = np.zeros(2)
-        state = env.state
-        obs = agent_pair.featurize(state)
+
+        obs = agent_pair.featurize(env.state)
         for t in count():
-            # state = env.state
-            # obs = agent_pair.featurize(state)
-            # joint_action, action_info = agent_pair.action(state,exp_prob=exploration_proba)
+
             joint_action, action_info = agent_pair.action(obs,exp_prob=exploration_proba)
             joint_action_idx = action_info['action_index']
 
@@ -179,18 +180,35 @@ def main():
             if done: next_obs = None
             else: next_obs = agent_pair.featurize(next_state)
 
+            # Calc TD-Target -----------------------------
+            TD_Targets = agent_pair.one_step_ahead_td_target(env.state,reward,joint_action_idx)
+            # expQ = np.zeros(2)
+            # prospects = mdp.one_step_lookahead(env.state.deepcopy(),
+            #                                    joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx])
+            #
+            # for p in prospects:
+            #     P_st_prime = p[2]
+            #     st_prime = p[1]
+            #     _, next_action_info = agent_pair.action(st_prime, exp_prob=0,use_target_network=True)
+            #     joint_action_prob = next_action_info['action_probs']
+            #     joint_action_Q = next_action_info['joint_action_Q']
+            #     vals_st_prime = np.sum(joint_action_prob * joint_action_Q, axis=1)
+            #     expQ += P_st_prime * vals_st_prime
+            # TD_Targets = agent_pair.cpt_valuation(reward + GAMMA * expQ)
+
+
             # Store the transition in memory (featurized tensors) ----------------
             replay_memory.push(obs,#q_agent1.featurize(state),
                                torch.tensor([joint_action_idx], dtype=torch.int64, device=device).unsqueeze(0),
-                               next_obs,
-                               torch.tensor(np.array([reward + shaped_reward]), device=device))
+                               torch.tensor(np.array([TD_Targets]), device=device))
 
             # Optimize Model ----------------
             if len(replay_memory) > minibatch_size:
                 for _ in range(n_mini_batch):
                     transitions = replay_memory.sample(minibatch_size)
-                    for ip in range(2): # optimize for each player
-                        optimize_model(policy_net, target_net, optimizer, transitions, GAMMA,player=ip)
+                    # for ip in range(2): # optimize for each player
+                        # optimize_model_td_targets(policy_net, target_net, optimizer, transitions, GAMMA,player=ip)
+                    agent_pair.update(transitions)
                     # optimize_model(policy_net,target_net,optimizer,replay_memory,minibatch_size,GAMMA)
 
             # Soft update of the target network  ----------------
@@ -217,11 +235,14 @@ def main():
             if debug: print('Test policy')
             test_reward = 0
             test_shaped_reward = 0
+
             for test in range(N_tests):
+                state_history = []
                 env.reset()
                 for t in count():
                     if debug: print(f'Test policy: test {test}, t {t}')
                     state = env.state
+                    state_history.append(state.deepcopy())
                     joint_action, action_info = agent_pair.action(state, exp_prob=exploration_proba)
                     next_state, reward, done, info = env.step(joint_action)
                     test_reward += reward
@@ -229,6 +250,7 @@ def main():
                     if done: break
 
                     # env.state = next_state
+                traj_visualizer.que_trajectory(state_history)
             logger.log(test_reward=[iter, test_reward / N_tests], train_reward=[iter, np.mean(train_rewards)])
             logger.draw()
             print(f"\nTest: | nTests= {N_tests} | Ave Reward = {test_reward / N_tests} | Ave Shaped Reward = {test_shaped_reward / N_tests}\n")

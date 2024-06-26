@@ -38,8 +38,7 @@ class ReplayMemory(object):
     def __len__(self):
         return len(self.memory)
 
-TD_Target_Transition = namedtuple('Transition',
-                        ('state', 'action', 'TD_Target'))
+TD_Target_Transition = namedtuple('Transition', ('state', 'action', 'TD_Target'))
 class ReplayMemory_CPT(object):
 
     def __init__(self, capacity):

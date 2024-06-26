@@ -132,10 +132,10 @@ def main():
     optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 
     # Generate agents ----------------
-    # q_agent1 = SoloDeepQAgent(mdp,agent_index=0,policy_net=policy_net,target_net=target_net,optimizer=optimizer, config=config)
-    # q_agent2 = SoloDeepQAgent(mdp,agent_index=1,policy_net=policy_net,target_net=target_net,optimizer=optimizer, config=config)
-    q_agent1 = SoloDeepQAgent(mdp, agent_index=0, policy_net=policy_net, config=config)
-    q_agent2 = SoloDeepQAgent(mdp, agent_index=1, policy_net=policy_net, config=config)
+    q_agent1 = SoloDeepQAgent(mdp,agent_index=0,policy_net=policy_net,target_net=target_net,optimizer=optimizer, config=config)
+    q_agent2 = SoloDeepQAgent(mdp,agent_index=1,policy_net=policy_net,target_net=target_net,optimizer=optimizer, config=config)
+    # q_agent1 = SoloDeepQAgent(mdp, agent_index=0, policy_net=policy_net, config=config)
+    # q_agent2 = SoloDeepQAgent(mdp, agent_index=1, policy_net=policy_net, config=config)
     agent_pair = SelfPlay_DeepAgentPair(q_agent1,q_agent2,equalib=equalib_sol)
 
     # Initiate Logger ----------------
@@ -183,19 +183,19 @@ def main():
             else: next_obs = agent_pair.featurize(next_state)
 
             # Calc TD-Target -----------------------------
-            # TD_Targets = agent_pair.one_step_ahead_td_target(env.state,reward,joint_action_idx)
-            expQ = np.zeros(2)
-            prospects = mdp.one_step_lookahead(env.state.deepcopy(),
-                                               joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx])
-            for p in prospects:
-                P_st_prime = p[2]
-                st_prime = p[1]
-                _, next_action_info = agent_pair.action(st_prime, exp_prob=0)
-                joint_action_prob = next_action_info['action_probs']
-                joint_action_Q = next_action_info['joint_action_Q']
-                vals_st_prime = np.sum(joint_action_prob * joint_action_Q, axis=1)
-                expQ += P_st_prime * vals_st_prime
-            TD_Targets = agent_pair.cpt_valuation(reward + GAMMA * expQ)
+            TD_Targets = agent_pair.one_step_ahead_td_target(env.state,reward,joint_action_idx)
+            # expQ = np.zeros(2)
+            # prospects = mdp.one_step_lookahead(env.state.deepcopy(),
+            #                                    joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx])
+            # for p in prospects:
+            #     P_st_prime = p[2]
+            #     st_prime = p[1]
+            #     _, next_action_info = agent_pair.action(st_prime, exp_prob=0)
+            #     joint_action_prob = next_action_info['action_probs']
+            #     joint_action_Q = next_action_info['joint_action_Q']
+            #     vals_st_prime = np.sum(joint_action_prob * joint_action_Q, axis=1)
+            #     expQ += P_st_prime * vals_st_prime
+            # TD_Targets = agent_pair.cpt_valuation(reward + GAMMA * expQ)
 
 
             # Store the transition in memory (featurized tensors) ----------------

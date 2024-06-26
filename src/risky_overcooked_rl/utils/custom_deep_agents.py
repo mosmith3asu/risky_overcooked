@@ -19,7 +19,8 @@ class SoloDeepQAgent(Agent):
     """An agent randomly picks motion actions.
     Note: Does not perform interat actions, unless specified"""
 
-    def __init__(self, mdp, agent_index, policy_net, # model,
+    def __init__(self, mdp, agent_index,
+                 policy_net, target_net,optimizer,
                  save_agent_file=False, load_learned_agent=False,
                  config=None,verbose_load_config=True):
         super(SoloDeepQAgent, self).__init__()
@@ -41,6 +42,9 @@ class SoloDeepQAgent(Agent):
         else: warnings.warn("No config provided, using default values. Please ensure defaults are correct")
 
         self.policy_net = policy_net
+        self.target_net = target_net
+        self.optimizer = optimizer
+        self.gamma = config['gamma']
         self.device = config['device']
 
         # self.model = model(**config)  # DQN model used for learning
@@ -114,7 +118,13 @@ class SoloDeepQAgent(Agent):
     def valuation_fun(self, td_target):
         """ Applies CPT (if specified) to the target Q values"""
         return td_target
-
+    ########################################################
+    # Optimization methods #################################
+    ########################################################
+    def update(self, transitions):
+        """ Provides batch update to the DQN model """
+        # optimize_model(self.policy_net, self.target_net, self.optimizer, transitions, GAMMA)
+        raise NotImplementedError
     ########################################################
     # Featurization methods ################################
     ########################################################
@@ -189,7 +199,7 @@ class SelfPlay_DeepAgentPair(object):
         self.device = agent1.device                 # same for both agents
         self.N_PLAYER_FEAT = agent1.N_PLAYER_FEAT   # same for both agents
         self.my_index = -1 # used for interfacing with Agent class utils
-
+        self.gamma = agent1.gamma
 
         self.action_space = list(itertools.product(Action.ALL_ACTIONS, repeat=2))
 
@@ -200,7 +210,7 @@ class SelfPlay_DeepAgentPair(object):
 
 
     # Joint action ########################################
-    def action(self, state, exp_prob=0, rationality='max', debug=False):
+    def action(self, state, exp_prob=0, rationality='max', debug=False,use_target_net=False):
         """
         :param state: OvercookedState object
         :return: joint action for each agent
@@ -225,7 +235,8 @@ class SelfPlay_DeepAgentPair(object):
                 if ip == 1: obs = self.reverse_state_obs(obs) # make into ego observation
                 # obs = agent.featurize(state) # TODO: super inefficient to recalc this instead of inverting
                 with torch.no_grad():
-                    qAA = agent.policy_net(obs).numpy().flatten() #quality of joint actions
+                    if use_target_net:  qAA = agent.target_net(obs).numpy().flatten() #quality of joint actions
+                    else:               qAA = agent.policy_net(obs).numpy().flatten() #quality of joint actions
                     flattened_game[ip,:] = qAA
             NF_game = flattened_game.reshape([2, 6,6]) # normal form bi-matrix game
             joint_action_Q = flattened_game
@@ -303,6 +314,21 @@ class SelfPlay_DeepAgentPair(object):
     def cpt_valuation(self,td_target):
         """ Applies CPT (if specified) to the target Q values"""
         return td_target
+
+    def one_step_ahead_td_target(self, state,reward,joint_action_idx):
+        expQ = np.zeros(2)
+        prospects = self.mdp.one_step_lookahead(state.deepcopy(),
+                                           joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx])
+        for p in prospects:
+            P_st_prime = p[2]
+            st_prime = p[1]
+            _, next_action_info = self.action(st_prime, exp_prob=0)
+            joint_action_prob = next_action_info['action_probs']
+            joint_action_Q = next_action_info['joint_action_Q']
+            vals_st_prime = np.sum(joint_action_prob * joint_action_Q, axis=1)
+            expQ += P_st_prime * vals_st_prime
+        TD_Targets = self.cpt_valuation(reward + self.gamma * expQ)
+        return TD_Targets
     # def update(self,policy_net, target_net, optimizer, transitions, GAMMA):
     #     """Could grab policy and target net from the agents"""
     #

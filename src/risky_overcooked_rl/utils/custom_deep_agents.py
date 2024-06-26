@@ -213,6 +213,7 @@ class SelfPlay_DeepAgentPair(object):
             action_probs = np.ones(len(self.action_space)) / len(self.action_space)
             joint_action_idx = np.random.choice(np.arange(len(self.action_space)), p=action_probs)
             action = self.action_space[joint_action_idx]
+            joint_action_Q = None
 
         # EXPLOIT ----------------
         else:
@@ -227,18 +228,18 @@ class SelfPlay_DeepAgentPair(object):
                     qAA = agent.policy_net(obs).numpy().flatten() #quality of joint actions
                     flattened_game[ip,:] = qAA
             NF_game = flattened_game.reshape([2, 6,6]) # normal form bi-matrix game
-
+            joint_action_Q = flattened_game
             # Apply equlibrium solution
-            if self.equalib.lower() == 'nash':      action_idxs = self.nash(NF_game)
-            elif self.equalib.lower() == 'pareto':  action_idxs = self.pareto(NF_game)
-            elif 'qre' in self.equalib.lower() :    action_idxs = self.quantal_response(NF_game)
+            if self.equalib.lower() == 'nash':      action_idxs,action_probs = self.nash(NF_game)
+            elif self.equalib.lower() == 'pareto':  action_idxs,action_probs = self.pareto(NF_game)
+            elif 'qre' in self.equalib.lower() :    action_idxs,action_probs = self.quantal_response(NF_game)
             else: raise ValueError(f'Unknown equalibrium: {self.equalib}')
             action = [Action.INDEX_TO_ACTION[ai] for ai in action_idxs]
             joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
-            action_probs = None
+
 
         # RETURN ----------------
-        action_info = {"action_index": joint_action_idx, "action_probs": action_probs}
+        action_info = {"action_index": joint_action_idx, "action_probs": action_probs,'joint_action_Q':joint_action_Q}
         return action, action_info
 
     ########################################################
@@ -285,7 +286,8 @@ class SelfPlay_DeepAgentPair(object):
         a1 = np.random.choice(np.arange(na), p=mixed_eq[0])
         a2 = np.random.choice(np.arange(na), p=mixed_eq[1])
         action_idxs = (a1,a2)
-        return action_idxs
+        action_probs = np.prod(list(itertools.product(mixed_eq[0],mixed_eq[1])),axis=1)
+        return action_idxs,action_probs
 
     def pareto(self,game):
         """
@@ -294,9 +296,13 @@ class SelfPlay_DeepAgentPair(object):
         """
         cum_payoff_matrix = np.sum(game,axis=0)
         action_idxs = np.unravel_index(cum_payoff_matrix.argmax(), cum_payoff_matrix.shape)
-        return action_idxs
+        action_probs = np.zeros(np.prod(cum_payoff_matrix.shape))
+        action_probs[np.ravel_multi_index(action_idxs, cum_payoff_matrix.shape)] = 1
+        return action_idxs, action_probs
 
-
+    def cpt_valuation(self,td_target):
+        """ Applies CPT (if specified) to the target Q values"""
+        return td_target
     # def update(self,policy_net, target_net, optimizer, transitions, GAMMA):
     #     """Could grab policy and target net from the agents"""
     #

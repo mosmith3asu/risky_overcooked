@@ -13,15 +13,15 @@ import math
 from datetime import datetime
 debug = False
 config = {
-        'ALGORITHM': 'CLDE_DDQN',
+        'ALGORITHM': 'one_step_look_ahead_test',
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
 
         # Env Params ----------------
         # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
-        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 3_000,
+        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 400, 'ITERATIONS': 5_000,
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
-        "perc_random_start": 0.01,          # percentage of ITERATIONS with random start states
+        "perc_random_start": 0.5,          # percentage of ITERATIONS with random start states
         # "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
         "equalib_sol": "pareto",               # equilibrium solution for testing
         # "equalib_sol": "QRE5",               # equilibrium solution for testing
@@ -29,7 +29,7 @@ config = {
 
         # Learning Params ----------------
         'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)
-        'gamma': 0.95,                      # discount factor
+        'gamma': 0.99,                      # discount factor
         'tau': 0.005,                       # soft update weight of target network
         "lr": 1e-4,                         # learning rate
         "num_hidden_layers": 3,             # MLP params
@@ -37,7 +37,7 @@ config = {
         "device": device,
         "n_mini_batch": 1,              # number of mini-batches per iteration
         "minibatch_size": 256,          # size of mini-batches
-        "replay_memory_size": 10_000,   # size of replay memory
+        "replay_memory_size": 15_000,   # size of replay memory
 
         # Evaluation Param ----------------
         'test_rationality': 'max',  # rationality for exploitation during testing
@@ -132,8 +132,10 @@ def main():
     optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 
     # Generate agents ----------------
-    q_agent1 = SoloDeepQAgent(mdp,agent_index=0,policy_net=policy_net,target_net=target_net,optimizer=optimizer, config=config)
-    q_agent2 = SoloDeepQAgent(mdp,agent_index=1,policy_net=policy_net,target_net=target_net,optimizer=optimizer, config=config)
+    # q_agent1 = SoloDeepQAgent(mdp,agent_index=0,policy_net=policy_net,target_net=target_net,optimizer=optimizer, config=config)
+    # q_agent2 = SoloDeepQAgent(mdp,agent_index=1,policy_net=policy_net,target_net=target_net,optimizer=optimizer, config=config)
+    q_agent1 = SoloDeepQAgent(mdp, agent_index=0, policy_net=policy_net, config=config)
+    q_agent2 = SoloDeepQAgent(mdp, agent_index=1, policy_net=policy_net, config=config)
     agent_pair = SelfPlay_DeepAgentPair(q_agent1,q_agent2,equalib=equalib_sol)
 
     # Initiate Logger ----------------
@@ -181,20 +183,19 @@ def main():
             else: next_obs = agent_pair.featurize(next_state)
 
             # Calc TD-Target -----------------------------
-            TD_Targets = agent_pair.one_step_ahead_td_target(env.state,reward,joint_action_idx)
-            # expQ = np.zeros(2)
-            # prospects = mdp.one_step_lookahead(env.state.deepcopy(),
-            #                                    joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx])
-            #
-            # for p in prospects:
-            #     P_st_prime = p[2]
-            #     st_prime = p[1]
-            #     _, next_action_info = agent_pair.action(st_prime, exp_prob=0,use_target_network=True)
-            #     joint_action_prob = next_action_info['action_probs']
-            #     joint_action_Q = next_action_info['joint_action_Q']
-            #     vals_st_prime = np.sum(joint_action_prob * joint_action_Q, axis=1)
-            #     expQ += P_st_prime * vals_st_prime
-            # TD_Targets = agent_pair.cpt_valuation(reward + GAMMA * expQ)
+            # TD_Targets = agent_pair.one_step_ahead_td_target(env.state,reward,joint_action_idx)
+            expQ = np.zeros(2)
+            prospects = mdp.one_step_lookahead(env.state.deepcopy(),
+                                               joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx])
+            for p in prospects:
+                P_st_prime = p[2]
+                st_prime = p[1]
+                _, next_action_info = agent_pair.action(st_prime, exp_prob=0)
+                joint_action_prob = next_action_info['action_probs']
+                joint_action_Q = next_action_info['joint_action_Q']
+                vals_st_prime = np.sum(joint_action_prob * joint_action_Q, axis=1)
+                expQ += P_st_prime * vals_st_prime
+            TD_Targets = agent_pair.cpt_valuation(reward + GAMMA * expQ)
 
 
             # Store the transition in memory (featurized tensors) ----------------
@@ -206,9 +207,9 @@ def main():
             if len(replay_memory) > minibatch_size:
                 for _ in range(n_mini_batch):
                     transitions = replay_memory.sample(minibatch_size)
-                    # for ip in range(2): # optimize for each player
-                        # optimize_model_td_targets(policy_net, target_net, optimizer, transitions, GAMMA,player=ip)
-                    agent_pair.update(transitions)
+                    for ip in range(2): # optimize for each player
+                        optimize_model_td_targets(policy_net, target_net, optimizer, transitions, GAMMA,player=ip)
+                    # agent_pair.update(transitions)
                     # optimize_model(policy_net,target_net,optimizer,replay_memory,minibatch_size,GAMMA)
 
             # Soft update of the target network  ----------------
@@ -231,7 +232,7 @@ def main():
         ##############################################
         # Test policy ################################
         ##############################################
-        if iter % test_interval == 0:
+        if iter % test_interval == 0 and iter >2:
             if debug: print('Test policy')
             test_reward = 0
             test_shaped_reward = 0

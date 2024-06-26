@@ -164,7 +164,7 @@ def optimize_model_td_targets(policy_net,target_net,optimizer,transitions,GAMMA,
     # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
     # detailed explanation). This converts batch-array of Transitions
     # to Transition of batch-arrays.
-    batch = CPT_Transition(*zip(*transitions))
+    batch = TD_Target_Transition(*zip(*transitions))
     BATCH_SIZE = len(transitions)
 
     # Compute a mask of non-final states and concatenate the batch elements

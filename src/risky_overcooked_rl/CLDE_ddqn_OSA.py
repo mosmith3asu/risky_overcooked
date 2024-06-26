@@ -13,22 +13,21 @@ import math
 from datetime import datetime
 debug = False
 config = {
-        'ALGORITHM': 'CLDE_DDQN',
+        'ALGORITHM': 'CLDE_DDQN_OSA',
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
 
         # Env Params ----------------
-        'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 10_000,
-        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 10_000,
+        # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 10_000,
+        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
         "perc_random_start": 0.01,          # percentage of ITERATIONS with random start states
         # "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
-        "equalib_sol": "QRE5",               # equilibrium solution for testing
-        # "equalib_sol": "NASH",               # equilibrium solution for testing
+        "equalib_sol": "NASH",               # equilibrium solution for testing
 
         # Learning Params ----------------
         'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)
-        'gamma': 0.95,                      # discount factor
+        'gamma': 0.99,                      # discount factor
         'tau': 0.005,                       # soft update weight of target network
         "lr": 1e-4,                         # learning rate
         "num_hidden_layers": 3,             # MLP params

@@ -54,6 +54,23 @@ class ReplayMemory_CPT(object):
     def __len__(self):
         return len(self.memory)
 
+Prospect_Transition = namedtuple('Transition',
+                                 ('state', 'action', 'p_next_states','next_states', 'reward'))
+class ReplayMemory_Prospect(object):
+
+    def __init__(self, capacity):
+        self.memory = deque([], maxlen=capacity)
+
+    def push(self, *args):
+        """Save a transition"""
+        self.memory.append(Prospect_Transition(*args))
+
+    def sample(self, batch_size):
+        return random.sample(self.memory, batch_size)
+
+    def __len__(self):
+        return len(self.memory)
+
 
 
 # DQN ----------------
@@ -213,3 +230,88 @@ def optimize_model_td_targets(policy_net,target_net,optimizer,transitions,GAMMA,
     # In-place gradient clipping
     torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
     optimizer.step()
+
+def optimize_model_prospects(agent_pair,optimizer,transitions,GAMMA,  player=0):
+    policy_net = agent_pair.agents[player].policy_net
+    target_net = agent_pair.agents[player].target_net
+
+    N_PLAYER_FEAT = 9 # number of features for each player
+    batch = Prospect_Transition(*zip(*transitions))
+    BATCH_SIZE = len(transitions)
+
+    # Compute a mask of non-final states and concatenate the batch elements
+    # (a final state would've been the one after which simulation ended)
+    non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_states)), device=device, dtype=torch.bool)
+    # non_final_next_states = torch.cat([s for s in batch.next_states  if s is not None])
+    # non_final_next_state_prospects =  [s for s in batch.next_states if s is not None]
+    # non_final_next_state_probs = [s for s in batch.p_next_states if s is not None]
+    state_batch = torch.cat(batch.state)
+    action_batch = torch.cat(batch.action)
+
+    if player==1: # invert the player features
+        # switch the first and next 9 player features in state_batch
+        state_batch = torch.cat([state_batch[:,N_PLAYER_FEAT:2*N_PLAYER_FEAT],
+                                 state_batch[:,:N_PLAYER_FEAT],
+                                 state_batch[:,2*N_PLAYER_FEAT:]],dim=1)
+
+        # switch the joint_action index to (partner, ego)
+        action_batch = torch.tensor([Action.reverse_joint_action_index(action_batch[i]) for i in range(BATCH_SIZE)]).unsqueeze(1)
+
+        # switch the first and next 9 player features in non_final_next_states
+        # non_final_next_states = torch.cat([non_final_next_states[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+        #                                    non_final_next_states[:, :N_PLAYER_FEAT],
+        #                                    non_final_next_states[:, 2 * N_PLAYER_FEAT:]], dim=1)
+
+
+    reward_batch = torch.cat(batch.reward)
+    if len(reward_batch.shape) != 1: # not centralized/solo agent (multi-agent)
+        reward_batch = reward_batch[:,player]
+
+    # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
+    # columns of actions taken. These are the actions which would've been taken
+    # for each batch state according to policy_net
+    state_action_values = policy_net(state_batch).gather(1, action_batch)#.unsqueeze(0)
+
+    # Compute V(s_{t+1}) for all next states.
+    # Expected values of actions for non_final_next_states are computed based
+    # on the "older" target_net; selecting their best reward with max(1).values
+    # This is merged based on the mask, such that we'll have either the expected
+    # state value or 0 in case the state was final.
+    next_state_values = torch.zeros(BATCH_SIZE, device=device)
+    with torch.no_grad():
+        for ib, non_final in enumerate(non_final_mask):
+            if non_final:
+                ns_prospects = batch.next_states[ib]
+                p_ns_prospects = batch.p_next_states[ib]
+                ns_val = 0
+                for j,next_state in enumerate(ns_prospects):
+                    if player==1: # invert the player features
+                        next_state=torch.cat([next_state[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+                                               next_state[:, :N_PLAYER_FEAT],
+                                               next_state[:, 2 * N_PLAYER_FEAT:]], dim=1)
+
+                    p_ns = p_ns_prospects[j]
+                    _, next_action_info = agent_pair.action(next_state,use_target_net=True)
+                    joint_action_prob = next_action_info['action_probs']
+                    joint_action_Q = next_action_info['joint_action_Q'][player]
+                    vals_st_prime = np.sum(joint_action_prob * joint_action_Q)
+                    ns_val += p_ns * vals_st_prime
+                next_state_values[ib] = ns_val
+
+        # agent_pair.action(next_state)
+        # next_state_values[non_final_mask] = target_net(non_final_next_states).max(1).values
+        # next_state_values[non_final_mask] = target_net(non_final_next_states).max(1).values
+    # Compute the expected Q values
+    TD_Target = (next_state_values * GAMMA) + reward_batch
+
+    # Compute Huber loss
+    criterion = nn.SmoothL1Loss()
+    loss = criterion(state_action_values, TD_Target.unsqueeze(1))
+
+    # Optimize the model
+    optimizer.zero_grad()
+    loss.backward()
+    # In-place gradient clipping
+    torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
+    optimizer.step()
+

@@ -280,20 +280,66 @@ class SelfPlay_DeepAgentPair(object):
         return action_idxs
 
 
-    def nash(self,game):
-        na = np.shape(game)[1]
-        rps = nash.Game(game[0,:], game[1,:])
+    def nash(self,game_mat):
+        # np.seterr(all='raise')
+        na = np.shape(game_mat)[1]
+        game = nash.Game(game_mat[0,:], game_mat[1,:])
 
-        # find all equalibriums
-        # eqs = list(rps.support_enumeration())
-        eqs = list(rps.vertex_enumeration())
+        # # find all equalibriums
+        # eqs = list(game.support_enumeration())
+        # mixed_eq = np.abs(eqs[random.randrange(len(eqs))])
+        # a1 = np.random.choice(np.arange(na), p=mixed_eq[0])
+        # a2 = np.random.choice(np.arange(na), p=mixed_eq[1])
+        # eqs = list(rps.vertex_enumeration())
+        #
+        # # select equalibrium with highest pareto efficiency
+        # pareto_efficiencies = [np.sum(rps[eq[0], eq[1]]) for eq in eqs]
+        # best_eq_idx = pareto_efficiencies.index(max(pareto_efficiencies))
+        # mixed_eq = np.abs(eqs[best_eq_idx])
 
-        # select equalibrium with highest pareto efficiency
-        pareto_efficiencies = [np.sum(rps[eq[0], eq[1]]) for eq in eqs]
+        # Lemke Howson
+        mixed_eq=None
+        # np.seterr(all='raise')
+        np.seterr(all='raise')
+        # with np.seterr(all='raise'):
+        eqs = []
+        for label in range(na+na):
+            try:
+                _pi = game.lemke_howson(initial_dropped_label=label)
+                if _pi[0].shape == (na,) and _pi[1].shape == (na,):
+                    if any(np.isnan(_pi[0])) is False and any(np.isnan(_pi[1])) is False:
+                        # mixed_eq = _pi
+                        # break
+                        eqs.append(_pi)
+            except:
+                pass
+        np.seterr(all='warn')
+        pareto_efficiencies = [np.sum(game[eq[0], eq[1]]) for eq in eqs]
         best_eq_idx = pareto_efficiencies.index(max(pareto_efficiencies))
         mixed_eq = np.abs(eqs[best_eq_idx])
 
+        # pi_list = list(game.lemke_howson_enumeration())
+        # pi = None
+        # mixed_eq = None
+        # for _pi in game.lemke_howson_enumeration():
+        #     if _pi[0].shape == (na,) and _pi[1].shape == (na,):
+        #         if any(np.isnan(_pi[0])) is False and any(np.isnan(_pi[1])) is False:
+        #             mixed_eq = _pi
+        #             break
+        # mixed_eq = rps.lemke_howson(initial_dropped_label=0)
         # Sample actions according to equalib
+        # try:
+        #     eqs = list(rps.lemke_howson_enumeration())
+        #     mixed_eq = np.abs(eqs[random.randrange(len(eqs))])
+        #     # mixed_eq = rps.lemke_howson(initial_dropped_label=0)
+        #     a1 = np.random.choice(np.arange(na), p=mixed_eq[0])
+        #     a2 = np.random.choice(np.arange(na), p=mixed_eq[1])
+        # except:
+        #     eqs = list(rps.vertex_enumeration())
+        #     mixed_eq = np.abs(eqs[random.randrange(len(eqs))])
+        #     a1 = np.random.choice(np.arange(na), p=mixed_eq[0])
+        #     a2 = np.random.choice(np.arange(na), p=mixed_eq[1])
+
         a1 = np.random.choice(np.arange(na), p=mixed_eq[0])
         a2 = np.random.choice(np.arange(na), p=mixed_eq[1])
         action_idxs = (a1,a2)

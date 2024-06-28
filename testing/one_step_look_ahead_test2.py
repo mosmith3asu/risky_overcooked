@@ -1,7 +1,7 @@
 import numpy as np
 from risky_overcooked_py.agents.agent import Agent, AgentPair,StayAgent, RandomAgent, GreedyHumanModel
 from risky_overcooked_rl.utils.custom_deep_agents import SoloDeepQAgent,SelfPlay_DeepAgentPair
-from risky_overcooked_rl.utils.deep_models import ReplayMemory_CPT,DQN_vector_feature,device,optimize_model_td_targets,soft_update,ReplayMemory_Prospect
+from risky_overcooked_rl.utils.deep_models import ReplayMemory_Prospect,DQN_vector_feature,device,optimize_model_prospects,soft_update
 from risky_overcooked_rl.utils.rl_logger import RLLogger,TrajectoryVisualizer
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
@@ -18,14 +18,14 @@ config = {
 
         # Env Params ----------------
         # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
-        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
+        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 400, 'ITERATIONS': 5_000,
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
         "perc_random_start": 0.5,          # percentage of ITERATIONS with random start states
         # "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
-        # "equalib_sol": "pareto",               # equilibrium solution for testing
+        "equalib_sol": "pareto",               # equilibrium solution for testing
         # "equalib_sol": "QRE5",               # equilibrium solution for testing
-        "equalib_sol": "NASH",               # equilibrium solution for testing
+        # "equalib_sol": "NASH",               # equilibrium solution for testing
 
         # Learning Params ----------------
         'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)
@@ -122,7 +122,7 @@ def main():
     # Generate MDP and environment----------------
     mdp = OvercookedGridworld.from_layout_name(LAYOUT)
     env = OvercookedEnv.from_mdp(mdp, horizon=HORIZON)
-    replay_memory = ReplayMemory_CPT(replay_memory_size)
+    replay_memory = ReplayMemory_Prospect(replay_memory_size)
 
     # Initialize policy and target networks ----------------
     obs_shape = mdp.get_lossless_encoding_vector_shape(); config['obs_shape'] = obs_shape
@@ -183,7 +183,7 @@ def main():
             else: next_obs = agent_pair.featurize(next_state)
 
             # Calc TD-Target -----------------------------
-            TD_Targets = agent_pair.one_step_ahead_td_target(env.state,reward,joint_action_idx)
+            # TD_Targets = agent_pair.one_step_ahead_td_target(env.state,reward,joint_action_idx)
             # expQ = np.zeros(2)
             # prospects = mdp.one_step_lookahead(env.state.deepcopy(),
             #                                    joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx])
@@ -199,16 +199,26 @@ def main():
 
 
             # Store the transition in memory (featurized tensors) ----------------
-            replay_memory.push(obs,#q_agent1.featurize(state),
+            # replay_memory.push(obs,#q_agent1.featurize(state),
+            #                    torch.tensor([joint_action_idx], dtype=torch.int64, device=device).unsqueeze(0),
+            #                    torch.tensor(np.array([TD_Targets]), device=device))
+
+            prospects = mdp.one_step_lookahead(env.state.deepcopy(), joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx])
+            # p_next_states = [p[2] for p in prospects]
+            p_next_obss = [torch.tensor(p[2], dtype=torch.float32, device=device).unsqueeze(0) for p in prospects]
+            next_obss = [torch.tensor(p[1], dtype=torch.float32, device=device).unsqueeze(0) for p in prospects]
+            replay_memory.push(obs,  # q_agent1.featurize(state),
                                torch.tensor([joint_action_idx], dtype=torch.int64, device=device).unsqueeze(0),
-                               torch.tensor(np.array([TD_Targets]), device=device))
+                               p_next_obss,#torch.tensor(p_next_states, dtype=torch.float32, device=device).unsqueeze(0),
+                               next_obss,
+                               torch.tensor(np.array([reward + shaped_reward]), dtype=torch.float32, device=device))
 
             # Optimize Model ----------------
             if len(replay_memory) > minibatch_size:
                 for _ in range(n_mini_batch):
                     transitions = replay_memory.sample(minibatch_size)
                     for ip in range(2): # optimize for each player
-                        optimize_model_td_targets(policy_net, target_net, optimizer, transitions, GAMMA,player=ip)
+                        optimize_model_prospects(agent_pair, optimizer, transitions, GAMMA,player=ip)
                     # agent_pair.update(transitions)
                     # optimize_model(policy_net,target_net,optimizer,replay_memory,minibatch_size,GAMMA)
 

@@ -17,6 +17,13 @@ import itertools
 is_ipython = 'inline' in matplotlib.get_backend()
 if is_ipython:
     from IPython import display
+import numpy as np
+
+import warnings
+from itertools import cycle
+import numpy.typing as npt
+from typing import Tuple
+from nashpy.linalg import create_col_tableau, create_row_tableau
 
 plt.ion()
 
@@ -103,7 +110,7 @@ class DQN_vector_feature(nn.Module):
 
 
 # DQN ----------------
-# from equilibrium_solver import NashEquilibriumECOSSolver
+# from risky_overcooked_rl.utils.equilibrium_solver import NashEquilibriumECOSSolver
 import nashpy as nash
 class SelfPlay_NashDQN(object):
     def __init__(self, obs_shape, n_actions,config,**kwargs):
@@ -112,30 +119,23 @@ class SelfPlay_NashDQN(object):
         self.device = config['device']
         self.gamma = config['gamma']
         self.tau = config['tau']
-
-        # super(SelfPlay_NashDQN, self).__init__()
-        # self.layer1 = nn.Linear(obs_shape[0], self.size_hidden_layers)
-        # self.layer2 = nn.Linear(self.size_hidden_layers, self.size_hidden_layers)
-        # self.layer3 = nn.Linear(self.size_hidden_layers, n_actions)
-        # # self.mlp_activation = F.relu
-        # self.mlp_activation = F.leaky_relu
-
-        self.model = DQN_vector_feature(obs_shape, n_actions,self.size_hidden_layers)
-
+        self.num_agents = 2
         self.joint_action_space =  list(itertools.product(Action.ALL_ACTIONS, repeat=2))
         self.joint_action_dim = n_actions
         self.player_action_dim = int(np.sqrt(n_actions))
-        self.num_agents = 2
 
 
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate, amsgrad=True)
+        # Define Memory
         self._transition =  namedtuple('Transition', ('state', 'action', 'reward','next_state','done'))
         self._memory = deque([], maxlen=config['replay_memory_size'])
         self._memory_batch_size = config['minibatch_size']
 
+        # Define Model
         self.model = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
         self.target = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
         self.target.load_state_dict(self.model.state_dict())
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate, amsgrad=True)
+
 
 
     ###################################################
@@ -190,31 +190,158 @@ class SelfPlay_NashDQN(object):
     # Nash Utils ######################################
     ###################################################
 
-    def get_normal_form_game(self,obs):
+    def get_normal_form_game(self,obs,use_target=False):
         """ Batch compute the NF games for each observation"""
         batch_size = obs.shape[0]
-        q_values_flat = np.zeros([batch_size,self.num_agents,self.joint_action_dim])
+        all_games = np.zeros([batch_size,self.num_agents,self.player_action_dim,self.player_action_dim])
+        # q_values_flat = np.zeros([batch_size,self.num_agents,self.joint_action_dim])
         for i in range(self.num_agents):
-            if i==1: obs = self.invert_obs(obs)
-            q_values = self.model(obs).detach().cpu().numpy()
-            q_values_flat[:,i,:] = q_values
-        q_tables = q_values_flat.reshape(batch_size,self.num_agents,
-                                         self.player_action_dim,  self.player_action_dim)
-        return q_tables
+            # this_game = np.zeros([self.num_agents,self.player_action_dim,self.player_action_dim])
 
+            if i==1: obs = self.invert_obs(obs)
+            if use_target:  q_values = self.target(obs).detach().cpu().numpy()
+            else:  q_values = self.model(obs).detach().cpu().numpy()
+
+            if i==1:
+                # this_game[i,:,:] = q_values.reshape(batch_size,self.player_action_dim, self.player_action_dim).
+                all_games[:,i,:,:] = np.moveaxis(q_values.reshape(batch_size,self.player_action_dim, self.player_action_dim),-1,-2)
+            else:
+                all_games[:,i,:,:] = q_values.reshape(batch_size,self.player_action_dim, self.player_action_dim)
+
+
+            # q_values_flat[:,i,:] = q_values
+        # q_tables = q_values_flat.reshape(batch_size,self.num_agents,
+        #                                  self.player_action_dim,  self.player_action_dim)
+        # q_tables[]
+        return all_games
+
+    def lemke_howson(self,
+            A: npt.NDArray,
+            B: npt.NDArray,
+            initial_dropped_label: int = 0,
+            lexicographic: bool = True,
+    ) -> Tuple[npt.NDArray, npt.NDArray]:
+        """
+        Obtain the Nash equilibria using the Lemke Howson algorithm implemented
+        using integer pivoting.
+
+        Algorithm implemented here is Algorithm 3.6 of [Nisan2007]_.
+
+        1. Start at the artificial equilibrium (which is fully labeled)
+        2. Choose an initial label to drop and move in the polytope for which
+           the vertex has that label to the edge
+           that does not share that label. (This is implemented using integer
+           pivoting)
+        3. A label will now be duplicated in the other polytope, drop it in a
+           similar way.
+        4. Repeat steps 2 and 3 until have Nash Equilibrium.
+
+        Parameters
+        ----------
+        A : array
+            The row player payoff matrix
+        B : array
+            The column player payoff matrix
+        initial_dropped_label: int
+            The initial dropped label.
+        lexicographic: bool
+            Whether to apply lexicographic sorting during pivoting, default True.
+            Lexiographic sorting ensures solutions on degenerate games
+
+        Returns
+        -------
+        Tuple
+            An equilibria
+        """
+        col_tableau = create_col_tableau(A, lexicographic = lexicographic)
+        row_tableau = create_row_tableau(B, lexicographic = lexicographic)
+
+        if initial_dropped_label in row_tableau.non_basic_variables:
+            tableux = cycle((row_tableau, col_tableau))
+        else:
+            tableux = cycle((col_tableau, row_tableau))
+
+        full_labels = col_tableau.labels
+        fully_labeled = False
+        entering_label = initial_dropped_label
+        while not fully_labeled:
+            tableau = next(tableux)
+            entering_label = tableau.pivot_and_drop_label(entering_label)
+            current_labels = col_tableau.non_basic_variables.union(
+                row_tableau.non_basic_variables
+            )
+            fully_labeled = current_labels == full_labels
+
+        row_strat = row_tableau.to_strategy(col_tableau.non_basic_variables)
+        col_strat = col_tableau.to_strategy(row_tableau.non_basic_variables)
+        if row_strat.shape != (A.shape[0],) and col_strat.shape != (A.shape[0],):
+            msg = """The Lemke Howson algorithm has returned probability vectors of·
+    incorrect shapes. This indicates an error. Your game could be degenerate."""
+
+            warnings.warn(msg, RuntimeWarning)
+        return row_strat, col_strat
     def solve_nash_eq(self,nf_game, stop_on_first_eq=True):
+        game = nash.Game(nf_game[0, :,:], nf_game[1, :,:])
+        # eqs = list(game.vertex_enumeration())
+        # # mixed_eq = np.abs(eqs[random.randrange(len(eqs))])  # select random eqaulibrium
+        # # select equalibrium with highest pareto efficiency
+        # pareto_efficiencies = [np.sum(game[eq[0], eq[1]]) for eq in eqs]
+        # best_eq_idx = pareto_efficiencies.index(max(pareto_efficiencies))
+        # dist = np.abs(eqs[best_eq_idx])
+        # value = game[dist[0], dist[1]]
+
         """ Solve a single game using Lemke Housen"""
-        game = nash.Game(nf_game[0, :], nf_game[1, :])
+        # # # dist, value = NashEquilibriumECOSSolver(nf_game)
+        # # # # return dist, value
+        # # #
+        # game = nash.Game(nf_game[0, :], nf_game[1, :])
+        # np.seterr(all='raise') # makes error out instead of looping over divide by zero warning
+        # # dist = self.lemke_howson(nf_game[0, :], nf_game[1, :], initial_dropped_label=0)
+        # dist = game.lemke_howson(initial_dropped_label=0)
+        # value = game[dist[0], dist[1]]
+        # np.seterr(all='warn')
+        # # dist = self.lemke_howson(nf_game[0, :], nf_game[1, :])
+        # # value = game[dist[0], dist[1]]
+        # #
+        # # #
+        # # fictitious_play solver ----------------
+        # iterations = 25
+        # play_counts = tuple(game.fictitious_play(iterations=iterations))
+        # dist = [eqi / iterations for eqi in play_counts[-1]]
+        # value = game[dist[0], dist[1]]
+        #
+        # # Lemke Howson solver ----------------
+        # np.seterr(all='raise')
+        # eqs = []
+        # for label in range(self.player_action_dim + self.player_action_dim):
+        #     try:
+        #         _pi = game.lemke_howson(initial_dropped_label=label,lexicographic=True)
+        #         if _pi[0].shape == (self.player_action_dim,) and _pi[1].shape == (self.player_action_dim,):
+        #             if any(np.isnan(_pi[0])) is False and any(np.isnan(_pi[1])) is False:
+        #                 # mixed_eq = _pi; break # find first eqaulib
+        #                 eqs.append(_pi)  # find all equalibs
+        #                 if stop_on_first_eq: break
+        #     except: pass
+        # np.seterr(all='warn')
+        # pareto_efficiencies = [np.sum(game[eq[0], eq[1]]) for eq in eqs]
+        # best_eq_idx = pareto_efficiencies.index(max(pareto_efficiencies))
+        # dist = np.abs(eqs[best_eq_idx])
+        # value = game[dist[0], dist[1]]
+
+        # dist = self.lemke_howson(nf_game[0, :], nf_game[1, :])
+        # value = game[dist[0], dist[1]]
+
         np.seterr(all='raise')
-        eqs = []
-        for label in range(self.player_action_dim + self.player_action_dim):
+        eqs = [];
+        mixed_eq = None
+        for label in range(2*self.player_action_dim):
             try:
                 _pi = game.lemke_howson(initial_dropped_label=label)
                 if _pi[0].shape == (self.player_action_dim,) and _pi[1].shape == (self.player_action_dim,):
                     if any(np.isnan(_pi[0])) is False and any(np.isnan(_pi[1])) is False:
                         # mixed_eq = _pi; break # find first eqaulib
                         eqs.append(_pi)  # find all equalibs
-                        if stop_on_first_eq: break
+                        break
             except: pass
         np.seterr(all='warn')
         pareto_efficiencies = [np.sum(game[eq[0], eq[1]]) for eq in eqs]
@@ -264,13 +391,19 @@ class SelfPlay_NashDQN(object):
             joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
             joint_action = self.joint_action_space[joint_action_idx]
         else:  # Exploit
-            with torch.no_grad():
-                NF_Game = self.get_normal_form_game(obs)
-                joint_action_idx, dists, ne_vs = self.compute_nash(NF_Game)
-                # joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
-                joint_action = self.joint_action_space[joint_action_idx[0]]
-                # if debug: print('Exploit')
-
+            try:
+                with torch.no_grad():
+                    NF_Game = self.get_normal_form_game(obs)
+                    joint_action_idx, dists, ne_vs = self.compute_nash(NF_Game)
+                    # joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
+                    joint_action = self.joint_action_space[joint_action_idx[0]]
+                    if debug:
+                        print('debug')
+            except:
+                warnings.warn('Invalid Nash computation. Random action is chosen.')
+                action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
+                joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
+                joint_action = self.joint_action_space[joint_action_idx]
         return joint_action,joint_action_idx
 
     def update(self):
@@ -306,12 +439,12 @@ class SelfPlay_NashDQN(object):
         # solve matrix Nash equilibrium
 
         try:  # nash computation may encounter error and terminate the process
-            NF_games = self.get_normal_form_game(next_state)
+            NF_games = self.get_normal_form_game(next_state,use_target=True)
             next_dist, next_q_value = self.compute_nash(NF_games, update=True)
             next_q_value = np.array(next_q_value)[:,1].reshape(-1,1)   # only need ego agen q-value
         except:
             warnings.warn("Invalid nash computation.")
-            next_q_value = np.zeros_like(reward)
+            next_q_value = np.zeros_like(reward.detach().cpu().numpy())
 
         # if DoubleTrick:  # calculate next_q_value using double DQN trick
         #     next_dist = np.array(next_dist)  # shape: (#batch, #agent, #action)

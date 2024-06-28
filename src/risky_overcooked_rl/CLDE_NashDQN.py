@@ -22,20 +22,20 @@ config = {
         'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 10_000,
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
-        "perc_random_start": 0.1,          # percentage of ITERATIONS with random start states
+        "perc_random_start": 0.001,          # percentage of ITERATIONS with random start states
         # "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
         "equalib_sol": "NASH",               # equilibrium solution for testing
 
         # Learning Params ----------------
-        'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)
-        'gamma': 0.99,                      # discount factor
+        'epsilon_range': [0.9,0.1],         # epsilon-greedy range (start,end)
+        'gamma': 0.95,                      # discount factor
         'tau': 0.005,                       # soft update weight of target network
         "lr": 1e-4,                         # learning rate
         "num_hidden_layers": 3,             # MLP params
         "size_hidden_layers": 256,#32,      # MLP params
         "device": device,
         "n_mini_batch": 1,              # number of mini-batches per iteration
-        "minibatch_size": 128,          # size of mini-batches
+        "minibatch_size": 64,          # size of mini-batches
         "replay_memory_size": 15_000,   # size of replay memory
 
         # Evaluation Param ----------------
@@ -197,13 +197,15 @@ def main():
 
             for test in range(N_tests):
                 state_history = []
+                action_history = []
                 env.reset()
                 for t in count():
                     if debug: print(f'Test policy: test {test}, t {t}')
                     state = env.state
                     state_history.append(state.deepcopy())
                     # joint_action, action_info = agent_pair.action(state, exp_prob=exploration_proba)
-                    joint_action, joint_action_idx = test_net.choose_joint_action(obs)
+                    joint_action, joint_action_idx = test_net.choose_joint_action(obs,debug=False)
+                    action_history.append(joint_action_idx)
                     next_state, reward, done, info = env.step(joint_action)
                     test_reward += reward
                     test_shaped_reward +=  info["shaped_r_by_agent"][0]
@@ -212,7 +214,7 @@ def main():
 
             logger.log(test_reward=[iter, test_reward / N_tests], train_reward=[iter, np.mean(train_rewards)])
             logger.draw()
-            print(f"\nTest: | nTests= {N_tests} | Ave Reward = {test_reward / N_tests} | Ave Shaped Reward = {test_shaped_reward / N_tests}\n")
+            print(f"\nTest: | nTests= {N_tests} | Ave Reward = {test_reward / N_tests} | Ave Shaped Reward = {test_shaped_reward / N_tests}\n{action_history}\n")
             train_rewards = []
 
         # -------------------------------

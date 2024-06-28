@@ -193,8 +193,16 @@ class SelfPlay_DeepAgentPair(object):
         super(SelfPlay_DeepAgentPair, self).__init__()
         self.agents = [agent1,agent2]
         # assert equalib.lower() in ['nash','pareto','qre'], 'Unknown Equlibrium'
-        assert equalib.lower() in ['nash', 'pareto'] or 'qre' in equalib.lower(), 'Unknown Equlibrium'
-        self.equalib = equalib                      # equalibrium solution
+
+        assert 'nash' in equalib.lower() or 'pareto' in equalib.lower() or 'qre' in equalib.lower(), 'Unknown Equlibrium'
+        if '-' in equalib:
+            self.equalib = equalib.split('-')[0]
+            self.equalib_param =  equalib.split('-')[0]
+        else:
+            self.equalib = equalib
+            self.equalib_param = None
+        # assert equalib.lower() in ['nash', 'pareto'] or 'qre' in equalib.lower(), 'Unknown Equlibrium'
+        # self.equalib = equalib                      # equalibrium solution
         self.mdp = agent1.mdp                       # same for both agents
         self.device = agent1.device                 # same for both agents
         self.N_PLAYER_FEAT = agent1.N_PLAYER_FEAT   # same for both agents
@@ -224,22 +232,13 @@ class SelfPlay_DeepAgentPair(object):
             joint_action_idx = np.random.choice(np.arange(len(self.action_space)), p=action_probs)
             action = self.action_space[joint_action_idx]
             joint_action_Q = None
+            NashQi_val = None
 
         # EXPLOIT ----------------
         else:
             obs = self.handle_state_obs_type(state) # make correct type
+            NF_game, flattened_game = self.get_normal_form_game(obs,use_target_net)
 
-            # Get normal form game
-            flattened_game = np.zeros((2,len(self.action_space)))
-            for ip,agent in enumerate(self.agents):
-                if ip == 1: obs = self.reverse_state_obs(obs) # make into ego observation
-                # obs = agent.featurize(state) # TODO: super inefficient to recalc this instead of inverting
-                with torch.no_grad():
-                    if use_target_net:  qAA = agent.target_net(obs).numpy().flatten() #quality of joint actions
-                    else:               qAA = agent.policy_net(obs).numpy().flatten() #quality of joint actions
-                    flattened_game[ip,:] = qAA
-            NF_game = flattened_game.reshape([2, 6,6]) # normal form bi-matrix game
-            joint_action_Q = flattened_game
             # Apply equlibrium solution
             if self.equalib.lower() == 'nash':      action_idxs,action_probs = self.nash(NF_game)
             elif self.equalib.lower() == 'pareto':  action_idxs,action_probs = self.pareto(NF_game)
@@ -247,15 +246,27 @@ class SelfPlay_DeepAgentPair(object):
             else: raise ValueError(f'Unknown equalibrium: {self.equalib}')
             action = [Action.INDEX_TO_ACTION[ai] for ai in action_idxs]
             joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
-
+            joint_action_Q = flattened_game
+            NashQi_val = np.sum(action_probs*joint_action_Q,axis=1)
 
         # RETURN ----------------
-        action_info = {"action_index": joint_action_idx, "action_probs": action_probs,'joint_action_Q':joint_action_Q}
+        action_info = {"action_index": joint_action_idx, "action_probs": action_probs,
+                       'joint_action_Q':joint_action_Q,'NashQ_Val':NashQi_val}
         return action, action_info
 
     ########################################################
     # Equilibrium ########################################
     ########################################################
+    def get_normal_form_game(self,obs,use_target_net):
+        flattened_game = np.zeros((2, len(self.action_space)))
+        for ip, agent in enumerate(self.agents):
+            if ip == 1: obs = self.reverse_state_obs(obs)  # make into ego observation
+            with torch.no_grad():
+                if use_target_net: qAA = agent.target_net(obs).numpy().flatten()  # quality of joint actions
+                else: qAA = agent.policy_net(obs).numpy().flatten()  # quality of joint actions
+                flattened_game[ip, :] = qAA
+        NF_game = flattened_game.reshape([2, 6, 6])  # normal form bi-matrix game
+        return NF_game, flattened_game
     def quantal_response(self,game,soph=2):
         """quantal response equalibrium with k-order ToM (sophistication)"""
         def invert_game(g):
@@ -279,67 +290,51 @@ class SelfPlay_DeepAgentPair(object):
         action_idxs = (a1,a2)
         return action_idxs
 
-
-    def nash(self,game_mat):
-        # np.seterr(all='raise')
+    def nash(self,game_mat,algorithm='lemke_howson'):
+        # Define Nashpy Game
         na = np.shape(game_mat)[1]
         game = nash.Game(game_mat[0,:], game_mat[1,:])
 
-        # # find all equalibriums
-        # eqs = list(game.support_enumeration())
-        # mixed_eq = np.abs(eqs[random.randrange(len(eqs))])
-        # a1 = np.random.choice(np.arange(na), p=mixed_eq[0])
-        # a2 = np.random.choice(np.arange(na), p=mixed_eq[1])
-        # eqs = list(rps.vertex_enumeration())
-        #
-        # # select equalibrium with highest pareto efficiency
-        # pareto_efficiencies = [np.sum(rps[eq[0], eq[1]]) for eq in eqs]
-        # best_eq_idx = pareto_efficiencies.index(max(pareto_efficiencies))
-        # mixed_eq = np.abs(eqs[best_eq_idx])
+        # Set specified algorithm
+        if self.equalib_param is not None:
+            algorithm = self.equalib_param
 
-        # Lemke Howson
-        mixed_eq=None
-        # np.seterr(all='raise')
-        np.seterr(all='raise')
-        # with np.seterr(all='raise'):
-        eqs = []
-        for label in range(na+na):
-            try:
-                _pi = game.lemke_howson(initial_dropped_label=label)
-                if _pi[0].shape == (na,) and _pi[1].shape == (na,):
-                    if any(np.isnan(_pi[0])) is False and any(np.isnan(_pi[1])) is False:
-                        # mixed_eq = _pi
-                        # break
-                        eqs.append(_pi)
-            except:
-                pass
-        np.seterr(all='warn')
-        pareto_efficiencies = [np.sum(game[eq[0], eq[1]]) for eq in eqs]
-        best_eq_idx = pareto_efficiencies.index(max(pareto_efficiencies))
-        mixed_eq = np.abs(eqs[best_eq_idx])
+        # Vertex Enumeration ---------------------------
+        if algorithm.lower() in 'vertex_enumeration':
+            eqs = list(game.vertex_enumeration())
+            # mixed_eq = np.abs(eqs[random.randrange(len(eqs))])  # select random eqaulibrium
+            # select equalibrium with highest pareto efficiency
+            pareto_efficiencies = [np.sum(game[eq[0], eq[1]]) for eq in eqs]
+            best_eq_idx = pareto_efficiencies.index(max(pareto_efficiencies))
+            mixed_eq = np.abs(eqs[best_eq_idx])
 
-        # pi_list = list(game.lemke_howson_enumeration())
-        # pi = None
-        # mixed_eq = None
-        # for _pi in game.lemke_howson_enumeration():
-        #     if _pi[0].shape == (na,) and _pi[1].shape == (na,):
-        #         if any(np.isnan(_pi[0])) is False and any(np.isnan(_pi[1])) is False:
-        #             mixed_eq = _pi
-        #             break
-        # mixed_eq = rps.lemke_howson(initial_dropped_label=0)
-        # Sample actions according to equalib
-        # try:
-        #     eqs = list(rps.lemke_howson_enumeration())
-        #     mixed_eq = np.abs(eqs[random.randrange(len(eqs))])
-        #     # mixed_eq = rps.lemke_howson(initial_dropped_label=0)
-        #     a1 = np.random.choice(np.arange(na), p=mixed_eq[0])
-        #     a2 = np.random.choice(np.arange(na), p=mixed_eq[1])
-        # except:
-        #     eqs = list(rps.vertex_enumeration())
-        #     mixed_eq = np.abs(eqs[random.randrange(len(eqs))])
-        #     a1 = np.random.choice(np.arange(na), p=mixed_eq[0])
-        #     a2 = np.random.choice(np.arange(na), p=mixed_eq[1])
+        # Lemke Howson --------------------------------
+        elif algorithm.lower() in 'lemke_howson':
+            np.seterr(all='raise')
+            eqs = []; mixed_eq = None
+            for label in range(na+na):
+                try:
+                    _pi = game.lemke_howson(initial_dropped_label=label)
+                    if _pi[0].shape == (na,) and _pi[1].shape == (na,):
+                        if any(np.isnan(_pi[0])) is False and any(np.isnan(_pi[1])) is False:
+                            # mixed_eq = _pi; break # find first eqaulib
+                            eqs.append(_pi) # find all equalibs
+                except: pass
+            np.seterr(all='warn')
+            pareto_efficiencies = [np.sum(game[eq[0], eq[1]]) for eq in eqs]
+            best_eq_idx = pareto_efficiencies.index(max(pareto_efficiencies))
+            mixed_eq = np.abs(eqs[best_eq_idx])
 
+        # Ficticous Play -------------------------------
+        elif algorithm.lower() in 'fictitious_play':
+            iterations = 100
+            play_counts = tuple(game.fictitious_play(iterations=iterations))
+            mixed_eq = [eqi / iterations for eqi in play_counts[-1]]
+
+        # Unknown -------------------------------
+        else:  raise ValueError(f'Unknown Nash algorithm: {algorithm}')
+
+        # Sample actions according to selected eq --------
         a1 = np.random.choice(np.arange(na), p=mixed_eq[0])
         a2 = np.random.choice(np.arange(na), p=mixed_eq[1])
         action_idxs = (a1,a2)

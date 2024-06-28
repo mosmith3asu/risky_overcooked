@@ -17,9 +17,9 @@ config = {
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
 
         # Env Params ----------------
-        'LAYOUT': "risky_coordination_ring", 'HORIZON': 200, 'ITERATIONS': 5_000,
+        # 'LAYOUT': "risky_coordination_ring", 'HORIZON': 200, 'ITERATIONS': 5_000,
         # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
-        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
+        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 10_000,
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
         "perc_random_start": 0.01,          # percentage of ITERATIONS with random start states
@@ -27,7 +27,7 @@ config = {
         "equalib_sol": "NASH",               # equilibrium solution for testing
 
         # Learning Params ----------------
-        'epsilon_range': [0.9,0.1],         # epsilon-greedy range (start,end)
+        'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)
         'gamma': 0.99,                      # discount factor
         'tau': 0.005,                       # soft update weight of target network
         "lr": 1e-4,                         # learning rate
@@ -131,8 +131,8 @@ def main():
     optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 
     # Generate agents ----------------
-    q_agent1 = SoloDeepQAgent(mdp,agent_index=0,policy_net=policy_net, config=config)
-    q_agent2 = SoloDeepQAgent(mdp,agent_index=1,policy_net=policy_net, config=config)
+    q_agent1 = SoloDeepQAgent(mdp,agent_index=0,policy_net=policy_net,target_net=target_net,optimizer=optimizer, config=config)
+    q_agent2 = SoloDeepQAgent(mdp,agent_index=1,policy_net=policy_net,target_net=target_net,optimizer=optimizer, config=config)
     agent_pair = SelfPlay_DeepAgentPair(q_agent1,q_agent2,equalib=equalib_sol)
 
     # Initiate Logger ----------------
@@ -168,9 +168,6 @@ def main():
         state = env.state
         obs = agent_pair.featurize(state)
         for t in count():
-            # state = env.state
-            # obs = agent_pair.featurize(state)
-            # joint_action, action_info = agent_pair.action(state,exp_prob=exploration_proba)
             joint_action, action_info = agent_pair.action(obs,exp_prob=exploration_proba)
             joint_action_idx = action_info['action_index']
 

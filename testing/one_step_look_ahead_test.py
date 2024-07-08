@@ -17,11 +17,11 @@ config = {
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
 
         # Env Params ----------------
-        # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
-        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 5_000,
+        'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 400, 'ITERATIONS': 10_000,
+        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 10_000,
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
-        "perc_random_start": 0.5,          # percentage of ITERATIONS with random start states
+        "perc_random_start": 0.1,          # percentage of ITERATIONS with random start states
         # "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
         # "equalib_sol": "pareto",               # equilibrium solution for testing
         # "equalib_sol": "QRE5",               # equilibrium solution for testing
@@ -36,7 +36,7 @@ config = {
         "size_hidden_layers": 256,#32,      # MLP params
         "device": device,
         "n_mini_batch": 1,              # number of mini-batches per iteration
-        "minibatch_size": 256,          # size of mini-batches
+        "minibatch_size": 128,          # size of mini-batches
         "replay_memory_size": 15_000,   # size of replay memory
 
         # Evaluation Param ----------------

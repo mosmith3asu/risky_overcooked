@@ -12,6 +12,15 @@ import torch.optim as optim
 import math
 from datetime import datetime
 debug = False
+
+
+"""
+If the loss spikes early, then falls ==> adaptive learning rate and increase LR in begininnign
+If the loss is maintained at a high level ==> ??? 
+If high variance ==> increase minibatch size
+Try different loss functions
+"""
+
 config = {
         'ALGORITHM': 'CLDE_QRE-DDQN-OSA-CPT',
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
@@ -21,7 +30,7 @@ config = {
         # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 20_000,
         # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 15_000,
         # 'LAYOUT': "super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
-        'LAYOUT': "risky_super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
+        'LAYOUT': "risky_super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 20_000,
 
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
@@ -38,14 +47,15 @@ config = {
         'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)
         'gamma': 0.95,                      # discount factor
         'tau': 0.005,                       # soft update weight of target network
-        # "lr": 1e-4,                         # learning rate
         "lr": 1e-4,                         # learning rate
+        # 'tau': 0.005,                       # soft update weight of target network
+        # "lr": 1e-2,                         # learning rate
         "num_hidden_layers": 4,             # MLP params
         "size_hidden_layers": 256,#32,      # MLP params
         "device": device,
         "n_mini_batch": 1,              # number of mini-batches per iteration
         "minibatch_size": 64,          # size of mini-batches
-        "replay_memory_size": 30_000,   # size of replay memory
+        "replay_memory_size": 25_000,   # size of replay memory
 
         # Evaluation Param ----------------
         'test_rationality': 'max',  # rationality for exploitation during testing

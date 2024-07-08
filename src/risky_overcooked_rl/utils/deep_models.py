@@ -96,6 +96,7 @@ class DQN_vector_feature(nn.Module):
         self.layer3 = nn.Linear(self.size_hidden_layers, n_actions)
         # self.mlp_activation = F.relu
         self.mlp_activation = F.leaky_relu
+        # self.mlp_activation = F.sigmoid
 
         # self.optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 
@@ -885,6 +886,10 @@ class SelfPlay_QRE_OSA(object):
 
 class SelfPlay_QRE_OSA_CPT(object):
     def __init__(self, obs_shape, n_actions, config, **kwargs):
+
+        self.clip_grad = False
+        self.clip_grad_val = 10
+        self.clamp_loss = None #[-20,20]
         self.size_hidden_layers = config['size_hidden_layers']
         self.learning_rate = config['lr']
         self.device = config['device']
@@ -1027,114 +1032,10 @@ class SelfPlay_QRE_OSA_CPT(object):
         value = [np.sum(nf_game[0, :] * dist_mat), np.sum(nf_game[1, :] * dist_mat)]
         return dist, value
 
-    def lemke_howson(self,
-                     A: npt.NDArray,
-                     B: npt.NDArray,
-                     initial_dropped_label: int = 0,
-                     lexicographic: bool = True,
-                     ) -> Tuple[npt.NDArray, npt.NDArray]:
-        """
-        Obtain the Nash equilibria using the Lemke Howson algorithm implemented
-        using integer pivoting.
-
-        Algorithm implemented here is Algorithm 3.6 of [Nisan2007]_.
-
-        1. Start at the artificial equilibrium (which is fully labeled)
-        2. Choose an initial label to drop and move in the polytope for which
-           the vertex has that label to the edge
-           that does not share that label. (This is implemented using integer
-           pivoting)
-        3. A label will now be duplicated in the other polytope, drop it in a
-           similar way.
-        4. Repeat steps 2 and 3 until have Nash Equilibrium.
-
-        Parameters
-        ----------
-        A : array
-            The row player payoff matrix
-        B : array
-            The column player payoff matrix
-        initial_dropped_label: int
-            The initial dropped label.
-        lexicographic: bool
-            Whether to apply lexicographic sorting during pivoting, default True.
-            Lexiographic sorting ensures solutions on degenerate games
-
-        Returns
-        -------
-        Tuple
-            An equilibria
-        """
-        col_tableau = create_col_tableau(A, lexicographic=lexicographic)
-        row_tableau = create_row_tableau(B, lexicographic=lexicographic)
-
-        if initial_dropped_label in row_tableau.non_basic_variables:
-            tableux = cycle((row_tableau, col_tableau))
-        else:
-            tableux = cycle((col_tableau, row_tableau))
-
-        full_labels = col_tableau.labels
-        fully_labeled = False
-        entering_label = initial_dropped_label
-        while not fully_labeled:
-            tableau = next(tableux)
-            entering_label = tableau.pivot_and_drop_label(entering_label)
-            current_labels = col_tableau.non_basic_variables.union(
-                row_tableau.non_basic_variables
-            )
-            fully_labeled = current_labels == full_labels
-
-        row_strat = row_tableau.to_strategy(col_tableau.non_basic_variables)
-        col_strat = col_tableau.to_strategy(row_tableau.non_basic_variables)
-        if row_strat.shape != (A.shape[0],) and col_strat.shape != (A.shape[0],):
-            msg = """The Lemke Howson algorithm has returned probability vectors of·
-    incorrect shapes. This indicates an error. Your game could be degenerate."""
-
-            warnings.warn(msg, RuntimeWarning)
-        return row_strat, col_strat
 
     def solve_nash_eq(self, nf_game, stop_on_first_eq=True):
         """ Solve a single game using Lemke Housen"""
-        # Lemke Howson solver ----------------
 
-        # game = nash.Game(nf_game[0, :, :], nf_game[1, :, :])
-        # np.seterr(all='raise')
-        # eqs = [];
-        # mixed_eq = None
-        # for label in range(2*self.player_action_dim):
-        #     try:
-        #         # _pi = game.lemke_howson(initial_dropped_label=label)
-        #         _pi = self.lemke_howson(nf_game[0, :,:], nf_game[1, :,:],initial_dropped_label=label)
-        #         if _pi[0].shape == (self.player_action_dim,) and _pi[1].shape == (self.player_action_dim,):
-        #             if any(np.isnan(_pi[0])) is False and any(np.isnan(_pi[1])) is False:
-        #                 dist = _pi; break # find first eqaulib
-        #                 # eqs.append(_pi)  # find all equalibs
-        #     except: pass
-        # np.seterr(all='warn')
-        # # pareto_efficiencies = [np.sum(game[eq[0], eq[1]]) for eq in eqs]
-        # # best_eq_idx = pareto_efficiencies.index(max(pareto_efficiencies))
-        # # dist = np.abs(eqs[best_eq_idx])
-        # value = game[dist[0], dist[1]]
-        # return dist, value
-
-        # --------------------------------------------------
-        # g = gbt.Game.from_arrays(nf_game[0, :, :], nf_game[1, :, :])
-        # # res = gbt.nash.enummixed_solve(g, rational=False)
-        # # res = gbt.nash.lcp_solve(g, rational=False, stop_after=1,use_strategic=True) # use lemke howsen
-        # # res = gbt.nash.logit_solve(g)
-        # res = gbt.nash.gnm_solve(g,steps=25) # global newton method
-        # # dist = [profile[1] for profile in res.equilibria[0].mixed_strategies()]
-        # # list([i[1] for i in dist[0].__iter__()])
-        # dist = [[strat[1] for strat in res.equilibria[0]['1']], #player 1 strat
-        #         [strat[1] for strat in res.equilibria[0]['2']]] #player 2 strat
-        # value = [res.equilibria[0].payoff(player) for player in ['1', '2']]
-        # --------------------------------------------------
-        # game = nash.Game(nf_game[0, :, :], nf_game[1, :, :])
-        # iterations =25
-        # play_counts = tuple(game.fictitious_play(iterations=iterations))
-        # dist =  [eqi/iterations for eqi in play_counts[-1] ]
-        # value = game[dist[0], dist[1]]
-        # --------------------------------------------------
         dist, value = self.level_k_qunatal(nf_game)
         return dist, value
 
@@ -1240,25 +1141,25 @@ class SelfPlay_QRE_OSA_CPT(object):
         for i in range(BATCH_SIZE):
             mask = np.where(prospect_idxs==i)[0]
             td_targets =  _rewards[i,:] + (self.gamma)*all_next_q_value[mask,:]*(1 - _done[i,:])
-            # expected_q_value[i] =  self.CPT.expectation(td_targets.flatten(), all_p_next_states[mask,:].flatten())
-            expected_q_value[i] =  self.CPT.expectation_PT(td_targets.flatten(), all_p_next_states[mask,:].flatten())
-
+            expected_q_value[i] =  self.CPT.expectation(td_targets.flatten(), all_p_next_states[mask,:].flatten())
+            # expected_q_value[i] =  self.CPT.expectation_PT(td_targets.flatten(), all_p_next_states[mask,:].flatten())
+            # expected_q_value[i] =  np.sum(td_targets* all_p_next_states[mask,:])
         expected_q_value = torch.FloatTensor(expected_q_value).to(self.device)
 
         # expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)
         # expected_q_value = reward + (self.gamma) * expected_next_q_values * (1 - done)
 
-        # next_q_value = torch.FloatTensor(next_q_value).to(self.device)
-        # expected_q_value = reward + (self.gamma) * next_q_value * (1 - done)
-        # expected_q_value = reward + (self.gamma ** self.multi_step) * next_q_value * (1 - done)
 
         # Optimize ----------------
         loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
+        if self.clamp_loss is not None:
+            loss = loss.clamp(self.clamp_loss[0],self.clamp_loss[1])
         loss = loss.mean()
         self.optimizer.zero_grad()
         loss.backward()
         # In-place gradient clipping
-        torch.nn.utils.clip_grad_value_(self.model.parameters(), 100)
+        if self.clip_grad:
+            torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad_val)
         self.optimizer.step()
 
         # Perform Soft update on model ----------------

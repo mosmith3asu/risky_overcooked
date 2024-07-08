@@ -26,7 +26,8 @@ class CumulativeProspectTheory(object):
 
     def recalc_b(self):
         # TODO: this might be very inefficient this way
-        self.b = np.mean(self.value_history)
+        if self.track_value_history:
+            self.b = np.mean(self.value_history)
         return self.b
 
     def expectation_PT(self, values, p_values):
@@ -80,23 +81,28 @@ class CumulativeProspectTheory(object):
             return rho
         else:
             l = np.where(sorted_v <= self.b)[0][-1]  # idx of highest loss
-            Fk = [np.sum(sorted_p[0:i + 1]) for i in range(l + 1)] + \
-                 [np.sum(sorted_p[i:K]) for i in range(l + 1, K)]  # cumulative probability
+            # Fk = [np.sum(sorted_p[0:i + 1]) for i in range(l + 1)] + \
+            #      [np.sum(sorted_p[i:K]) for i in range(l + 1, K)]  # cumulative probability
+            # Fk = [np.sum(sorted_p[0:i + 1]) for i in range(l)] + \
+            #      [np.sum(sorted_p[i:K]) for i in range(l, K)]  # cumulative probability
+            Fk = [np.sum(sorted_p[0:i + 1]) for i in range(l+1)] + \
+                 [np.sum(sorted_p[i:K]) for i in range(l+1, K)]  # cumulative probability
             rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K)
-            rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K) if l >= 0 else 0
+            rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
             rho = rho_p - rho_n
             return rho
 
     def rho_plus(self,sorted_v,sorted_p,Fk,l,K):
         rho_p = 0
         for i in range(l + 1, K - 1):
-            rho_p += self.u_plus(sorted_v[i]) * (self.w_plus(Fk[i]) - self.w_plus(Fk[i - 1]))
+            rho_p += self.u_plus(sorted_v[i]) * (self.w_plus(Fk[i]) - self.w_plus(Fk[i + 1]))
         rho_p += self.u_plus(sorted_v[K - 1]) * self.w_plus(sorted_p[K - 1])
         return rho_p
     def rho_neg(self,sorted_v,sorted_p,Fk,l,K):
         rho_n = self.u_neg(sorted_v[0]) * self.w_neg(sorted_p[0])
         for i in range(1, l + 1):
             rho_n += self.u_neg(sorted_v[i]) * (self.w_neg(Fk[i]) - self.w_neg(Fk[i - 1]))
+
         return rho_n
     def u_plus(self,v):
         return np.abs(v-self.b)**self.eta_p
@@ -157,8 +163,11 @@ class CumulativeProspectTheory(object):
 
 def main():
     # example from https://engineering.purdue.edu/DELP/education/decision_making_slides/Module_12___Cumulative_Prospect_Theory.pdf
-    values = np.array([80,60,40,20,0])
-    p_values = np.array([0.2,0.2,0.2,0.2,0.2])
+    # values = np.array([80,60,40,20,0])
+    # p_values = np.array([0.2,0.2,0.2,0.2,0.2])
+    values = np.array([-10, -20, -1,1, 10, 20])
+    # values = np.array([-80, 60, 40, 20, 0])
+    p_values = np.array([0.2, 0.2, 0.2,0.2, 0.2, 0.2])
 
     # values = np.array([-1,1])
     # p_values = np.ones(len(values)) / len(values)
@@ -169,7 +178,7 @@ def main():
                   'eta_p': 1., 'eta_n': 1.,
                   'delta_p': 1., 'delta_n': 1.}
     CPT = CumulativeProspectTheory(**cpt_params)
-    # print(CPT.expectation(values,p_values))
+    print(CPT.expectation(values,p_values))
     print(CPT.expectation_PT(values,p_values))
 
     print(np.mean(values))

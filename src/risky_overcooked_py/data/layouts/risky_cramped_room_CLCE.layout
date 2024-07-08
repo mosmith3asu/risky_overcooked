@@ -1,7 +1,7 @@
 {
     "grid":  """XXPXX
                 O   O
-                XW WX
+                X WWX
                 X1 2X
                 XDXSX""",
     "start_bonus_orders": [],

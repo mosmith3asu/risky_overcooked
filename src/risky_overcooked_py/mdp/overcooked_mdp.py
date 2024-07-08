@@ -3,7 +3,7 @@ import itertools
 import warnings
 from collections import Counter, defaultdict
 from functools import reduce
-
+import torch
 import numpy as np
 
 from risky_overcooked_py.mdp.actions import Action, Direction
@@ -2439,13 +2439,15 @@ class OvercookedGridworld(object):
     ###################
     # one-step ahead #
     ###################
-    def one_step_lookahead(self,state,joint_action = None,encoded=True):
+    def one_step_lookahead(self,state,joint_action = None,encoded=True,as_tensor=False,device=None):
         """
 
         :param state:
         :param joint_action: if None, return all possible outcomes from all joint actions
         :return: {joint_action, next_state, p_next_state}
         """
+        if as_tensor: assert device is not None, 'If using tensor, device must be specified'
+
         old_state = state.deepcopy()
         outcomes = []
         joint_actions = Action.ALL_JOINT_ACTIONS if joint_action is None else [joint_action]
@@ -2469,6 +2471,7 @@ class OvercookedGridworld(object):
             if np.all(player_in_water == [False, False]):
                 p_next_state = 1
                 next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
                 outcomes.append([joint_action, next_obs, p_next_state])
 
             # if p1 slipped but not p2
@@ -2478,24 +2481,28 @@ class OvercookedGridworld(object):
                 # Lost object
                 if next_state.players[ip].has_object(): next_state.players[ip].remove_object()
                 next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
                 outcomes.append([joint_action, next_obs, p_next_state])
                 # Held object object
                 if not next_state.players[ip].has_object():
                     old_obj = state.players[ip].get_object(); next_state.players[ip].set_object(old_obj)
                 next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
                 outcomes.append([joint_action, next_obs, p_next_state])
 
             # if p2 slipped but not p1
-            elif np.all(player_in_water == [True, False]):
+            elif np.all(player_in_water == [False, True]):
                 # TODO: check if mutable object is causing problems
                 ip = 1;  p_next_state = self.p_slip
                 if next_state.players[ip].has_object(): next_state.players[ip].remove_object()
                 next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
                 outcomes.append([joint_action, next_obs, p_next_state])
                 # Held object object
                 if not next_state.players[ip].has_object():
                     old_obj = state.players[ip].get_object(); next_state.players[ip].set_object(old_obj)
                 next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
                 outcomes.append([joint_action, next_obs, p_next_state])
 
 
@@ -2507,6 +2514,7 @@ class OvercookedGridworld(object):
                 for ip in range(2):
                     if next_state.players[ip].has_object(): next_state.players[ip].remove_object()
                 next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
                 outcomes.append([joint_action, next_obs, p_next_state])
 
                 # P1 lost object, P2 held object
@@ -2516,6 +2524,7 @@ class OvercookedGridworld(object):
                     old_obj = state.players[1].get_object()
                     next_state.players[1].set_object(old_obj)
                 next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
                 outcomes.append([joint_action, next_obs, p_next_state])
 
                 # P1 held object, P2 lost object
@@ -2525,6 +2534,7 @@ class OvercookedGridworld(object):
                 if next_state.players[1].has_object():
                     next_state.players[1].remove_object()
                 next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
                 outcomes.append([joint_action, next_obs, p_next_state])
 
                 # Both held object
@@ -2535,8 +2545,9 @@ class OvercookedGridworld(object):
                     old_obj = state.players[1].get_object()
                     next_state.players[1].set_object(old_obj)
                 next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+                if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
                 outcomes.append([joint_action, next_obs, p_next_state])
-
+        assert len(outcomes) > 0,'empty outcome'
         return outcomes
 
 

@@ -9,15 +9,18 @@ def level_k_qunatal_torch(nf_game, k=8, rationality=10):
 
     def invert_game(g):
         "inverts perspective of the game"
-        return np.array([g[1, :].T, g[0, :].T])
+        return torch.cat([g[1, :, :].T.unsqueeze(0), g[0, :, :].T.unsqueeze(0)], dim=0)
 
     def softmax(x):
-        ex = np.exp(x - np.max(x))
-        return ex / np.sum(ex)
+        ex = torch.exp(x - torch.max(x))
+        return ex / torch.sum(ex)
+        # ex = np.exp(x - np.max(x))
+        # return ex / np.sum(ex)
 
     def step_QRE(game, k):
         if k == 0:
-            partner_dist = (np.arange(np.shape(game)[1])).reshape(1, np.shape(game)[1])
+            na = torch.shape(game)[1]
+            partner_dist = (torch.ones(na)).reshape(1, na) / na
         else:
             inv_game = np.array([game[1, :].T, game[0, :].T])
             partner_dist = step_QRE(inv_game, k - 1)
@@ -47,7 +50,9 @@ def level_k_qunatal(self, nf_game, k=8, rationality=10):
 
     def step_QRE(game, k):
         if k == 0:
-            partner_dist = (np.arange(np.shape(game)[1])).reshape(1, np.shape(game)[1])
+            na = np.shape(game)[1]
+            # partner_dist = (np.arange(np.shape(game)[1])).reshape(1, np.shape(game)[1])
+            partner_dist = (np.ones(na)).reshape(1, na)/na
         else:
             inv_game = np.array([game[1, :].T, game[0, :].T])
             partner_dist = step_QRE(inv_game, k - 1)
@@ -64,40 +69,66 @@ def level_k_qunatal(self, nf_game, k=8, rationality=10):
 
 def invert_game(g):
     "inverts perspective of the game"
-    return np.array([g[1, :].T, g[0, :].T])
+    # return np.array([g[1, :].T, g[0, :].T])
+    # return np.array([g[1, :].T, g[0, :].T])
+    return torch.cat([g[1, :,:].T.unsqueeze(0), g[0, :,:].T.unsqueeze(0)],dim=0)
 
 def softmax(x):
     ex = np.exp(x-np.max(x))
     return ex/np.sum(ex)
 
-# def step_QRE(game,partner_dist):
-#     weighted_game = game[0] * partner_dist
-#     Exp_qAi = np.sum(weighted_game, axis=1)
-#     return softmax(Exp_qAi)
+
 def step_QRE(game,k):
     if k==0:
-        partner_dist = (np.arange(np.shape(game)[1])).reshape(1,np.shape(game)[1])
+        na = np.shape(game)[1]
+        # partner_dist = (np.arange(np.shape(game)[1])).reshape(1, np.shape(game)[1])
+        # partner_dist = (np.ones(na)).reshape(1, na) / na
+        (torch.ones(na)).reshape(1, na) / na
     else:
         inv_game = np.array([game[1, :].T, game[0, :].T ])
         partner_dist = step_QRE(inv_game,k-1)
     weighted_game = game[0] * partner_dist
     Exp_qAi = np.sum(weighted_game, axis=1)
     return softmax(Exp_qAi)
-def main():
-    # A = np.ones([1,6,6])
-    # B = 2*np.ones([1,6,6])
-    A = np.zeros([1, 6, 6])
-    A[0, 1, :] = 1000
-    A[0, 2, :] = 1000
-    A[0, :, 1] = 0
 
-    B = np.zeros([1, 6, 6])
-    B[0, :, 1] = 1000
+
+
+# def step_QRE(game,k):
+#     if k==0:
+#         na = np.shape(game)[1]
+#         # partner_dist = (np.arange(np.shape(game)[1])).reshape(1, np.shape(game)[1])
+#         partner_dist = (np.ones(na)).reshape(1, na) / na
+#     else:
+#         inv_game = np.array([game[1, :].T, game[0, :].T ])
+#         partner_dist = step_QRE(inv_game,k-1)
+#     weighted_game = game[0] * partner_dist
+#     Exp_qAi = np.sum(weighted_game, axis=1)
+#     return softmax(Exp_qAi)
+#
+#
+
+
+
+def main():
+    A = (np.array([i*np.ones(6) for i in range(6)])).reshape(1,6,6)
+    B = (np.array([i*np.ones(6) for i in range(6)]).T).reshape(1,6,6)
+    game = torch.FloatTensor(np.vstack([A, B]))
+    # game = invert_game(game)
+    # print(game)
+    dist, value = level_k_qunatal_torch(game, k=0)
+    # A = np.zeros([1, 6, 6])
+    # A[0, 1, :] = 1000
+    # A[0, 2, :] = 1000
+    # A[0, :, 1] = 0
+    #
+    # B = np.zeros([1, 6, 6])
+    # B[0, :, 1] = 1000
     # B[0, :, 1] = 1000
 
     # A = np.repeat(np.arange(6).reshape(1,6),6,axis=0).reshape([1,6,6])
-    B = np.repeat(np.arange(6).reshape(1,6).T,6,axis=1).reshape([1,6,6])
-    game = np.vstack([A,B])
+    # B = np.repeat(np.arange(6).reshape(1,6).T,6,axis=1).reshape([1,6,6])
+    # game = np.vstack([A,B])
+    # game = torch.FloatTensor(game)
 
 
 

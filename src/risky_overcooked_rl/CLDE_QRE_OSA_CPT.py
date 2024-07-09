@@ -26,8 +26,8 @@ config = {
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
 
         # Env Params ----------------
-        'LAYOUT': "risky_coordination_ring", 'HORIZON': 400, 'ITERATIONS': 15_000,
-        # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 20_000,
+        # 'LAYOUT': "risky_coordination_ring", 'HORIZON': 400, 'ITERATIONS': 15_000,
+        'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 20_000,
         # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 15_000,
         # 'LAYOUT': "super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
         # 'LAYOUT': "risky_super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 20_000,
@@ -40,7 +40,7 @@ config = {
         # 'cpt_params': {'b': 0.0, 'lam': 1.0,
         #           'eta_p': 1., 'eta_n': 1.,
         #           'delta_p': 1., 'delta_n': 1.},
-        'cpt_params': {'b': 0.4, 'lam': 2.25,
+        'cpt_params': {'b': 0.4, 'lam': 1.0,
                        'eta_p': 0.88, 'eta_n': 0.88,
                        'delta_p': 0.61, 'delta_n': 0.69},
         # Learning Params ----------------
@@ -54,7 +54,7 @@ config = {
         "size_hidden_layers": 256,#32,      # MLP params
         "device": device,
         "n_mini_batch": 1,              # number of mini-batches per iteration
-        "minibatch_size": 64,          # size of mini-batches
+        "minibatch_size": 32,          # size of mini-batches
         "replay_memory_size": 30_000,   # size of replay memory
 
         # Evaluation Param ----------------
@@ -271,14 +271,15 @@ def main():
             if done:  break
             obs = next_obs
 
-
+        test_net.scheduler.step()
         train_rewards.append(cum_reward+shaped_reward)
         print(f"Iteration {iter} "
               f"| train reward: {round(cum_reward,3)} "
               f"| shaped reward: {np.round(shaped_reward,3)} "
               f"| memory len {test_net.memory_len} "
               f"| reward shaping scale {round(r_shape_scale,3)} "
-              f"| Explore Prob {exploration_proba} "
+              f"| Explore Prob {round(exploration_proba,3)} "
+              f"| LR={round(test_net.optimizer.param_groups[0]['lr'],4)}"
               )
 
         logger.end_iteration()

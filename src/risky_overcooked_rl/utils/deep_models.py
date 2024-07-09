@@ -1,6 +1,7 @@
 import math
 import random
 import warnings
+import torch.optim.lr_scheduler as lr_scheduler
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -915,7 +916,12 @@ class SelfPlay_QRE_OSA_CPT(object):
         self.model = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
         self.target = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
         self.target.load_state_dict(self.model.state_dict())
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate, amsgrad=True)
+        # self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate, amsgrad=True)
+
+        lr_factor =100
+        self.optimizer = optim.SGD(self.model.parameters(), lr=lr_factor*self.learning_rate)
+        self.scheduler = lr_scheduler.LinearLR(self.optimizer, start_factor=1, end_factor=1/lr_factor, total_iters=100)
+        # self.scheduler = lr_scheduler.ConstantLR(self.optimizer, factor=100, end_factor=1, total_iters=100)
 
     ###################################################
     ## Memory #########################################
@@ -1101,8 +1107,6 @@ class SelfPlay_QRE_OSA_CPT(object):
         return joint_action, joint_action_idx, action_probs
 
 
-
-
     def update(self):
         if self.memory_len < 2*self._memory_batch_size:
             return None
@@ -1168,8 +1172,13 @@ class SelfPlay_QRE_OSA_CPT(object):
             torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad_val)
         self.optimizer.step()
 
+
+
         # Perform Soft update on model ----------------
         self.target = soft_update(self.model, self.target, self.tau)
+        # if self.scheduler is not None:
+        #     self.scheduler.step()
+        #     print(self.optimizer.param_groups[0]["lr"])
         return loss.item()
 
 def soft_update(policy_net, target_net, TAU):

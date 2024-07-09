@@ -35,15 +35,14 @@ class CumulativeProspectTheory(object):
             self.value_history.extend(values)
 
         # arrange all samples in ascending order
-        vp = values[np.where(values >= self.b)[0]]
+        vp = values[np.where(values > self.b)[0]]
         vn = values[np.where(values <= self.b)[0]]
         u_plus = self.u_plus(vp)
         u_neg = -1 * self.u_neg(vn)
         u = np.hstack([u_neg, u_plus])
 
 
-        p = np.linspace(0,1,100)
-        pp = p_values[np.where(values >= self.b)[0]]
+        pp = p_values[np.where(values > self.b)[0]]
         pn = p_values[np.where(values <= self.b)[0]]
         w_plus = self.w_plus(pp)
         w_neg = self.w_neg(pn)
@@ -65,18 +64,19 @@ class CumulativeProspectTheory(object):
         if K==1:
             if sorted_v[0]>self.b: return self.u_plus(sorted_v[0])
             else: return -1*self.u_neg(sorted_v[0])
+
         elif np.all(sorted_v<=self.b):
             Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]
             l=K-1
-            rho_p = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
-            rho_n = 0
+            rho_p = 0
+            rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
             rho = rho_p - rho_n
             return rho
         elif np.all(sorted_v > self.b):
             Fk = [np.sum(sorted_p[i:K]) for i in range(K)]
-            l = 0
-            rho_p = 0
-            rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
+            l = -1
+            rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K)
+            rho_n = 0
             rho = rho_p - rho_n
             return rho
         else:
@@ -169,6 +169,9 @@ def main():
     # values = np.array([-80, 60, 40, 20, 0])
     p_values = np.array([0.2, 0.2, 0.2,0.2, 0.2, 0.2])
 
+    # values =  np.array([-0.018, -0.018])#np.random.randint(-5,5,2)
+    values = np.array([0.02, 0.02])  # np.random.randint(-5,5,2)
+    p_values = np.array([0.5, 0.5])
     # values = np.array([-1,1])
     # p_values = np.ones(len(values)) / len(values)
     # cpt_params = {'b':2.0, 'lam':2.0,
@@ -181,7 +184,7 @@ def main():
     print(CPT.expectation(values,p_values))
     print(CPT.expectation_PT(values,p_values))
 
-    print(np.mean(values))
+    print(np.sum(values*p_values))
     CPT.plot_curves()
 
 if __name__ == "__main__":

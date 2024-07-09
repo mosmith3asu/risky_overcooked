@@ -17,10 +17,11 @@ config = {
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
 
         # Env Params ----------------
-        'LAYOUT': "risky_coordination_ring", 'HORIZON': 200, 'ITERATIONS': 15_000,
-        # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 15_000,
-        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 15_000,
+        # 'LAYOUT': "risky_coordination_ring", 'HORIZON': 200, 'ITERATIONS': 15_000,
+        # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 20_000,
+        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 15_000,
         # 'LAYOUT': "super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
+        # 'LAYOUT': "risky_super_cramped_room", 'HORIZON': 400, 'ITERATIONS': 10_000,
 
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
@@ -29,7 +30,7 @@ config = {
         "equalib_sol": "QRE",               # equilibrium solution for testing
 
         # Learning Params ----------------
-        'epsilon_range': [1.0,0.05],         # epsilon-greedy range (start,end)
+        'epsilon_range': [1.0,0.15],         # epsilon-greedy range (start,end)
         'gamma': 0.95,                      # discount factor
         'tau': 0.005,                       # soft update weight of target network
         # "lr": 1e-4,                         # learning rate
@@ -39,7 +40,7 @@ config = {
         "device": device,
         "n_mini_batch": 1,              # number of mini-batches per iteration
         "minibatch_size": 128,          # size of mini-batches
-        "replay_memory_size": 20_000,   # size of replay memory
+        "replay_memory_size": 30_000,   # size of replay memory
 
         # Evaluation Param ----------------
         'test_rationality': 'max',  # rationality for exploitation during testing

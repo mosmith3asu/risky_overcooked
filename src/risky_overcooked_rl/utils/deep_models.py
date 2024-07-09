@@ -477,6 +477,9 @@ class SelfPlay_NashDQN(object):
 
 class SelfPlay_QRE_OSA(object):
     def __init__(self, obs_shape, n_actions, config, **kwargs):
+        self.clip_grad = False
+        self.clip_grad_val = 50
+
         self.size_hidden_layers = config['size_hidden_layers']
         self.learning_rate = config['lr']
         self.device = config['device']
@@ -875,7 +878,8 @@ class SelfPlay_QRE_OSA(object):
         self.optimizer.zero_grad()
         loss.backward()
         # In-place gradient clipping
-        torch.nn.utils.clip_grad_value_(self.model.parameters(), 100)
+        if self.clip_grad:
+            torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad_val)
         self.optimizer.step()
 
         # Perform Soft update on model ----------------
@@ -888,7 +892,7 @@ class SelfPlay_QRE_OSA_CPT(object):
     def __init__(self, obs_shape, n_actions, config, **kwargs):
 
         self.clip_grad = False
-        self.clip_grad_val = 10
+        self.clip_grad_val = 50
         self.clamp_loss = None #[-20,20]
         self.size_hidden_layers = config['size_hidden_layers']
         self.learning_rate = config['lr']
@@ -1138,12 +1142,14 @@ class SelfPlay_QRE_OSA_CPT(object):
         _done = done.detach().cpu().numpy()
         _rewards = reward.detach().cpu().numpy()
         expected_q_value = np.zeros([BATCH_SIZE, 1])
+        # _expected_q_value = np.zeros([BATCH_SIZE, 1])
         for i in range(BATCH_SIZE):
             mask = np.where(prospect_idxs==i)[0]
             td_targets =  _rewards[i,:] + (self.gamma)*all_next_q_value[mask,:]*(1 - _done[i,:])
             expected_q_value[i] =  self.CPT.expectation(td_targets.flatten(), all_p_next_states[mask,:].flatten())
             # expected_q_value[i] =  self.CPT.expectation_PT(td_targets.flatten(), all_p_next_states[mask,:].flatten())
-            # expected_q_value[i] =  np.sum(td_targets* all_p_next_states[mask,:])
+            # _expected_q_value[i] =  np.sum(td_targets* all_p_next_states[mask,:])
+        # assert np.all(np.abs(expected_q_value - _expected_q_value)<0.01), 'CPT expectation is not equal to numpy sum'
         expected_q_value = torch.FloatTensor(expected_q_value).to(self.device)
 
         # expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)

@@ -920,7 +920,7 @@ class SelfPlay_QRE_OSA_CPT(object):
 
         lr_factor =100
         self.optimizer = optim.SGD(self.model.parameters(), lr=lr_factor*self.learning_rate)
-        self.scheduler = lr_scheduler.LinearLR(self.optimizer, start_factor=1, end_factor=1/lr_factor, total_iters=100)
+        self.scheduler = lr_scheduler.LinearLR(self.optimizer, start_factor=1, end_factor=1/lr_factor, total_iters=200)
         # self.scheduler = lr_scheduler.ConstantLR(self.optimizer, factor=100, end_factor=1, total_iters=100)
 
     ###################################################

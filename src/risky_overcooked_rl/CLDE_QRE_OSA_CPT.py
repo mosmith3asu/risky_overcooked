@@ -26,11 +26,12 @@ config = {
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
 
         # Env Params ----------------
-        # 'LAYOUT': "risky_coordination_ring", 'HORIZON': 400, 'ITERATIONS': 15_000,
-        # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 20_000,
-        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 15_000,
-        # 'LAYOUT': "super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
-        'LAYOUT': "risky_super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 20_000,
+        # 'LAYOUT': "risky_coordination_ring", 'HORIZON': 200, 'ITERATIONS': 12_000,
+        'LAYOUT': "coordination_ring_CLDE", 'HORIZON': 200, 'ITERATIONS': 12_000,
+        # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 12_000,
+        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 12_000,
+        # 'LAYOUT': "super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 12_000,
+        # 'LAYOUT': "risky_super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 12_000,
 
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
@@ -44,22 +45,27 @@ config = {
                        'eta_p': 0.88, 'eta_n': 0.88,
                        'delta_p': 0.61, 'delta_n': 0.69},
         # Learning Params ----------------
-        'epsilon_range': [0.95,0.15],         # epsilon-greedy range (start,end)
+        'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)
         'gamma': 0.95,                      # discount factor
         'tau': 0.005,                       # soft update weight of target network
-        "lr": 1e-3,                         # learning rate
+        "lr": 1e-4,                         # learning rate
         # 'tau': 0.005,                       # soft update weight of target network
         # "lr": 1e-2,                         # learning rate
-        "num_hidden_layers": 4,             # MLP params
+        "num_hidden_layers": 3,             # MLP params
         "size_hidden_layers": 256,#32,      # MLP params
         "device": device,
         "n_mini_batch": 1,              # number of mini-batches per iteration
-        "minibatch_size": 32,          # size of mini-batches
+        "minibatch_size": 128,          # size of mini-batches
         "replay_memory_size": 20_000,   # size of replay memory
 
+        'shaped_reward_scale': 2,
+        'lr_warmup_scale': 10,
+        'lr_warmup_iter': 100
+
         # Evaluation Param ----------------
-        'test_rationality': 'max',  # rationality for exploitation during testing
-        'train_rationality': 'max', # rationality for exploitation during training
+        # 'test_rationality': 'max',  # rationality for exploitation during testing
+        # 'train_rationality': 'max', # rationality for exploitation during training
+
     }
 
 def random_start_state(mdp,rnd_obj_prob_thresh=0.25):
@@ -178,9 +184,9 @@ def main():
     ITERATIONS = config['ITERATIONS']
     EPS_START, EPS_END = config['epsilon_range']
     perc_random_start = config['perc_random_start']
-    test_rationality = config['test_rationality']
-    init_reward_shaping_scale = 2                   # decaying reward shaping weight
-    N_tests = 1 if test_rationality=='max' else 3   # number of tests (only need 1 with max rationality)
+    # test_rationality = config['test_rationality']
+    init_reward_shaping_scale = config['shaped_reward_scale']                   # decaying reward shaping weight
+    N_tests = 1 #if test_rationality=='max' else 3   # number of tests (only need 1 with max rationality)
     test_interval = 10                              # test every n iterations
 
 

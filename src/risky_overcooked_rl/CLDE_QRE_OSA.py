@@ -18,33 +18,34 @@ config = {
 
         # Env Params ----------------
         # 'LAYOUT': "risky_coordination_ring", 'HORIZON': 200, 'ITERATIONS': 15_000,
+        # 'LAYOUT': "coordination_ring_CLDE", 'HORIZON': 200, 'ITERATIONS': 15_000,
         # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 20_000,
-        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 15_000,
+        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 15_000,
         # 'LAYOUT': "super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
-        'LAYOUT': "risky_super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
+        # 'LAYOUT': "risky_super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
 
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
-        "perc_random_start": 0.1,          # percentage of ITERATIONS with random start states
+        "perc_random_start": 0.25,          # percentage of ITERATIONS with random start states
         # "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
         "equalib_sol": "QRE",               # equilibrium solution for testing
 
         # Learning Params ----------------
-        'epsilon_range': [0.9,0.15],         # epsilon-greedy range (start,end)
+        'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)
         'gamma': 0.95,                      # discount factor
         'tau': 0.005,                       # soft update weight of target network
         # "lr": 1e-4,                         # learning rate
         "lr": 1e-4,                         # learning rate
-        "num_hidden_layers": 4,             # MLP params
+        "num_hidden_layers": 3,             # MLP params
         "size_hidden_layers": 256,#32,      # MLP params
         "device": device,
         "n_mini_batch": 1,              # number of mini-batches per iteration
-        "minibatch_size": 128,          # size of mini-batches
-        "replay_memory_size": 30_000,   # size of replay memory
+        "minibatch_size":128,          # size of mini-batches
+        "replay_memory_size": 20_000,   # size of replay memory
+        'shaped_reward_scale':2,
+        'lr_warmup_scale': 10,
+        'lr_warmup_iter': 100
 
-        # Evaluation Param ----------------
-        'test_rationality': 'max',  # rationality for exploitation during testing
-        'train_rationality': 'max', # rationality for exploitation during training
     }
 
 def random_start_state(mdp,rnd_obj_prob_thresh=0.25):
@@ -163,9 +164,8 @@ def main():
     ITERATIONS = config['ITERATIONS']
     EPS_START, EPS_END = config['epsilon_range']
     perc_random_start = config['perc_random_start']
-    test_rationality = config['test_rationality']
-    init_reward_shaping_scale = 2                   # decaying reward shaping weight
-    N_tests = 1 if test_rationality=='max' else 3   # number of tests (only need 1 with max rationality)
+    init_reward_shaping_scale = config['shaped_reward_scale']                   # decaying reward shaping weight
+    N_tests = 1 #if test_rationality=='max' else 3   # number of tests (only need 1 with max rationality)
     test_interval = 10                              # test every n iterations
 
 
@@ -181,7 +181,7 @@ def main():
     traj_visualizer = TrajectoryVisualizer(env)
     logger = RLLogger(rows=3, cols=1, num_iterations=ITERATIONS)
     logger.add_lineplot('test_reward', xlabel='', ylabel='$R_{test}$', filter_window=10, display_raw=True,  loc=(0, 1))
-    logger.add_lineplot('train_reward', xlabel='', ylabel='$R_{train}$', filter_window=10, display_raw=True,   loc=(1, 1))
+    logger.add_lineplot('train_reward', xlabel='', ylabel='$R_{train}$', filter_window=50, display_raw=True,   loc=(1, 1))
     logger.add_lineplot('loss', xlabel='iter', ylabel='$Loss$', filter_window=10, display_raw=True, loc=(2, 1))
     logger.add_table('Params', config)
     logger.add_status()
@@ -205,11 +205,11 @@ def main():
         # Initialize the environment and state ----------------
         env.reset()
         if iter / ITERATIONS < perc_random_start:
-            prog = iter / (perc_random_start * ITERATIONS)
-            # env.state = random_start_state(mdp)
-            state = get_random_start_state_fn(mdp)
-            state = add_rand_pot_state(mdp,state)
-            env.state = add_rand_object(state, prog)
+            # prog = iter / (perc_random_start * ITERATIONS)
+            env.state = random_start_state(mdp)
+            # state = get_random_start_state_fn(mdp)
+            # state = add_rand_pot_state(mdp,state)
+            # env.state = add_rand_object(state, prog)
         # Simulate Episode ----------------
         cum_reward = 0
         shaped_reward = np.zeros(2)
@@ -254,16 +254,16 @@ def main():
             if done:  break
             obs = next_obs
 
-
+        test_net.scheduler.step()
         train_rewards.append(cum_reward+shaped_reward)
         print(f"Iteration {iter} "
-              f"| train reward: {round(cum_reward,3)} "
-              f"| shaped reward: {np.round(shaped_reward,3)} "
+              f"| train reward: {round(cum_reward, 3)} "
+              f"| shaped reward: {np.round(shaped_reward, 3)} "
               f"| memory len {test_net.memory_len} "
-              f"| reward shaping scale {round(r_shape_scale,3)} "
-              f"| Explore Prob {exploration_proba} "
+              f"| reward shaping scale {round(r_shape_scale, 3)} "
+              f"| Explore Prob {round(exploration_proba, 3)} "
+              f"| LR={round(test_net.optimizer.param_groups[0]['lr'], 4)}"
               )
-
         logger.end_iteration()
         ##############################################
         # Test policy ################################

@@ -482,6 +482,8 @@ class SelfPlay_QRE_OSA(object):
         self.clip_grad_val = 50
 
         self.size_hidden_layers = config['size_hidden_layers']
+        self.lr_warmup_scale = config['lr_warmup_scale']
+        self.lr_warmup_iter = config['lr_warmup_iter']
         self.learning_rate = config['lr']
         self.device = config['device']
         self.gamma = config['gamma']
@@ -500,7 +502,12 @@ class SelfPlay_QRE_OSA(object):
         self.model = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
         self.target = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
         self.target.load_state_dict(self.model.state_dict())
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate, amsgrad=True)
+
+        lr_factor = self.lr_warmup_scale
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=lr_factor * self.learning_rate, amsgrad=True)
+        # self.optimizer = optim.SGD(self.model.parameters(), lr=lr_factor*self.learning_rate)
+        self.scheduler = lr_scheduler.LinearLR(self.optimizer, start_factor=1, end_factor=1 / lr_factor, total_iters=self.lr_warmup_iter)
+        # self.scheduler = lr_scheduler.ConstantLR(self.optimizer, factor=100, end_factor=1, total_iters=100)
 
     ###################################################
     ## Memory #########################################
@@ -896,6 +903,8 @@ class SelfPlay_QRE_OSA_CPT(object):
         self.clip_grad_val = 50
         self.clamp_loss = None #[-20,20]
         self.size_hidden_layers = config['size_hidden_layers']
+        self.lr_warmup_scale = config['lr_warmup_scale']
+        self.lr_warmup_iter = config['lr_warmup_iter']
         self.learning_rate = config['lr']
         self.device = config['device']
         self.gamma = config['gamma']
@@ -916,11 +925,12 @@ class SelfPlay_QRE_OSA_CPT(object):
         self.model = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
         self.target = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
         self.target.load_state_dict(self.model.state_dict())
-        # self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate, amsgrad=True)
 
-        lr_factor =100
-        self.optimizer = optim.SGD(self.model.parameters(), lr=lr_factor*self.learning_rate)
-        self.scheduler = lr_scheduler.LinearLR(self.optimizer, start_factor=1, end_factor=1/lr_factor, total_iters=200)
+
+        lr_factor = self.lr_warmup_scale
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=lr_factor * self.learning_rate, amsgrad=True)
+        # self.optimizer = optim.SGD(self.model.parameters(), lr=lr_factor*self.learning_rate)
+        self.scheduler = lr_scheduler.LinearLR(self.optimizer, start_factor=1, end_factor=1/lr_factor, total_iters=self.lr_warmup_iter)
         # self.scheduler = lr_scheduler.ConstantLR(self.optimizer, factor=100, end_factor=1, total_iters=100)
 
     ###################################################
@@ -1154,7 +1164,8 @@ class SelfPlay_QRE_OSA_CPT(object):
             # expected_q_value[i] =  self.CPT.expectation_PT(td_targets.flatten(), all_p_next_states[mask,:].flatten())
             # _expected_q_value[i] =  np.sum(td_targets* all_p_next_states[mask,:])
         # assert np.all(np.abs(expected_q_value - _expected_q_value)<0.01), 'CPT expectation is not equal to numpy sum'
-        expected_q_value = torch.FloatTensor(expected_q_value).to(self.device)
+        # expected_q_value = torch.FloatTensor(expected_q_value).to(self.device)
+        expected_q_value = torch.tensor(expected_q_value,dtype=torch.float32,device=self.device)
 
         # expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)
         # expected_q_value = reward + (self.gamma) * expected_next_q_values * (1 - done)

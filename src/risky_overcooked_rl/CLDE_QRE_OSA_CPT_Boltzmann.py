@@ -22,10 +22,12 @@ Try different loss functions
 """
 
 config = {
-        'ALGORITHM': 'CLDE_QRE-DDQN-OSA-CPT',
+        'ALGORITHM': 'Boltzmann_QRE-DDQN-OSA-CPT',
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
+        'note': 'added linear rshape sched + new shaped rewards',
 
-        # Env Params ----------------
+
+    # Env Params ----------------
         # 'LAYOUT': "risky_coordination_ring", 'HORIZON': 200, 'ITERATIONS': 12_000,
         'LAYOUT': "coordination_ring_CLDE", 'HORIZON': 200, 'ITERATIONS': 12_000,
         # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 12_000,
@@ -35,7 +37,7 @@ config = {
 
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
-        "perc_random_start": 0.25,          # percentage of ITERATIONS with random start states
+        "perc_random_start": 0.5,          # percentage of ITERATIONS with random start states
         # "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
         "equalib_sol": "QRE",               # equilibrium solution for testing
         'cpt_params': {'b': 0.0, 'lam': 1.0,
@@ -60,7 +62,8 @@ config = {
 
         'shaped_reward_scale': 5,
         'lr_warmup_scale': 10,
-        'lr_warmup_iter': 1000
+        'lr_warmup_iter': 1000,
+        'rationality_warmup': [0.0,5,5000]
 
         # Evaluation Param ----------------
         # 'test_rationality': 'max',  # rationality for exploitation during testing
@@ -109,7 +112,7 @@ def random_start_state(mdp,rnd_obj_prob_thresh=0.25):
                 player.set_object(
                     SoupState.get_soup(
                         player.position,
-                        num_onions=n,
+                        num_onions=3,
                         num_tomatoes=0,
                         finished=True,
                     )
@@ -160,12 +163,11 @@ def add_rand_object(state,prog,rnd_obj_prob_thresh=0.8):
             obj = np.random.choice(
                 [ "onion","dish", "soup"], p=obj_prob
             )
-            n = int(np.random.randint(low=1, high=4))
             if obj == "soup":
                 player.set_object(
                     SoupState.get_soup(
                         player.position,
-                        num_onions=n,
+                        num_onions=3,
                         num_tomatoes=0,
                         finished=True,
                     )
@@ -173,7 +175,6 @@ def add_rand_object(state,prog,rnd_obj_prob_thresh=0.8):
             else:
                 player.set_object(ObjectState(obj, player.position))
     return state
-
 
 def main():
     for key,val in config.items():
@@ -189,6 +190,9 @@ def main():
     n_mini_batch = config['n_mini_batch']
     N_tests = 1 #if test_rationality=='max' else 3   # number of tests (only need 1 with max rationality)
     test_interval = 10                              # test every n iterations
+    rationality = config['rationality_warmup']
+    rationality_warmup = np.linspace(rationality[0],rationality[1],rationality[2])
+    r_shape_scale_schedule = np.linspace(init_reward_shaping_scale,0,ITERATIONS)
 
 
     # Generate MDP and environment----------------
@@ -219,16 +223,14 @@ def main():
         logger.start_iteration()
         # Step Decaying Params ----------------
         logger.spin()
-        DECAY = int((-1. * ITERATIONS)/np.log(0.01)) # decay to 1% error of ending value
+        # DECAY = int((-1. * ITERATIONS)/np.log(0.01)) # decay to 1% error of ending value
         # exploration_proba = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / DECAY)
         exploration_proba = 0
-        r_shape_scale = (init_reward_shaping_scale) * math.exp(-1. * steps_done / DECAY)
+        # r_shape_scale = (init_reward_shaping_scale) * math.exp(-1. * steps_done / DECAY)
+        r_shape_scale = r_shape_scale_schedule[steps_done]
+        test_net.rationality= rationality_warmup[steps_done] if steps_done<len(rationality_warmup) else rationality_warmup[-1]
 
-        rationality = [0.1,5,10000]
-        DECAY = int((-1. * rationality[2]) / np.log(0.01))  # decay to 1% error of ending value
-        if steps_done<rationality[2]:
-            test_net.rationality = rationality[1] - (rationality[1]-rationality[0])*math.exp(-1. * steps_done / DECAY)
-        else: test_net = rationality[1]
+
         steps_done += 1
 
         # Initialize the environment and state ----------------
@@ -236,6 +238,7 @@ def main():
         if iter / ITERATIONS < perc_random_start:
             # prog = iter / (perc_random_start * ITERATIONS)
             env.state = random_start_state(mdp)
+            # env.state.
             # state = get_random_start_state_fn(mdp)
             # state = add_rand_pot_state(mdp,state)
             # env.state = add_rand_object(state, prog)

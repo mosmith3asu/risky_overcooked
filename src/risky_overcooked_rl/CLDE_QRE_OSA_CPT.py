@@ -109,7 +109,7 @@ def random_start_state(mdp,rnd_obj_prob_thresh=0.25):
                 player.set_object(
                     SoupState.get_soup(
                         player.position,
-                        num_onions=n,
+                        num_onions=3,
                         num_tomatoes=0,
                         finished=True,
                     )
@@ -160,12 +160,11 @@ def add_rand_object(state,prog,rnd_obj_prob_thresh=0.8):
             obj = np.random.choice(
                 [ "onion","dish", "soup"], p=obj_prob
             )
-            n = int(np.random.randint(low=1, high=4))
             if obj == "soup":
                 player.set_object(
                     SoupState.get_soup(
                         player.position,
-                        num_onions=n,
+                        num_onions=3,
                         num_tomatoes=0,
                         finished=True,
                     )
@@ -173,7 +172,6 @@ def add_rand_object(state,prog,rnd_obj_prob_thresh=0.8):
             else:
                 player.set_object(ObjectState(obj, player.position))
     return state
-
 
 def main():
     for key,val in config.items():

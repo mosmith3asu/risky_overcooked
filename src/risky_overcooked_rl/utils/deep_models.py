@@ -914,6 +914,7 @@ class SelfPlay_QRE_OSA_CPT(object):
         self.joint_action_dim = n_actions
         self.player_action_dim = int(np.sqrt(n_actions))
         self.CPT = CumulativeProspectTheory(**config['cpt_params'])
+        self.rationality = 5
 
 
         # Define Memory
@@ -998,10 +999,8 @@ class SelfPlay_QRE_OSA_CPT(object):
             # this_game = np.zeros([self.num_agents,self.player_action_dim,self.player_action_dim])
 
             if i == 1: obs = self.invert_obs(obs)
-            if use_target:
-                q_values = self.target(obs).detach().cpu().numpy()
-            else:
-                q_values = self.model(obs).detach().cpu().numpy()
+            if use_target: q_values = self.target(obs).detach().cpu().numpy()
+            else: q_values = self.model(obs).detach().cpu().numpy()
 
             if i == 1:
                 all_games[:, i, :, :] = np.moveaxis(
@@ -1014,14 +1013,14 @@ class SelfPlay_QRE_OSA_CPT(object):
         # q_tables[]
         return all_games
 
-    def level_k_qunatal(self, nf_game, k=8, rationality=5, belief_trick=True):
+    def level_k_qunatal(self, nf_game, k=8, belief_trick=True):
         """Implementes a k-bounded QRE computation
         https://en.wikipedia.org/wiki/Quantal_response_equilibrium
         as reationality -> infty, QRE -> Nash Equilibrium
         belief_trick: if True, use player 1's distribution to avoid recalculation of full QRE for player 2 (i.e k_2 = k_1+1)
         """
         na = np.shape(nf_game)[1]
-
+        rationality = self.rationality
         def invert_game(g):
             "inverts perspective of the game"
             return np.array([g[1, :].T, g[0, :].T])
@@ -1166,6 +1165,7 @@ class SelfPlay_QRE_OSA_CPT(object):
         # assert np.all(np.abs(expected_q_value - _expected_q_value)<0.01), 'CPT expectation is not equal to numpy sum'
         # expected_q_value = torch.FloatTensor(expected_q_value).to(self.device)
         expected_q_value = torch.tensor(expected_q_value,dtype=torch.float32,device=self.device)
+        # expected_q_value = torch.from_numpy(expected_q_value, dtype=torch.float32, device=self.device)
 
         # expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)
         # expected_q_value = reward + (self.gamma) * expected_next_q_values * (1 - done)
@@ -1186,11 +1186,13 @@ class SelfPlay_QRE_OSA_CPT(object):
 
 
         # Perform Soft update on model ----------------
-        self.target = soft_update(self.model, self.target, self.tau)
+        # self.target = soft_update(self.model, self.target, self.tau)
         # if self.scheduler is not None:
         #     self.scheduler.step()
         #     print(self.optimizer.param_groups[0]["lr"])
         return loss.item()
+    def update_target(self):
+        self.target = soft_update(self.model, self.target, self.tau)
 
 def soft_update(policy_net, target_net, TAU):
     target_net_state_dict = target_net.state_dict()

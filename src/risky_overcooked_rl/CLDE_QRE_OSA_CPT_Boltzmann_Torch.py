@@ -1,7 +1,7 @@
 import numpy as np
 from risky_overcooked_py.agents.agent import Agent, AgentPair,StayAgent, RandomAgent, GreedyHumanModel
 from risky_overcooked_rl.utils.custom_deep_agents import SoloDeepQAgent,SelfPlay_DeepAgentPair
-from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature,device,SelfPlay_QRE_OSA_CPT
+from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature,device,SelfPlay_QRE_OSA_CPT_ALLTORCH
 from risky_overcooked_rl.utils.rl_logger import RLLogger,TrajectoryVisualizer
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
@@ -200,7 +200,7 @@ def main():
 
     # Initialize policy and target networks ----------------
     obs_shape = mdp.get_lossless_encoding_vector_shape(); config['obs_shape'] = obs_shape
-    test_net = SelfPlay_QRE_OSA_CPT(obs_shape, config['n_actions'],config)
+    test_net = SelfPlay_QRE_OSA_CPT_ALLTORCH(obs_shape, config['n_actions'],config)
 
     # Initiate Logger ----------------
     traj_visualizer = TrajectoryVisualizer(env)

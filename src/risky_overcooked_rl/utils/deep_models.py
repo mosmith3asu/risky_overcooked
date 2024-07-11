@@ -993,82 +993,69 @@ class SelfPlay_QRE_OSA_CPT(object):
     def get_normal_form_game(self, obs, use_target=False):
         """ Batch compute the NF games for each observation"""
         batch_size = obs.shape[0]
-        all_games = np.zeros([batch_size, self.num_agents, self.player_action_dim, self.player_action_dim])
-        # q_values_flat = np.zeros([batch_size,self.num_agents,self.joint_action_dim])
+        all_games = torch.zeros([batch_size, self.num_agents, self.player_action_dim, self.player_action_dim],
+                                device=self.device)
         for i in range(self.num_agents):
-            # this_game = np.zeros([self.num_agents,self.player_action_dim,self.player_action_dim])
-
             if i == 1: obs = self.invert_obs(obs)
-            if use_target: q_values = self.target(obs).detach().cpu().numpy()
-            else: q_values = self.model(obs).detach().cpu().numpy()
-
-            if i == 1:
-                all_games[:, i, :, :] = np.moveaxis(
-                    q_values.reshape(batch_size, self.player_action_dim, self.player_action_dim), -1, -2)
-            else:
-                all_games[:, i, :, :] = q_values.reshape(batch_size, self.player_action_dim, self.player_action_dim)
-
-            # q_values_flat[:,i,:] = q_values
-        # all_games = q_values_flat.reshape(batch_size,self.num_agents,  self.player_action_dim,  self.player_action_dim)
-        # q_tables[]
+            if use_target: q_values = self.target(obs).detach()
+            else: q_values = self.model(obs).detach()
+            q_values = q_values.reshape(batch_size, self.player_action_dim, self.player_action_dim)
+            all_games[:, i, :, :] = q_values if i == 0 else torch.transpose(q_values, -1, -2)
         return all_games
 
-    def level_k_qunatal(self, nf_game, k=8, belief_trick=True):
+    def level_k_qunatal(self,nf_games, k=8):
         """Implementes a k-bounded QRE computation
         https://en.wikipedia.org/wiki/Quantal_response_equilibrium
         as reationality -> infty, QRE -> Nash Equilibrium
-        belief_trick: if True, use player 1's distribution to avoid recalculation of full QRE for player 2 (i.e k_2 = k_1+1)
         """
-        na = np.shape(nf_game)[1]
         rationality = self.rationality
+        num_players = nf_games.shape[1]
+        batch_sz = nf_games.shape[0]
+        player_action_dim = nf_games.shape[2]
+        uniform_dist = (torch.ones(batch_sz, player_action_dim,device=self.device)) / player_action_dim
+        ego, partner = 0, 1
+
         def invert_game(g):
             "inverts perspective of the game"
-            return np.array([g[1, :].T, g[0, :].T])
+            return torch.cat([torch.transpose(g[:, partner, :, :], -1, -2).unsqueeze(1),
+                              torch.transpose(g[:, ego, :, :], -1, -2).unsqueeze(1)], dim=1)
 
         def softmax(x):
-            ex = np.exp(x - np.max(x))
-            return ex / np.sum(ex)
+            ex = torch.exp(x - torch.max(x, dim=1).values.reshape(-1, 1).repeat(1, player_action_dim))
+            return ex / torch.sum(ex, dim=1).reshape(-1, 1).repeat(1, player_action_dim)
 
         def step_QRE(game, k):
-            if k == 0: partner_dist = (np.ones(na)).reshape(1, na) / na # uniform dist
-            else:
-                inv_game = np.array([game[1, :].T, game[0, :].T])
-                partner_dist = step_QRE(inv_game, k - 1)
-            weighted_game = game[0] * partner_dist
-            Exp_qAi = np.sum(weighted_game, axis=1)
+            if k == 0:  partner_dist = uniform_dist
+            else:  partner_dist = step_QRE(invert_game(game), k - 1)
+            Exp_qAi = torch.bmm(game[:, ego, :, :], partner_dist.unsqueeze(-1)).squeeze(-1)
             return softmax(rationality * Exp_qAi)
 
-        dist1 = step_QRE(nf_game, k)
-        if belief_trick:
-            weighted_game = invert_game(nf_game)[0] * dist1
-            Exp_qAi = np.sum(weighted_game, axis=1)
-            dist2 = softmax(rationality * Exp_qAi)
-        else: # recalc player 2's QRE
-            dist2 = step_QRE(invert_game(nf_game), k)
-
-        dist = [list(dist1), list(dist2)]
-        dist_mat = dist1.reshape(self.player_action_dim, 1) @ dist2.reshape(1, self.player_action_dim)
-        value = [np.sum(nf_game[0, :] * dist_mat), np.sum(nf_game[1, :] * dist_mat)]
+        dist1 = step_QRE(nf_games, k)
+        dist2 = step_QRE(invert_game(nf_games), k)
+        dist = torch.cat([dist1.unsqueeze(1), dist2.unsqueeze(1)], dim=1)
+        joint_dist_mat = torch.bmm(dist1.unsqueeze(-1), torch.transpose(dist2.unsqueeze(-1), -1, -2))
+        value = torch.cat([torch.sum(nf_games[:, ego, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1),
+                 torch.sum(nf_games[:, partner, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1)],dim=1)
         return dist, value
+
 
 
     def solve_nash_eq(self, nf_game, stop_on_first_eq=True):
         """ Solve a single game using Lemke Housen"""
-
         dist, value = self.level_k_qunatal(nf_game)
         return dist, value
 
     def compute_nash(self, NF_Games, update=False):
         NF_Games = NF_Games.reshape(-1, self.num_agents, self.player_action_dim, self.player_action_dim)
         all_joint_actions = []
-        all_dists = []
-        all_ne_values = []
+
 
         # Compute nash equilibrium for each game
-        for nf_game in NF_Games:
-            dist, value = self.solve_nash_eq(nf_game)
-            all_dists.append(dist)
-            all_ne_values.append(value)
+        all_dists,all_ne_values = self.solve_nash_eq(NF_Games)
+        # for nf_game in NF_Games:
+        #     dist, value = self.solve_nash_eq(nf_game)
+        #     all_dists.append(dist)
+        #     all_ne_values.append(value)
 
         if update:
             return all_dists, all_ne_values
@@ -1076,20 +1063,12 @@ class SelfPlay_QRE_OSA_CPT(object):
             # Sample actions from Nash strategies
             for ne in all_dists:
                 # actions = []
-                a1 = np.random.choice(np.arange(self.player_action_dim), p=ne[0])
-                a2 = np.random.choice(np.arange(self.player_action_dim), p=ne[1])
+                # a1 = np.random.choice(np.arange(self.player_action_dim), p=ne[0])
+                # a2 = np.random.choice(np.arange(self.player_action_dim), p=ne[1])
+                a1, a2 = torch.multinomial(all_dists[0, :], 1).detach().cpu().numpy().flatten()
                 action_idxs = (a1, a2)
                 joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
                 all_joint_actions.append(joint_action_idx)
-                # for dist in ne:  # iterate over agents
-                #     try:
-                #         sample_hist = np.random.multinomial(1, dist)  # return one-hot vectors as sample from multinomial
-                #     except:
-                #         print('Not a valid distribution from Nash equilibrium solution: ', dist)
-                #     a = np.where(sample_hist>0)
-                #     actions.append(a)
-                # all_actions.append(np.array(actions).reshape(-1))
-
             return np.array(all_joint_actions), all_dists, all_ne_values
 
     def choose_joint_action(self, obs, epsilon=0.0, debug=False):
@@ -1146,7 +1125,11 @@ class SelfPlay_QRE_OSA_CPT(object):
             prospect_idxs += [i for _ in range(n_outcomes)]
         NF_games = self.get_normal_form_game(torch.cat(all_next_states), use_target=True)
         _, all_next_q_value = self.compute_nash(NF_games, update=True)
-        all_next_q_value = np.array(all_next_q_value)[:, 0].reshape(-1, 1)
+        all_next_q_value = all_next_q_value[:,0].reshape(-1, 1)
+        # all_p_next_states = torch.tensor(all_p_next_states, dtype=torch.float32, device=self.device).reshape(-1, 1)
+
+        all_next_q_value = all_next_q_value.detach().cpu().numpy()
+        # all_next_q_value = np.array(all_next_q_value)[:, 0].reshape(-1, 1)
         all_p_next_states = np.array(all_p_next_states).reshape(-1, 1)
         prospect_idxs = np.array(prospect_idxs)
 
@@ -1155,20 +1138,17 @@ class SelfPlay_QRE_OSA_CPT(object):
         _done = done.detach().cpu().numpy()
         _rewards = reward.detach().cpu().numpy()
         expected_q_value = np.zeros([BATCH_SIZE, 1])
-        # _expected_q_value = np.zeros([BATCH_SIZE, 1])
+        _expected_q_value = np.zeros([BATCH_SIZE, 1])
         for i in range(BATCH_SIZE):
             mask = np.where(prospect_idxs==i)[0]
             td_targets =  _rewards[i,:] + (self.gamma)*all_next_q_value[mask,:]*(1 - _done[i,:])
             expected_q_value[i] =  self.CPT.expectation(td_targets.flatten(), all_p_next_states[mask,:].flatten())
-            # expected_q_value[i] =  self.CPT.expectation_PT(td_targets.flatten(), all_p_next_states[mask,:].flatten())
-            # _expected_q_value[i] =  np.sum(td_targets* all_p_next_states[mask,:])
-        # assert np.all(np.abs(expected_q_value - _expected_q_value)<0.01), 'CPT expectation is not equal to numpy sum'
-        # expected_q_value = torch.FloatTensor(expected_q_value).to(self.device)
         expected_q_value = torch.tensor(expected_q_value,dtype=torch.float32,device=self.device)
-        # expected_q_value = torch.from_numpy(expected_q_value, dtype=torch.float32, device=self.device)
-
-        # expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)
-        # expected_q_value = reward + (self.gamma) * expected_next_q_values * (1 - done)
+        # expected_q_value = torch.zeros([BATCH_SIZE, 1], dtype = torch.float32, device=self.device)
+        # for i in range(BATCH_SIZE):
+        #     mask = np.where(prospect_idxs==i)[0]
+        #     td_targets =  reward[i,:] + (self.gamma)*all_next_q_value[mask,:]*(1 - done[i,:])
+        #     expected_q_value[i] =  self.CPT.expectation(td_targets.flatten(), all_p_next_states[mask,:].flatten())
 
 
         # Optimize ----------------
@@ -1193,6 +1173,7 @@ class SelfPlay_QRE_OSA_CPT(object):
         return loss.item()
     def update_target(self):
         self.target = soft_update(self.model, self.target, self.tau)
+
 
 def soft_update(policy_net, target_net, TAU):
     target_net_state_dict = target_net.state_dict()
@@ -1412,3 +1393,304 @@ def optimize_model_prospects(agent_pair,optimizer,transitions,GAMMA,  player=0):
     torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
     optimizer.step()
 
+
+
+# DEPRECATED #################
+# Uses mainly numpy which is inefficent with transfuring between devices
+# class SelfPlay_QRE_OSA_CPT(object):
+#     def __init__(self, obs_shape, n_actions, config, **kwargs):
+#
+#         self.clip_grad = False
+#         self.clip_grad_val = 50
+#         self.clamp_loss = None #[-20,20]
+#         self.size_hidden_layers = config['size_hidden_layers']
+#         self.lr_warmup_scale = config['lr_warmup_scale']
+#         self.lr_warmup_iter = config['lr_warmup_iter']
+#         self.learning_rate = config['lr']
+#         self.device = config['device']
+#         self.gamma = config['gamma']
+#         self.tau = config['tau']
+#         self.num_agents = 2
+#         self.joint_action_space = list(itertools.product(Action.ALL_ACTIONS, repeat=2))
+#         self.joint_action_dim = n_actions
+#         self.player_action_dim = int(np.sqrt(n_actions))
+#         self.CPT = CumulativeProspectTheory(**config['cpt_params'])
+#         self.rationality = 5
+#
+#
+#         # Define Memory
+#         self._transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_prospects', 'done'))
+#         self._memory = deque([], maxlen=config['replay_memory_size'])
+#         self._memory_batch_size = config['minibatch_size']
+#
+#         # Define Model
+#         self.model = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
+#         self.target = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
+#         self.target.load_state_dict(self.model.state_dict())
+#
+#
+#         lr_factor = self.lr_warmup_scale
+#         self.optimizer = optim.AdamW(self.model.parameters(), lr=lr_factor * self.learning_rate, amsgrad=True)
+#         # self.optimizer = optim.SGD(self.model.parameters(), lr=lr_factor*self.learning_rate)
+#         self.scheduler = lr_scheduler.LinearLR(self.optimizer, start_factor=1, end_factor=1/lr_factor, total_iters=self.lr_warmup_iter)
+#         # self.scheduler = lr_scheduler.ConstantLR(self.optimizer, factor=100, end_factor=1, total_iters=100)
+#
+#     ###################################################
+#     ## Memory #########################################
+#     ###################################################
+#     def memory_double_push(self, state, action, rewards, next_prospects, done):
+#         """ Push both agent's experience into memory from ego perspective"""
+#         if not isinstance(action, torch.Tensor): action = torch.tensor(action, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
+#         if not isinstance(done, torch.Tensor): done = torch.tensor(done, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
+#         rewards = rewards.flatten()
+#
+#         # Append Agent 1 experiences
+#         reward = torch.tensor([rewards[0]], dtype=torch.float32, device=self.device).reshape(1, 1).to(self.device)
+#
+#         # assert len(reward.shape)==2,f'reward shape should be 2D:{reward.shape}'
+#         self._memory.append(self._transition(state, action, reward, next_prospects, done))
+#
+#         # # Append Agent 2 experience
+#         s_prime = self.invert_obs(state)
+#         a_prime = self.invert_joint_action(action).to(self.device)
+#         r_prime = torch.tensor([rewards[1]], dtype=torch.float32, device=self.device).reshape(1, 1).to(self.device)
+#         np_prime = self.invert_prospect(next_prospects)
+#         # assert len(r_prime.shape) == 2, f'reward shape should be 2D:{r_prime.shape}'
+#         self._memory.append(self._transition(s_prime, a_prime, r_prime, np_prime, done))
+#
+#     def memory_sample(self):
+#         return random.sample(self._memory, self._memory_batch_size)
+#
+#     @property
+#     def memory_len(self):
+#         return len(self._memory)
+#
+#     ###################################################
+#     # Self-Play Utils ######################################
+#     ###################################################
+#
+#     def invert_prospect(self, prospects):
+#         _prospects = copy.deepcopy(prospects)
+#         for i,prospect in enumerate(_prospects):
+#             _prospects[i][1] = self.invert_obs(prospect[1])
+#         return _prospects
+#     def invert_obs(self, obs_batch):
+#         N_PLAYER_FEAT = 9
+#         obs_batch = torch.cat([obs_batch[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+#                                obs_batch[:, :N_PLAYER_FEAT],
+#                                obs_batch[:, 2 * N_PLAYER_FEAT:]], dim=1)
+#         return obs_batch
+#
+#     def invert_joint_action(self, action_batch):
+#         BATCH_SIZE = action_batch.shape[0]
+#         action_batch = torch.tensor(
+#             [Action.reverse_joint_action_index(action_batch[i]) for i in range(BATCH_SIZE)]).unsqueeze(1)
+#         return action_batch
+#
+#     ###################################################
+#     # Nash Utils ######################################
+#     ###################################################
+#
+#     def get_normal_form_game(self, obs, use_target=False):
+#         """ Batch compute the NF games for each observation"""
+#         batch_size = obs.shape[0]
+#         all_games = np.zeros([batch_size, self.num_agents, self.player_action_dim, self.player_action_dim])
+#         # q_values_flat = np.zeros([batch_size,self.num_agents,self.joint_action_dim])
+#         for i in range(self.num_agents):
+#             # this_game = np.zeros([self.num_agents,self.player_action_dim,self.player_action_dim])
+#
+#             if i == 1: obs = self.invert_obs(obs)
+#             if use_target: q_values = self.target(obs).detach().cpu().numpy()
+#             else: q_values = self.model(obs).detach().cpu().numpy()
+#
+#             if i == 1:
+#                 all_games[:, i, :, :] = np.moveaxis(
+#                     q_values.reshape(batch_size, self.player_action_dim, self.player_action_dim), -1, -2)
+#             else:
+#                 all_games[:, i, :, :] = q_values.reshape(batch_size, self.player_action_dim, self.player_action_dim)
+#
+#             # q_values_flat[:,i,:] = q_values
+#         # all_games = q_values_flat.reshape(batch_size,self.num_agents,  self.player_action_dim,  self.player_action_dim)
+#         # q_tables[]
+#         return all_games
+#
+#     def level_k_qunatal(self, nf_game, k=8, belief_trick=True):
+#         """Implementes a k-bounded QRE computation
+#         https://en.wikipedia.org/wiki/Quantal_response_equilibrium
+#         as reationality -> infty, QRE -> Nash Equilibrium
+#         belief_trick: if True, use player 1's distribution to avoid recalculation of full QRE for player 2 (i.e k_2 = k_1+1)
+#         """
+#         na = np.shape(nf_game)[1]
+#         rationality = self.rationality
+#         def invert_game(g):
+#             "inverts perspective of the game"
+#             return np.array([g[1, :].T, g[0, :].T])
+#
+#         def softmax(x):
+#             ex = np.exp(x - np.max(x))
+#             return ex / np.sum(ex)
+#
+#         def step_QRE(game, k):
+#             if k == 0: partner_dist = (np.ones(na)).reshape(1, na) / na # uniform dist
+#             else:
+#                 inv_game = np.array([game[1, :].T, game[0, :].T])
+#                 partner_dist = step_QRE(inv_game, k - 1)
+#             weighted_game = game[0] * partner_dist
+#             Exp_qAi = np.sum(weighted_game, axis=1)
+#             return softmax(rationality * Exp_qAi)
+#
+#         dist1 = step_QRE(nf_game, k)
+#         if belief_trick:
+#             weighted_game = invert_game(nf_game)[0] * dist1
+#             Exp_qAi = np.sum(weighted_game, axis=1)
+#             dist2 = softmax(rationality * Exp_qAi)
+#         else: # recalc player 2's QRE
+#             dist2 = step_QRE(invert_game(nf_game), k)
+#
+#         dist = [list(dist1), list(dist2)]
+#         dist_mat = dist1.reshape(self.player_action_dim, 1) @ dist2.reshape(1, self.player_action_dim)
+#         value = [np.sum(nf_game[0, :] * dist_mat), np.sum(nf_game[1, :] * dist_mat)]
+#         return dist, value
+#
+#
+#     def solve_nash_eq(self, nf_game, stop_on_first_eq=True):
+#         """ Solve a single game using Lemke Housen"""
+#
+#         dist, value = self.level_k_qunatal(nf_game)
+#         return dist, value
+#
+#     def compute_nash(self, NF_Games, update=False):
+#         NF_Games = NF_Games.reshape(-1, self.num_agents, self.player_action_dim, self.player_action_dim)
+#         all_joint_actions = []
+#         all_dists = []
+#         all_ne_values = []
+#
+#         # Compute nash equilibrium for each game
+#         for nf_game in NF_Games:
+#             dist, value = self.solve_nash_eq(nf_game)
+#             all_dists.append(dist)
+#             all_ne_values.append(value)
+#
+#         if update:
+#             return all_dists, all_ne_values
+#         else:
+#             # Sample actions from Nash strategies
+#             for ne in all_dists:
+#                 # actions = []
+#                 a1 = np.random.choice(np.arange(self.player_action_dim), p=ne[0])
+#                 a2 = np.random.choice(np.arange(self.player_action_dim), p=ne[1])
+#                 action_idxs = (a1, a2)
+#                 joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
+#                 all_joint_actions.append(joint_action_idx)
+#                 # for dist in ne:  # iterate over agents
+#                 #     try:
+#                 #         sample_hist = np.random.multinomial(1, dist)  # return one-hot vectors as sample from multinomial
+#                 #     except:
+#                 #         print('Not a valid distribution from Nash equilibrium solution: ', dist)
+#                 #     a = np.where(sample_hist>0)
+#                 #     actions.append(a)
+#                 # all_actions.append(np.array(actions).reshape(-1))
+#
+#             return np.array(all_joint_actions), all_dists, all_ne_values
+#
+#     def choose_joint_action(self, obs, epsilon=0.0, debug=False):
+#         sample = random.random()
+#         if sample < epsilon:  # Explore
+#             action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
+#             joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
+#             joint_action = self.joint_action_space[joint_action_idx]
+#         else:  # Exploit
+#             try:
+#                 with torch.no_grad():
+#                     NF_Game = self.get_normal_form_game(obs)
+#                     joint_action_idx, dists, ne_vs = self.compute_nash(NF_Game)
+#                     joint_action_idx = joint_action_idx[0]
+#                     joint_action = self.joint_action_space[joint_action_idx]
+#                     action_probs = dists
+#                     if debug:
+#                         print('debug')
+#             except:
+#                 warnings.warn('Invalid Nash computation. Random action is chosen.')
+#                 action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
+#                 joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
+#                 joint_action = self.joint_action_space[joint_action_idx]
+#         return joint_action, joint_action_idx, action_probs
+#
+#
+#     def update(self):
+#         if self.memory_len < 2*self._memory_batch_size:
+#             return None
+#         self.CPT.recalc_b()
+#
+#         transitions = self.memory_sample()
+#         batch = self._transition(*zip(*transitions))
+#         BATCH_SIZE = len(transitions)
+#         state = torch.cat(batch.state)
+#         # next_state = torch.cat(batch.next_prospects)
+#         action = torch.cat(batch.action)
+#         reward = torch.cat(batch.reward)
+#         done = torch.cat(batch.done)
+#
+#
+#         # Q-Learning with target network
+#         # q_values = self.model(state) # .unsqueeze(0)
+#         q_value = self.model(state).gather(1, action)
+#
+#         # Batch calculate Q(s'|pi) and form mask for later condensation to expectation
+#         prospect_idxs = []
+#         all_next_states = []
+#         all_p_next_states = []
+#         for i, prospect in enumerate(batch.next_prospects):
+#             n_outcomes = len(prospect)
+#             all_next_states +=  [outcome[1] for outcome in prospect]
+#             all_p_next_states += [outcome[2] for outcome in prospect]
+#             prospect_idxs += [i for _ in range(n_outcomes)]
+#         NF_games = self.get_normal_form_game(torch.cat(all_next_states), use_target=True)
+#         _, all_next_q_value = self.compute_nash(NF_games, update=True)
+#         all_next_q_value = np.array(all_next_q_value)[:, 0].reshape(-1, 1)
+#         all_p_next_states = np.array(all_p_next_states).reshape(-1, 1)
+#         prospect_idxs = np.array(prospect_idxs)
+#
+#
+#         # Reduce prospects into expected next q-values
+#         _done = done.detach().cpu().numpy()
+#         _rewards = reward.detach().cpu().numpy()
+#         expected_q_value = np.zeros([BATCH_SIZE, 1])
+#         # _expected_q_value = np.zeros([BATCH_SIZE, 1])
+#         for i in range(BATCH_SIZE):
+#             mask = np.where(prospect_idxs==i)[0]
+#             td_targets =  _rewards[i,:] + (self.gamma)*all_next_q_value[mask,:]*(1 - _done[i,:])
+#             expected_q_value[i] =  self.CPT.expectation(td_targets.flatten(), all_p_next_states[mask,:].flatten())
+#             # expected_q_value[i] =  self.CPT.expectation_PT(td_targets.flatten(), all_p_next_states[mask,:].flatten())
+#             # _expected_q_value[i] =  np.sum(td_targets* all_p_next_states[mask,:])
+#         # assert np.all(np.abs(expected_q_value - _expected_q_value)<0.01), 'CPT expectation is not equal to numpy sum'
+#         # expected_q_value = torch.FloatTensor(expected_q_value).to(self.device)
+#         expected_q_value = torch.tensor(expected_q_value,dtype=torch.float32,device=self.device)
+#         # expected_q_value = torch.from_numpy(expected_q_value, dtype=torch.float32, device=self.device)
+#
+#         # expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)
+#         # expected_q_value = reward + (self.gamma) * expected_next_q_values * (1 - done)
+#
+#
+#         # Optimize ----------------
+#         loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
+#         if self.clamp_loss is not None:
+#             loss = loss.clamp(self.clamp_loss[0],self.clamp_loss[1])
+#         loss = loss.mean()
+#         self.optimizer.zero_grad()
+#         loss.backward()
+#         # In-place gradient clipping
+#         if self.clip_grad:
+#             torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad_val)
+#         self.optimizer.step()
+#
+#
+#
+#         # Perform Soft update on model ----------------
+#         # self.target = soft_update(self.model, self.target, self.tau)
+#         # if self.scheduler is not None:
+#         #     self.scheduler.step()
+#         #     print(self.optimizer.param_groups[0]["lr"])
+#         return loss.item()
+#     def update_target(self):
+#         self.target = soft_update(self.model, self.target, self.tau)

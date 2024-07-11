@@ -58,7 +58,7 @@ config = {
         "minibatch_size": 128,          # size of mini-batches
         "replay_memory_size": 20_000,   # size of replay memory
 
-        'shaped_reward_scale': 2,
+        'shaped_reward_scale': 5,
         'lr_warmup_scale': 10,
         'lr_warmup_iter': 100
 

@@ -13,7 +13,7 @@ import math
 from datetime import datetime
 debug = False
 config = {
-        'ALGORITHM': 'CLDE_QRE-DDQN-OSA',
+        'ALGORITHM': 'Boltzmann_QRE-DDQN-OSA',
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
 
         # Env Params ----------------
@@ -26,7 +26,7 @@ config = {
 
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
-        "perc_random_start": 0.25,          # percentage of ITERATIONS with random start states
+        "perc_random_start": 0.5,          # percentage of ITERATIONS with random start states
         # "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
         "equalib_sol": "QRE",               # equilibrium solution for testing
 
@@ -41,10 +41,10 @@ config = {
         "device": device,
         "n_mini_batch": 1,              # number of mini-batches per iteration
         "minibatch_size":128,          # size of mini-batches
-        "replay_memory_size": 20_000,   # size of replay memory
+        "replay_memory_size": 10_000,   # size of replay memory
         'shaped_reward_scale':2,
         'lr_warmup_scale': 10,
-        'lr_warmup_iter': 100
+        'lr_warmup_iter': 1000
 
     }
 

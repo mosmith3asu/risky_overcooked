@@ -47,7 +47,7 @@ config = {
         # Learning Params ----------------
         'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)
         'gamma': 0.95,                      # discount factor
-        'tau': 0.005,                       # soft update weight of target network
+        'tau': 0.01,                       # soft update weight of target network
         "lr": 1e-4,                         # learning rate
         # 'tau': 0.005,                       # soft update weight of target network
         # "lr": 1e-2,                         # learning rate
@@ -58,9 +58,9 @@ config = {
         "minibatch_size": 128,          # size of mini-batches
         "replay_memory_size": 20_000,   # size of replay memory
 
-        'shaped_reward_scale': 2,
+        'shaped_reward_scale': 5,
         'lr_warmup_scale': 10,
-        'lr_warmup_iter': 100
+        'lr_warmup_iter': 1000
 
         # Evaluation Param ----------------
         # 'test_rationality': 'max',  # rationality for exploitation during testing
@@ -224,7 +224,7 @@ def main():
         exploration_proba = 0
         r_shape_scale = (init_reward_shaping_scale) * math.exp(-1. * steps_done / DECAY)
 
-        rationality = [0.5,10,5000]
+        rationality = [0.1,5,10000]
         DECAY = int((-1. * rationality[2]) / np.log(0.01))  # decay to 1% error of ending value
         if steps_done<rationality[2]:
             test_net.rationality = rationality[1] - (rationality[1]-rationality[0])*math.exp(-1. * steps_done / DECAY)

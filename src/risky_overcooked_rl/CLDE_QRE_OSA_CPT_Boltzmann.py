@@ -29,11 +29,12 @@ config = {
 
     # Env Params ----------------
         # 'LAYOUT': "risky_coordination_ring", 'HORIZON': 200, 'ITERATIONS': 12_000,
-        'LAYOUT': "coordination_ring_CLDE", 'HORIZON': 200, 'ITERATIONS': 12_000,
+        # 'LAYOUT': "coordination_ring_CLDE", 'HORIZON': 200, 'ITERATIONS': 12_000,
         # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 12_000,
         # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 12_000,
-        # 'LAYOUT': "super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 12_000,
+        'LAYOUT': "super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 12_000,
         # 'LAYOUT': "risky_super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 12_000,
+        'note': 'added 0.1 epsilon',
 
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
@@ -49,7 +50,7 @@ config = {
         # Learning Params ----------------
         'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)
         'gamma': 0.95,                      # discount factor
-        'tau': 0.01,                       # soft update weight of target network
+        'tau': 0.005,                       # soft update weight of target network
         "lr": 1e-4,                         # learning rate
         # 'tau': 0.005,                       # soft update weight of target network
         # "lr": 1e-2,                         # learning rate
@@ -60,10 +61,10 @@ config = {
         "minibatch_size": 128,          # size of mini-batches
         "replay_memory_size": 20_000,   # size of replay memory
 
-        'shaped_reward_scale': 5,
+        'shaped_reward_scale': 1,
         'lr_warmup_scale': 10,
         'lr_warmup_iter': 1000,
-        'rationality_warmup': [0.0,5,5000]
+        'rationality_warmup': [0.0,2,5000]
 
         # Evaluation Param ----------------
         # 'test_rationality': 'max',  # rationality for exploitation during testing
@@ -224,7 +225,7 @@ def main():
         logger.spin()
         # DECAY = int((-1. * ITERATIONS)/np.log(0.01)) # decay to 1% error of ending value
         # exploration_proba = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / DECAY)
-        exploration_proba = 0
+        exploration_proba = 0.1
         # r_shape_scale = (init_reward_shaping_scale) * math.exp(-1. * steps_done / DECAY)
         r_shape_scale = r_shape_scale_schedule[steps_done]
         test_net.rationality= rationality_warmup[steps_done] if steps_done<len(rationality_warmup) else rationality_warmup[-1]
@@ -310,7 +311,7 @@ def main():
             if debug: print('Test policy')
             test_rewards = []
             test_shaped_rewards = []
-            test_net.rationality = rationality[1]
+            test_net.rationality = 10 # nrationality[1]
             for test in range(N_tests):
                 test_reward, test_shaped_reward, state_history, action_history,aprob_history = test_policy(env,test_net)
                 test_rewards.append(test_reward)

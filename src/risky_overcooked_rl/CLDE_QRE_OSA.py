@@ -20,31 +20,33 @@ config = {
         # 'LAYOUT': "risky_coordination_ring", 'HORIZON': 200, 'ITERATIONS': 15_000,
         # 'LAYOUT': "coordination_ring_CLDE", 'HORIZON': 200, 'ITERATIONS': 15_000,
         # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 20_000,
-        'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 15_000,
-        # 'LAYOUT': "super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
+        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 20_000,
+        'LAYOUT': "super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
         # 'LAYOUT': "risky_super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
 
         "obs_shape": None,                  # computed dynamically based on layout
         "n_actions": 36,                    # number of agent actions
-        "perc_random_start": 0.5,          # percentage of ITERATIONS with random start states
-        # "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
+        "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
         "equalib_sol": "QRE",               # equilibrium solution for testing
 
         # Learning Params ----------------
-        'epsilon_range': [1.0,0.1],         # epsilon-greedy range (start,end)
+        'epsilon_sched': [0.1,0.1,5000],         # epsilon-greedy range (start,end)
+        'rshape_sched': [1,0,5_000],     # rationality level range (start,end)
+        'rationality_sched': [0.0,5,5000],
+        'test_rationality': 10,          # rationality level for testing
         'gamma': 0.95,                      # discount factor
         'tau': 0.005,                       # soft update weight of target network
-        # "lr": 1e-4,                         # learning rate
         "lr": 1e-4,                         # learning rate
         "num_hidden_layers": 3,             # MLP params
         "size_hidden_layers": 256,#32,      # MLP params
         "device": device,
         "n_mini_batch": 1,              # number of mini-batches per iteration
-        "minibatch_size":128,          # size of mini-batches
-        "replay_memory_size": 10_000,   # size of replay memory
-        'shaped_reward_scale':2,
+        "minibatch_size":256,          # size of mini-batches
+        "replay_memory_size": 20_000,   # size of replay memory
+        # 'shaped_reward_scale':2,
         'lr_warmup_scale': 10,
-        'lr_warmup_iter': 1000
+        'lr_warmup_iter': 1000,
+        'clip_grad': 100,
 
     }
 
@@ -161,12 +163,18 @@ def main():
     LAYOUT = config['LAYOUT']
     HORIZON = config['HORIZON']
     ITERATIONS = config['ITERATIONS']
-    EPS_START, EPS_END = config['epsilon_range']
+    EPS_START, EPS_END,EPS_DUR = config['epsilon_sched']
+    RAT_START, RAT_END, RAT_DUR = config['rationality_sched']
+    RSHAPE_START, RSHAPE_END, RSHAPE_DUR = config['rshape_sched']
+    test_rationality = config['test_rationality'],
     perc_random_start = config['perc_random_start']
-    init_reward_shaping_scale = config['shaped_reward_scale']                   # decaying reward shaping weight
+    # init_reward_shaping_scale = config['shaped_reward_scale']                   # decaying reward shaping weight
     N_tests = 1 #if test_rationality=='max' else 3   # number of tests (only need 1 with max rationality)
     test_interval = 10                              # test every n iterations
 
+    rationality_sched = np.hstack([np.linspace(RAT_START, RAT_END, RAT_DUR),RAT_END*np.ones(ITERATIONS-RAT_DUR)])
+    epsilon_sched = np.hstack([np.linspace(EPS_START, EPS_END, EPS_DUR),EPS_END*np.ones(ITERATIONS-EPS_DUR)])
+    rshape_sched = np.hstack([np.linspace(RSHAPE_START, RSHAPE_END, RSHAPE_DUR),RSHAPE_END*np.ones(ITERATIONS-RSHAPE_DUR)])
 
     # Generate MDP and environment----------------
     mdp = OvercookedGridworld.from_layout_name(LAYOUT)
@@ -196,9 +204,13 @@ def main():
         logger.start_iteration()
         # Step Decaying Params ----------------
         logger.spin()
-        DECAY = int((-1. * ITERATIONS)/np.log(0.01)) # decay to 1% error of ending value
-        exploration_proba = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / DECAY)
-        r_shape_scale = (init_reward_shaping_scale) * math.exp(-1. * steps_done / DECAY)
+        # DECAY = int((-1. * ITERATIONS)/np.log(0.01)) # decay to 1% error of ending value
+        # exploration_proba = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / DECAY)
+        exploration_proba = epsilon_sched[iter]
+        test_net.rationality = rationality_sched[iter]
+        r_shape_scale = rshape_sched[iter]
+
+        # r_shape_scale = (init_reward_shaping_scale) * math.exp(-1. * steps_done / DECAY)
         steps_done += 1
 
         # Initialize the environment and state ----------------
@@ -271,7 +283,7 @@ def main():
             if debug: print('Test policy')
             test_rewards = []
             test_shaped_rewards = []
-
+            test_net.rationality = test_rationality
             for test in range(N_tests):
                 test_reward, test_shaped_reward, state_history, action_history,aprob_history = test_policy(env,test_net)
                 test_rewards.append(test_reward)

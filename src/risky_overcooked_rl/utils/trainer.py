@@ -27,7 +27,7 @@ class Trainer:
         EPS_START, EPS_END, EPS_DUR = config['epsilon_sched']
         RAT_START, RAT_END, RAT_DUR = config['rationality_sched']
         RSHAPE_START, RSHAPE_END, RSHAPE_DUR = config['rshape_sched']
-        self.test_rationality = config['test_rationality'],
+        self.test_rationality = config['test_rationality']
         self.rationality_sched = np.hstack( [np.linspace(RAT_START, RAT_END, RAT_DUR), RAT_END * np.ones(self.ITERATIONS - RAT_DUR)])
         self.epsilon_sched = np.hstack([np.linspace(EPS_START, EPS_END, EPS_DUR), EPS_END * np.ones(self.ITERATIONS - EPS_DUR)])
         self.rshape_sched = np.hstack([np.linspace(RSHAPE_START, RSHAPE_END, RSHAPE_DUR), RSHAPE_END * np.ones(self.ITERATIONS - RSHAPE_DUR)])
@@ -92,7 +92,8 @@ class Trainer:
             train_losses.append(mean_loss)
 
             # Testing Step ##########################################
-            time4test = (it % self.test_interval == 0 and it > 2)
+            # time4test = (it % self.test_interval == 0 and it > 2)
+            time4test = (it % self.test_interval == 0)
             if time4test:
                 test_rewards = []
                 test_shaped_rewards = []
@@ -173,8 +174,12 @@ class Trainer:
         aprob_history = []
 
         for t in count():
-            obs = torch.tensor(self.mdp.get_lossless_encoding_vector(self.env.state), dtype=torch.float32, device=device).unsqueeze(0)
+            obs = torch.tensor(self.mdp.get_lossless_encoding_vector(self.env.state), dtype=torch.float32,
+                               device=device).unsqueeze(0)
             joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=self._epsilon)
+
+            # obs = torch.tensor(self.mdp.get_lossless_encoding_vector(self.env.state), dtype=torch.float32, device=device).unsqueeze(0)
+            # joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=self._epsilon)
             next_state, reward, done, info = self.env.step(joint_action)
 
             # Track reward traces

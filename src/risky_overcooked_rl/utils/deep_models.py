@@ -393,20 +393,28 @@ class SelfPlay_NashDQN(object):
             joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
             joint_action = self.joint_action_space[joint_action_idx]
         else:  # Exploit
-            try:
-                with torch.no_grad():
-                    NF_Game = self.get_normal_form_game(obs)
-                    joint_action_idx, dists, ne_vs = self.compute_nash(NF_Game)
-                    # joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
-                    joint_action = self.joint_action_space[joint_action_idx[0]]
-                    action_probs = dists
-                    if debug:
-                        print('debug')
-            except:
-                warnings.warn('Invalid Nash computation. Random action is chosen.')
-                action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
-                joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
-                joint_action = self.joint_action_space[joint_action_idx]
+            with torch.no_grad():
+                NF_Game = self.get_normal_form_game(obs)
+                joint_action_idx, dists, ne_vs = self.compute_nash(NF_Game)
+                # joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
+                joint_action = self.joint_action_space[joint_action_idx[0]]
+                action_probs = dists
+                if debug:
+                    print('debug')
+            # try:
+            #     with torch.no_grad():
+            #         NF_Game = self.get_normal_form_game(obs)
+            #         joint_action_idx, dists, ne_vs = self.compute_nash(NF_Game)
+            #         # joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
+            #         joint_action = self.joint_action_space[joint_action_idx[0]]
+            #         action_probs = dists
+            #         if debug:
+            #             print('debug')
+            # except:
+            #     warnings.warn('Invalid Nash computation. Random action is chosen.')
+            #     action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
+            #     joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
+            #     joint_action = self.joint_action_space[joint_action_idx]
         return joint_action,joint_action_idx,action_probs
 
     def update(self):
@@ -651,20 +659,24 @@ class SelfPlay_QRE_OSA(object):
             joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
             joint_action = self.joint_action_space[joint_action_idx]
         else:  # Exploit
-            try:
-                with torch.no_grad():
-                    NF_Game = self.get_normal_form_game(obs)
-                    joint_action_idx, dists, ne_vs = self.compute_nash(NF_Game)
-                    joint_action_idx = joint_action_idx[0]
-                    joint_action = self.joint_action_space[joint_action_idx]
-                    action_probs = dists
-                    if debug:
-                        print('debug')
-            except:
-                warnings.warn('Invalid Nash computation. Random action is chosen.')
-                action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
-                joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
+            with torch.no_grad():
+                NF_Game = self.get_normal_form_game(obs)
+                joint_action_idx, dists, ne_vs = self.compute_nash(NF_Game)
+                joint_action_idx = joint_action_idx[0]
                 joint_action = self.joint_action_space[joint_action_idx]
+                action_probs = dists
+            # try:
+            #     with torch.no_grad():
+            #         NF_Game = self.get_normal_form_game(obs)
+            #         joint_action_idx, dists, ne_vs = self.compute_nash(NF_Game)
+            #         joint_action_idx = joint_action_idx[0]
+            #         joint_action = self.joint_action_space[joint_action_idx]
+            #         action_probs = dists
+            # except:
+            #     warnings.warn('Invalid Nash computation. Random action is chosen.')
+            #     action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
+            #     joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
+            #     joint_action = self.joint_action_space[joint_action_idx]
         return joint_action, joint_action_idx, action_probs
 
     def update(self):

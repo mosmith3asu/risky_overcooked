@@ -30,7 +30,7 @@ plt.ion()
 
 # if GPU is to be used
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+# device = torch.device("cpu")
 # REPLAY MEMORY ----------------
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
@@ -504,9 +504,10 @@ class SelfPlay_QRE_OSA(object):
         self.clip_grad = config['clip_grad']
         self.num_hidden_layers = config['num_hidden_layers']
         self.size_hidden_layers = config['size_hidden_layers']
-        self.lr_warmup_scale = config['lr_warmup_scale']
-        self.lr_warmup_iter = config['lr_warmup_iter']
-        self.learning_rate = config['lr']
+        # self.lr_warmup_scale = config['lr_warmup_scale']
+        # self.lr_warmup_iter = config['lr_warmup_iter']
+        # self.learning_rate = config['lr']
+        self.learning_rate = config['lr_sched'][1]
         self.device = config['device']
         self.gamma = config['gamma']
         self.tau = config['tau']
@@ -526,11 +527,14 @@ class SelfPlay_QRE_OSA(object):
         self.target = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
         self.target.load_state_dict(self.model.state_dict())
 
-
-        lr_factor = self.lr_warmup_scale
+        lr_warmup_iter = config['lr_sched'][2]
+        lr_factor = config['lr_sched'][0]/config['lr_sched'][1]
+        # lr_factor = self.lr_warmup_scale
         self.optimizer = optim.AdamW(self.model.parameters(), lr=lr_factor * self.learning_rate, amsgrad=True)
-        # self.optimizer = optim.SGD(self.model.parameters(), lr=lr_factor*self.learning_rate)
-        self.scheduler = lr_scheduler.LinearLR(self.optimizer, start_factor=1, end_factor=1 / lr_factor, total_iters=self.lr_warmup_iter)
+        self.scheduler = lr_scheduler.LinearLR(self.optimizer,
+                                               start_factor=1,
+                                               end_factor=1 / lr_factor,
+                                               total_iters=lr_warmup_iter)
         # self.scheduler = lr_scheduler.ConstantLR(self.optimizer, factor=100, end_factor=1, total_iters=100)
 
     ###################################################
@@ -592,8 +596,7 @@ class SelfPlay_QRE_OSA(object):
     def get_normal_form_game(self, obs, use_target=False):
         """ Batch compute the NF games for each observation"""
         batch_size = obs.shape[0]
-        all_games = torch.zeros([batch_size, self.num_agents, self.player_action_dim, self.player_action_dim],
-                                device=self.device)
+        all_games = torch.zeros([batch_size, self.num_agents, self.player_action_dim, self.player_action_dim], device=self.device)
         for i in range(self.num_agents):
             if i == 1: obs = self.invert_obs(obs)
             if use_target: q_values = self.target(obs).detach()

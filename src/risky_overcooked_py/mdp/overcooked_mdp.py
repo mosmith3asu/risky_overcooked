@@ -2546,7 +2546,9 @@ class OvercookedGridworld(object):
                     old_obj = state.players[1].get_object()
                     next_state.players[1].set_object(old_obj)
                 next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
-                if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
+                if as_tensor:
+                    next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
+                    # next_obs = torch.from_numpy(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
                 outcomes.append([joint_action, next_obs, p_next_state])
         assert len(outcomes) > 0,'empty outcome'
         return outcomes

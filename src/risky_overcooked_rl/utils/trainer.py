@@ -13,9 +13,13 @@ debug = False
 
 class Trainer:
     def __init__(self,model_object,config):
+
         # Generate MDP and environment----------------
+        config['AGENT'] = model_object.__name__
         LAYOUT = config['LAYOUT']
         HORIZON = config['HORIZON']
+        self.shared_rew = False
+
         self.ITERATIONS = config['ITERATIONS']
         self.mdp = OvercookedGridworld.from_layout_name(LAYOUT)
         self.env = OvercookedEnv.from_mdp(self.mdp, horizon=HORIZON)
@@ -35,14 +39,15 @@ class Trainer:
         # Initialize policy and target networks ----------------
         obs_shape = self.mdp.get_lossless_encoding_vector_shape()
         config['obs_shape'] = obs_shape
-        self.model = model_object(obs_shape, config['n_actions'], config) #SelfPlay_QRE_OSA(obs_shape, config['n_actions'], config)
+        n_actions = 36
+        self.model = model_object(obs_shape, n_actions, config) #SelfPlay_QRE_OSA(obs_shape, config['n_actions'], config)
 
         # Initiate Logger ----------------
         self.traj_visualizer = TrajectoryVisualizer(self.env)
         self.logger = RLLogger(rows=3, cols=1, num_iterations=self.ITERATIONS)
-        self.logger.add_lineplot('test_reward', xlabel='', ylabel='$R_{test}$', filter_window=10, display_raw=True, loc=(0, 1))
-        self.logger.add_lineplot('train_reward', xlabel='', ylabel='$R_{train}$', filter_window=50, display_raw=True, loc=(1, 1))
-        self.logger.add_lineplot('loss', xlabel='iter', ylabel='$Loss$', filter_window=10, display_raw=True, loc=(2, 1))
+        self.logger.add_lineplot('test_reward', xlabel='', ylabel='$R_{test}$', filter_window=30, display_raw=True, loc=(0, 1))
+        self.logger.add_lineplot('train_reward', xlabel='', ylabel='$R_{train}$', filter_window=30, display_raw=True, loc=(1, 1))
+        self.logger.add_lineplot('loss', xlabel='iter', ylabel='$Loss$', filter_window=30, display_raw=True, loc=(2, 1))
         self.logger.add_table('Params', config)
         self.logger.add_status()
         self.logger.add_button('Preview Game', callback=self.traj_visualizer.preview_qued_trajectory)
@@ -144,8 +149,8 @@ class Trainer:
             next_state, reward, done, info = self.env.step(joint_action)
 
             # Track reward traces
-            # shaped_rewards = self._rshape_scale * np.array(info["shaped_r_by_agent"])
             shaped_rewards = self._rshape_scale * np.array(info["shaped_r_by_agent"])
+            if self.shared_rew: shaped_rewards = np.mean(shaped_rewards)*np.ones(2)
             total_rewards =  np.array([reward + shaped_rewards]).flatten()
             cum_reward += reward
             cum_shaped_reward += shaped_rewards
@@ -248,6 +253,7 @@ class Trainer:
         return state
 
 def main():
+
     config = {
         'ALGORITHM': 'Boltzmann_QRE-DDQN-OSA',
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
@@ -255,33 +261,28 @@ def main():
         # Env Params ----------------
         # 'LAYOUT': "risky_coordination_ring", 'HORIZON': 200, 'ITERATIONS': 15_000,
         'LAYOUT': "coordination_ring_CLDE", 'HORIZON': 200, 'ITERATIONS': 15_000,
+
         # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 20_000,
         # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 20_000,
         # 'LAYOUT': "super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
         # 'LAYOUT': "risky_super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
-
+        'AGENT': None,                  # name of agent object (computed dynamically)
         "obs_shape": None,                  # computed dynamically based on layout
-        "n_actions": 36,                    # number of agent actions
         "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
-        "equalib_sol": "QRE",               # equilibrium solution for testing
 
         # Learning Params ----------------
         'epsilon_sched': [0.1,0.1,5000],         # epsilon-greedy range (start,end)
         'rshape_sched': [1,0,5_000],     # rationality level range (start,end)
         'rationality_sched': [0.0,5,5000],
+        'lr_sched': [1e-2,1e-4,5_000],
         'test_rationality': 5,          # rationality level for testing
         'gamma': 0.95,                      # discount factor
         'tau': 0.005,                       # soft update weight of target network
-        "lr": 1e-4,                         # learning rate
         "num_hidden_layers": 3,             # MLP params
         "size_hidden_layers": 256,#32,      # MLP params
         "device": device,
-        "n_mini_batch": 1,              # number of mini-batches per iteration
         "minibatch_size":256,          # size of mini-batches
         "replay_memory_size": 20_000,   # size of replay memory
-        # 'shaped_reward_scale':2,
-        'lr_warmup_scale': 10,
-        'lr_warmup_iter': 1000,
         'clip_grad': 100,
 
     }
@@ -301,23 +302,10 @@ def main():
     ###############################
 
     # Top Left
-    config['replay_memory_size'] = 30_000
-    config['epsilon_sched'] = [1.0, 0.1, 10_000]
-    config['rshape_sched'] = [1, 0, 10_000]
-    config['rationality_sched'] = [1.0, 1.0, 5_000]
-    config['perc_random_start'] = 0.9
-    config['test_rationality'] = config['rationality_sched'][1]
-    config['lr'] = 1e-5
-    config['tau'] = 0.01
-    config['lr_warmup_iter'] = 10_000
-    config['lr_warmup_scale'] = 1000
-    config['num_hidden_layers'] = 4
-
-    # Bottom Left
     # config['replay_memory_size'] = 30_000
     # config['epsilon_sched'] = [1.0, 0.1, 10_000]
     # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [5.0, 5.0, 5_000]
+    # config['rationality_sched'] = [2.0, 2.0, 10_000]
     # config['perc_random_start'] = 0.9
     # config['test_rationality'] = config['rationality_sched'][1]
     # config['lr'] = 1e-4
@@ -327,42 +315,49 @@ def main():
     # config['num_hidden_layers'] = 5
     # config['size_hidden_layers'] = 128
 
-    # # Top Right
-    # # config['LAYOUT'] = "risky_coordination_ring"
+
+    # Bottom Left
+    # config['ITERATIONS'] = 10_000
     # config['replay_memory_size'] = 30_000
     # config['epsilon_sched'] = [1.0, 0.1, 10_000]
     # config['rshape_sched'] = [1, 0, 10_000]
     # config['rationality_sched'] = [5.0, 5.0, 5_000]
     # config['perc_random_start'] = 0.9
     # config['test_rationality'] = config['rationality_sched'][1]
-    # config['lr'] = 1e-4
     # config['tau'] = 0.01
-    # config['lr_warmup_iter'] = 5000
-    # config['lr_warmup_scale'] = 100
-    # config['num_hidden_layers'] = 4
+    # config['lr_sched'] = [1e-2,1e-5,2_000]
+    # config['num_hidden_layers'] = 5
+    # config['size_hidden_layers'] = 128
+
+    # # Top Right
+    # config['LAYOUT'] = "risky_coordination_ring"
+    config['ITERATIONS'] = 10_000
+    config['replay_memory_size'] = 30_000
+    config['epsilon_sched'] = [1.0, 0.1, 10_000]
+    config['rshape_sched'] = [1, 0, 10_000]
+    config['rationality_sched'] = [5.0, 5.0, 5_000]
+    config['perc_random_start'] = 0.9
+    config['test_rationality'] = config['rationality_sched'][1]
+    config['tau'] = 0.001
+    config['lr_sched'] = [1e-2, 1e-5, 2_000]
+    config['num_hidden_layers'] = 5
+    config['size_hidden_layers'] = 128
+
 
     # bottom Right
     # config['LAYOUT'] = "risky_coordination_ring"
     # config['replay_memory_size'] = 30_000
     # config['epsilon_sched'] = [1.0, 0.1, 10_000]
     # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [1.0, 1.0, 10_000]
+    # config['rationality_sched'] = [5.0, 5.0, 5_000]
     # config['perc_random_start'] = 0.9
     # config['test_rationality'] = config['rationality_sched'][1]
-    # config['lr'] = 1e-4
-    # config['tau'] = 0.005
+    # config['lr'] = 1e-5
+    # config['tau'] = 0.01
     # config['lr_warmup_iter'] = 5000
     # config['lr_warmup_scale'] = 100
-    # --------------------------------------------
-    # config['replay_memory_size'] = 30_000
-    # config['epsilon_sched'] = [1.0, 0.1, 10_000]
-    # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [5.0, 5.0, 5_000]
-    # config['perc_random_start'] = 0.5
-    # config['test_rationality'] = config['rationality_sched'][1]
-    # config['lr'] = 1e-3
-    # config['tau'] = 0.01
-    # config['lr_warmup_iter'] = 2000
+    # config['num_hidden_layers'] = 6
+    # config['size_hidden_layers'] = 128
 
     Trainer(SelfPlay_QRE_OSA,config).run()
 

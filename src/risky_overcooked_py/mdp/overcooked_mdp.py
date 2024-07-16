@@ -1591,7 +1591,8 @@ class OvercookedGridworld(object):
                     events_infos["soup_delivery"][player_idx] = True
 
         return sparse_reward, shaped_reward
-
+    def is_water(self, pos):
+        return pos in self.terrain_pos_dict["W"]
     def resolve_enter_water(self, state, new_state,events_infos):
         """
         If a player enters a puddle, they have a p_slip chance to drop their held item

@@ -202,6 +202,7 @@ class Trainer:
         state = self.add_random_start_loc()
         state = self.add_random_start_pot_state(state)
         state = self.add_random_held_obj(state)
+        state = self.add_random_counter_state(state)
         return state
     def add_random_start_loc(self):
         random_state = self.mdp.get_random_start_state_fn(random_start_pos=True, rnd_obj_prob_thresh=0.0)()
@@ -234,6 +235,18 @@ class Trainer:
                     player.set_object(ObjectState(obj, player.position))
         return state
 
+    def add_random_counter_state(self, state, rnd_obj_prob_thresh=0.05):
+        counters = self.mdp.reachable_counters
+        for counter_loc in counters:
+            p = np.random.rand()
+            if p < rnd_obj_prob_thresh:
+                obj = np.random.choice(["onion", "dish", "soup"], p=[0.6, 0.2, 0.2])
+                if obj == "soup":
+                    state.add_object(SoupState.get_soup(counter_loc, num_onions=3, num_tomatoes=0, finished=True))
+                else:
+                    state.add_object(ObjectState(obj, counter_loc))
+        return state
+
 def main():
     config = {
         'ALGORITHM': 'Boltzmann_QRE-DDQN-OSA',
@@ -256,7 +269,7 @@ def main():
         'epsilon_sched': [0.1,0.1,5000],         # epsilon-greedy range (start,end)
         'rshape_sched': [1,0,5_000],     # rationality level range (start,end)
         'rationality_sched': [0.0,5,5000],
-        'test_rationality': 10,          # rationality level for testing
+        'test_rationality': 5,          # rationality level for testing
         'gamma': 0.95,                      # discount factor
         'tau': 0.005,                       # soft update weight of target network
         "lr": 1e-4,                         # learning rate
@@ -272,14 +285,85 @@ def main():
         'clip_grad': 100,
 
     }
+    # config['LAYOUT'] = "cramped_room_CLCE"
 
-    # config['lr'] = 1e-3
-    config['replay_memory_size'] = 20_000
-    config['epsilon_sched'] = [1.0,0.1,10_000]
-    config['rationality_sched'] = [1.0,5.0,10_000]
-    config['perc_random_start'] = 0.5
-    config['test_rationality'] = 5
+    # BEST ##########################
+    # config['replay_memory_size'] = 30_000
+    # config['epsilon_sched'] = [1.0, 0.1, 10_000]
+    # config['rshape_sched'] = [1, 0, 10_000]
+    # config['rationality_sched'] = [5.0, 5.0, 5_000]
+    # config['perc_random_start'] = 0.9
+    # config['test_rationality'] = config['rationality_sched'][1]
+    # config['lr'] = 1e-4
+    # config['tau'] = 0.01
+    # config['lr_warmup_iter'] = 5000
+    # config['lr_warmup_scale'] = 100
+    ###############################
+
+    # Top Left
+    config['replay_memory_size'] = 30_000
+    config['epsilon_sched'] = [1.0, 0.1, 10_000]
+    config['rshape_sched'] = [1, 0, 10_000]
+    config['rationality_sched'] = [1.0, 1.0, 5_000]
+    config['perc_random_start'] = 0.9
+    config['test_rationality'] = config['rationality_sched'][1]
+    config['lr'] = 1e-5
     config['tau'] = 0.01
+    config['lr_warmup_iter'] = 10_000
+    config['lr_warmup_scale'] = 1000
+    config['num_hidden_layers'] = 4
+
+    # Bottom Left
+    # config['replay_memory_size'] = 30_000
+    # config['epsilon_sched'] = [1.0, 0.1, 10_000]
+    # config['rshape_sched'] = [1, 0, 10_000]
+    # config['rationality_sched'] = [5.0, 5.0, 5_000]
+    # config['perc_random_start'] = 0.9
+    # config['test_rationality'] = config['rationality_sched'][1]
+    # config['lr'] = 1e-4
+    # config['tau'] = 0.01
+    # config['lr_warmup_iter'] = 5000
+    # config['lr_warmup_scale'] = 100
+    # config['num_hidden_layers'] = 5
+    # config['size_hidden_layers'] = 128
+
+    # # Top Right
+    # # config['LAYOUT'] = "risky_coordination_ring"
+    # config['replay_memory_size'] = 30_000
+    # config['epsilon_sched'] = [1.0, 0.1, 10_000]
+    # config['rshape_sched'] = [1, 0, 10_000]
+    # config['rationality_sched'] = [5.0, 5.0, 5_000]
+    # config['perc_random_start'] = 0.9
+    # config['test_rationality'] = config['rationality_sched'][1]
+    # config['lr'] = 1e-4
+    # config['tau'] = 0.01
+    # config['lr_warmup_iter'] = 5000
+    # config['lr_warmup_scale'] = 100
+    # config['num_hidden_layers'] = 4
+
+    # bottom Right
+    # config['LAYOUT'] = "risky_coordination_ring"
+    # config['replay_memory_size'] = 30_000
+    # config['epsilon_sched'] = [1.0, 0.1, 10_000]
+    # config['rshape_sched'] = [1, 0, 10_000]
+    # config['rationality_sched'] = [1.0, 1.0, 10_000]
+    # config['perc_random_start'] = 0.9
+    # config['test_rationality'] = config['rationality_sched'][1]
+    # config['lr'] = 1e-4
+    # config['tau'] = 0.005
+    # config['lr_warmup_iter'] = 5000
+    # config['lr_warmup_scale'] = 100
+    # --------------------------------------------
+    # config['replay_memory_size'] = 30_000
+    # config['epsilon_sched'] = [1.0, 0.1, 10_000]
+    # config['rshape_sched'] = [1, 0, 10_000]
+    # config['rationality_sched'] = [5.0, 5.0, 5_000]
+    # config['perc_random_start'] = 0.5
+    # config['test_rationality'] = config['rationality_sched'][1]
+    # config['lr'] = 1e-3
+    # config['tau'] = 0.01
+    # config['lr_warmup_iter'] = 2000
+
     Trainer(SelfPlay_QRE_OSA,config).run()
 
     # config['cpt_params']= {'b': 0.0, 'lam': 1.0,

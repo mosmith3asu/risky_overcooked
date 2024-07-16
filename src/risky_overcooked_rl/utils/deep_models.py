@@ -89,12 +89,24 @@ class ReplayMemory_Prospect(object):
 
 class DQN_vector_feature(nn.Module):
 
-    def __init__(self, obs_shape, n_actions,size_hidden_layers,**kwargs):
+    def __init__(self, obs_shape, n_actions,num_hidden_layers,size_hidden_layers,**kwargs):
+        self.num_hidden_layers = num_hidden_layers
         self.size_hidden_layers = size_hidden_layers
+        # self.mlp_activation = F.leaky_relu
+        self.mlp_activation = nn.LeakyReLU
+
         super(DQN_vector_feature, self).__init__()
-        self.layer1 = nn.Linear(obs_shape[0], self.size_hidden_layers)
-        self.layer2 = nn.Linear(self.size_hidden_layers, self.size_hidden_layers)
-        self.layer3 = nn.Linear(self.size_hidden_layers, n_actions)
+        # self.layer1 = nn.Linear(obs_shape[0], self.size_hidden_layers)
+        # self.layer2 = nn.Linear(self.size_hidden_layers, self.size_hidden_layers)
+        # self.layer3 = nn.Linear(self.size_hidden_layers, n_actions)
+
+        layer_buffer = [ nn.Linear(obs_shape[0], self.size_hidden_layers),self.mlp_activation()]
+        for i in range(1,self.num_hidden_layers-1):
+            layer_buffer.extend([nn.Linear(self.size_hidden_layers, self.size_hidden_layers),self.mlp_activation()])
+        layer_buffer.extend([nn.Linear(self.size_hidden_layers, n_actions)])
+        self.layers = nn.Sequential(*layer_buffer)
+
+
         # self.mlp_activation = F.relu
         self.mlp_activation = F.leaky_relu
         # self.mlp_activation = F.sigmoid
@@ -104,9 +116,11 @@ class DQN_vector_feature(nn.Module):
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
     def forward(self, x):
-        x = self.mlp_activation(self.layer1(x))
-        x = self.mlp_activation(self.layer2(x))
-        x = self.layer3(x) # linear output layer (action-values)
+        for module in self.layers:
+            x = module(x)
+        # x = self.mlp_activation(self.layer1(x))
+        # x = self.mlp_activation(self.layer2(x))
+        # x = self.layer3(x) # linear output layer (action-values)
         return x
 
 
@@ -119,6 +133,7 @@ import pygambit as gbt
 
 class SelfPlay_NashDQN(object):
     def __init__(self, obs_shape, n_actions,config,**kwargs):
+        self.num_hidden_layers = config['num_hidden_layers']
         self.size_hidden_layers = config['size_hidden_layers']
         self.learning_rate = config['lr']
         self.device = config['device']
@@ -136,8 +151,8 @@ class SelfPlay_NashDQN(object):
         self._memory_batch_size = config['minibatch_size']
 
         # Define Model
-        self.model = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
-        self.target = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
+        self.model = DQN_vector_feature(obs_shape, n_actions, self.num_hidden_layers, self.size_hidden_layers).to(self.device)
+        self.target = DQN_vector_feature(obs_shape, n_actions, self.num_hidden_layers, self.size_hidden_layers).to(self.device)
         self.target.load_state_dict(self.model.state_dict())
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate, amsgrad=True)
 
@@ -487,6 +502,7 @@ class SelfPlay_NashDQN(object):
 class SelfPlay_QRE_OSA(object):
     def __init__(self, obs_shape, n_actions, config, **kwargs):
         self.clip_grad = config['clip_grad']
+        self.num_hidden_layers = config['num_hidden_layers']
         self.size_hidden_layers = config['size_hidden_layers']
         self.lr_warmup_scale = config['lr_warmup_scale']
         self.lr_warmup_iter = config['lr_warmup_iter']
@@ -506,8 +522,8 @@ class SelfPlay_QRE_OSA(object):
         self._memory_batch_size = config['minibatch_size']
 
         # Define Model
-        self.model = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
-        self.target = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
+        self.model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
+        self.target = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
         self.target.load_state_dict(self.model.state_dict())
 
 

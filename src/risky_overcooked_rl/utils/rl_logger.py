@@ -16,7 +16,7 @@ class TrajectoryVisualizer(object):
         self.blocking = blocking
         self.slider_xpad = 0.2
         self.qued_trajector = []
-
+        self.visualizer = StateVisualizer()
         # self.spawn_figure()
 
     def spawn_figure(self):
@@ -27,7 +27,7 @@ class TrajectoryVisualizer(object):
         self.ax.set_yticks([])
 
         self.imgs = []
-        self.visualizer = StateVisualizer()
+        # self.visualizer = StateVisualizer()
         self.env.reset()
         tmp_image = self.render_image(self.env.state)
         self.img = self.ax.imshow(tmp_image)
@@ -71,7 +71,9 @@ class TrajectoryVisualizer(object):
 
     def preview_qued_trajectory(self,*args):
         self.preview_trajectory(self.qued_trajectory)
-
+    def get_images(self,state_history):
+        imgs = [self.render_image(state) for state in state_history]
+        return imgs
     def preview_trajectory(self,state_history):
         if self.blocking: self.spawn_figure()
         self.imgs = []
@@ -84,7 +86,6 @@ class TrajectoryVisualizer(object):
             while plt.fignum_exists(self.fig_number):
                 self.fig.canvas.flush_events()
                 time.sleep(0.1)
-
 class RLLogger(object):
     def __init__(self, rows, cols,num_iterations=None, lw=0.5, figsize=(10, 5)):
         self.logs = {}

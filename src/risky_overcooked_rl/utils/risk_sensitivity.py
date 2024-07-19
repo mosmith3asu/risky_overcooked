@@ -127,23 +127,23 @@ class CumulativeProspectTheory(object):
         u_plus = self.u_plus(vp)
         u_neg = -1*self.u_neg(vn)
         u = np.hstack([u_neg,u_plus])
-        # axs[0].plot(vp,u_plus,color='r')
-        # axs[0].plot(vn,u_neg,color='b')
-        axs[0].plot(v, u, color='g')
-        axs[0].plot(v, v, color='gray',linestyle='--')
+        axs[0].plot(vp,u_plus,color='b',label='$u^+(r)$')
+        axs[0].plot(np.hstack([vn,vp[0]]),np.hstack([u_neg,u_plus[0]]),color='r',label='$u^-(r)$')
+        # axs[0].plot(v, u, color='g',label='Rational')
+        axs[0].plot(v, v, color='gray',linestyle='--',label='Rational')
         axs[0].set_xlabel('Reward')
         axs[0].set_ylabel('Perceived Reward')
         axs[0].plot([v[0], v[-1]], [0, 0], c="lightgrey", zorder=1, lw=1)
         axs[0].plot([0, 0], [v[0], v[-1]], c="lightgrey", zorder=1, lw=1)
         #make axis square
         axs[0].set_aspect('equal', adjustable='box')
-
+        axs[0].legend(frameon=False,ncol=1)
         # Plot probability weighting functions
         p = np.linspace(0,1,100)
         pp = self.w_plus(p)
         pn = self.w_neg(p)
-        axs[1].plot(p, pp,color='r',label='$w^+$')
-        axs[1].plot(p, pn,color='b',label='$w^-$')
+        axs[1].plot(p, pp,color='b',label='$w^+(p)$')
+        axs[1].plot(p, pn,color='r',label='$w^-(p)$')
         axs[1].plot(p, p, color='gray', label='Rational',linestyle='--')
         axs[1].set_xlabel('Probability')
         axs[1].set_ylabel('Decision Weight')
@@ -338,7 +338,7 @@ def main():
     # cpt_params = {'b': 0, 'lam': 1.0,
     #               'eta_p': 1., 'eta_n': 1.,
     #               'delta_p': 1., 'delta_n': 1.}
-    cpt_params = {'b':0.0, 'lam':1.0,
+    cpt_params = {'b':1.0, 'lam':2.25,
                   'eta_p':0.88,'eta_n':0.5,
                   'delta_p':0.88,'delta_n':0.6}
     CPT = CumulativeProspectTheory(**cpt_params)

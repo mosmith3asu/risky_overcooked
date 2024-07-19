@@ -8,20 +8,26 @@ from itertools import product,count
 import torch
 import torch.optim as optim
 import math
+import random
 from datetime import datetime
 debug = False
 
 class Trainer:
     def __init__(self,model_object,config):
+        np.random.seed(42)
+        torch.manual_seed(42)
+        random.seed(42)
 
         # Generate MDP and environment----------------
         config['AGENT'] = model_object.__name__
         LAYOUT = config['LAYOUT']
         HORIZON = config['HORIZON']
+        self.device = config['device']
         self.shared_rew = False
 
         self.ITERATIONS = config['ITERATIONS']
         self.mdp = OvercookedGridworld.from_layout_name(LAYOUT)
+        self.mdp.p_slip = config['p_slip']
         self.env = OvercookedEnv.from_mdp(self.mdp, horizon=HORIZON)
         self.perc_random_start = config['perc_random_start']
         self.N_tests = 1
@@ -31,7 +37,7 @@ class Trainer:
         EPS_START, EPS_END, EPS_DUR = config['epsilon_sched']
         RAT_START, RAT_END, RAT_DUR = config['rationality_sched']
         RSHAPE_START, RSHAPE_END, RSHAPE_DUR = config['rshape_sched']
-        self.test_rationality = config['test_rationality']
+        self.test_rationality = RAT_END #config['test_rationality']
         self.rationality_sched = np.hstack( [np.linspace(RAT_START, RAT_END, RAT_DUR), RAT_END * np.ones(self.ITERATIONS - RAT_DUR)])
         self.epsilon_sched = np.hstack([np.linspace(EPS_START, EPS_END, EPS_DUR), EPS_END * np.ones(self.ITERATIONS - EPS_DUR)])
         self.rshape_sched = np.hstack([np.linspace(RSHAPE_START, RSHAPE_END, RSHAPE_DUR), RSHAPE_END * np.ones(self.ITERATIONS - RSHAPE_DUR)])
@@ -141,7 +147,9 @@ class Trainer:
         cum_shaped_reward = np.zeros(2)
         for t in count():
             # TODO: Verify if observing correctly
-            obs = torch.tensor(self.mdp.get_lossless_encoding_vector(self.env.state), dtype=torch.float32, device=device).unsqueeze(0)
+            # obs = torch.tensor(self.mdp.get_lossless_encoding_vector(self.env.state), dtype=torch.float32, device=device).unsqueeze(0)
+            obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state,device=device).unsqueeze(0)
+
             joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=self._epsilon)
             next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
                                                                joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
@@ -179,8 +187,10 @@ class Trainer:
         aprob_history = []
 
         for t in count():
-            obs = torch.tensor(self.mdp.get_lossless_encoding_vector(self.env.state), dtype=torch.float32,
-                               device=device).unsqueeze(0)
+            # obs = torch.tensor(self.mdp.get_lossless_encoding_vector(self.env.state), dtype=torch.float32,
+            #                    device=device).unsqueeze(0)
+            obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state,device=device).unsqueeze(0)
+
             joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=self._epsilon)
 
             # obs = torch.tensor(self.mdp.get_lossless_encoding_vector(self.env.state), dtype=torch.float32, device=device).unsqueeze(0)
@@ -235,12 +245,12 @@ class Trainer:
                 # Different objects have different probabilities
                 obj = np.random.choice(["onion", "dish", "soup"], p=[0.6, 0.2, 0.2])
                 if obj == "soup":
-                    player.set_object( SoupState.get_soup(player.position, num_onions=3,  num_tomatoes=0, finished=True))
+                    player.set_object(SoupState.get_soup(player.position, num_onions=3,  num_tomatoes=0, finished=True))
                 else:
                     player.set_object(ObjectState(obj, player.position))
         return state
 
-    def add_random_counter_state(self, state, rnd_obj_prob_thresh=0.05):
+    def add_random_counter_state(self, state, rnd_obj_prob_thresh=0.025):
         counters = self.mdp.reachable_counters
         for counter_loc in counters:
             p = np.random.rand()
@@ -259,30 +269,25 @@ def main():
         'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
 
         # Env Params ----------------
-        # 'LAYOUT': "risky_coordination_ring", 'HORIZON': 200, 'ITERATIONS': 15_000,
         'LAYOUT': "coordination_ring_CLDE", 'HORIZON': 200, 'ITERATIONS': 15_000,
-
-        # 'LAYOUT': "risky_cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 20_000,
-        # 'LAYOUT': "cramped_room_CLCE", 'HORIZON': 200, 'ITERATIONS': 20_000,
-        # 'LAYOUT': "super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
-        # 'LAYOUT': "risky_super_cramped_room", 'HORIZON': 200, 'ITERATIONS': 10_000,
         'AGENT': None,                  # name of agent object (computed dynamically)
         "obs_shape": None,                  # computed dynamically based on layout
         "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
-
+        # "shared_rew": False,                # shared reward for both agents
+        "p_slip": 0.25,
         # Learning Params ----------------
         'epsilon_sched': [0.1,0.1,5000],         # epsilon-greedy range (start,end)
         'rshape_sched': [1,0,5_000],     # rationality level range (start,end)
         'rationality_sched': [0.0,5,5000],
-        'lr_sched': [1e-2,1e-4,5_000],
-        'test_rationality': 5,          # rationality level for testing
+        'lr_sched': [1e-2,1e-4,3_000],
+        # 'test_rationality': 5,          # rationality level for testing
         'gamma': 0.95,                      # discount factor
         'tau': 0.005,                       # soft update weight of target network
         "num_hidden_layers": 3,             # MLP params
         "size_hidden_layers": 256,#32,      # MLP params
         "device": device,
         "minibatch_size":256,          # size of mini-batches
-        "replay_memory_size": 20_000,   # size of replay memory
+        "replay_memory_size": 30_000,   # size of replay memory
         'clip_grad': 100,
 
     }
@@ -290,76 +295,98 @@ def main():
 
     # BEST ##########################
     # config['replay_memory_size'] = 30_000
-    # config['epsilon_sched'] = [1.0, 0.1, 10_000]
+    # config['epsilon_sched'] = [1.0, 0.15, 10_000]
     # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [5.0, 5.0, 5_000]
+    # config['rationality_sched'] = [5.0, 5.0, 10_000]
+    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
     # config['perc_random_start'] = 0.9
-    # config['test_rationality'] = config['rationality_sched'][1]
-    # config['lr'] = 1e-4
     # config['tau'] = 0.01
-    # config['lr_warmup_iter'] = 5000
-    # config['lr_warmup_scale'] = 100
+    # config['num_hidden_layers'] = 5
+    # config['size_hidden_layers'] = 256
+    # config['shared_rew'] = False
+    # config['gamma'] = 0.95
     ###############################
 
     # Top Left
+    # lowered tau
     # config['replay_memory_size'] = 30_000
-    # config['epsilon_sched'] = [1.0, 0.1, 10_000]
+    # config['epsilon_sched'] = [1.0, 0.15, 10_000]
     # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [2.0, 2.0, 10_000]
+    # config['rationality_sched'] = [5.0, 5.0, 10_000]
+    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
     # config['perc_random_start'] = 0.9
-    # config['test_rationality'] = config['rationality_sched'][1]
-    # config['lr'] = 1e-4
+    ## config['test_rationality'] = config['rationality_sched'][1]
     # config['tau'] = 0.01
-    # config['lr_warmup_iter'] = 5000
-    # config['lr_warmup_scale'] = 100
     # config['num_hidden_layers'] = 5
-    # config['size_hidden_layers'] = 128
+    # config['size_hidden_layers'] = 256
+    # config['shared_rew'] = False
+    # config['gamma'] = 0.95
+    # config['note'] = 'increased width'
+    # Trainer(SelfPlay_QRE_OSA, config).run()
 
 
-    # Bottom Left
-    # config['ITERATIONS'] = 10_000
+
+    # # Bottom Left
     # config['replay_memory_size'] = 30_000
-    # config['epsilon_sched'] = [1.0, 0.1, 10_000]
+    # config['epsilon_sched'] = [1.0, 0.15, 10_000]
     # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [5.0, 5.0, 5_000]
+    # config['rationality_sched'] = [5.0, 5.0, 10_000]
+    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
     # config['perc_random_start'] = 0.9
-    # config['test_rationality'] = config['rationality_sched'][1]
     # config['tau'] = 0.01
-    # config['lr_sched'] = [1e-2,1e-5,2_000]
     # config['num_hidden_layers'] = 5
-    # config['size_hidden_layers'] = 128
+    # config['size_hidden_layers'] = 256
+    # config['shared_rew'] = False
+    # config['gamma'] = 0.95
+    # config['note'] = 'added collab reward shaping'
+    # Trainer(SelfPlay_QRE_OSA, config).run()
+    # # config['replay_memory_size'] = 30_000
+    # # config['epsilon_sched'] = [1.0, 0.15, 10_000]
+    # # config['rshape_sched'] = [1, 0, 10_000]
+    # # config['rationality_sched'] = [5.0, 5.0, 10_000]
+    # # config['lr_sched'] = [1e-2, 1e-4, 5_000]
+    # # config['perc_random_start'] = 0.9
+    # # config['test_rationality'] = config['rationality_sched'][1]
+    # # config['tau'] = 0.01
+    # # config['num_hidden_layers'] = 6
+    # # config['size_hidden_layers'] = 128
+    # # config['shared_rew'] = False
+    # # config['gamma'] = 0.95
+    # # config['note'] = 'increased depth'
+    # # Trainer(SelfPlay_QRE_OSA, config).run()
+
 
     # # Top Right
-    # config['LAYOUT'] = "risky_coordination_ring"
-    config['ITERATIONS'] = 10_000
-    config['replay_memory_size'] = 30_000
-    config['epsilon_sched'] = [1.0, 0.1, 10_000]
-    config['rshape_sched'] = [1, 0, 10_000]
-    config['rationality_sched'] = [5.0, 5.0, 5_000]
-    config['perc_random_start'] = 0.9
-    config['test_rationality'] = config['rationality_sched'][1]
-    config['tau'] = 0.001
-    config['lr_sched'] = [1e-2, 1e-5, 2_000]
-    config['num_hidden_layers'] = 5
-    config['size_hidden_layers'] = 128
-
+    # config['replay_memory_size'] = 30_000
+    # config['epsilon_sched'] = [1.0, 0.15, 10_000]
+    # config['rshape_sched'] = [1, 0, 10_000]
+    # config['rationality_sched'] = [5.0, 5.0, 10_000]
+    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
+    # config['perc_random_start'] = 0.9
+    ## config['test_rationality'] = config['rationality_sched'][1]
+    # config['tau'] = 0.01
+    # config['num_hidden_layers'] = 5
+    # config['size_hidden_layers'] = 128
+    # config['shared_rew'] = False
+    # config['gamma'] = 0.95
+    # config['note'] = 'increased gamma'
+    # Trainer(SelfPlay_QRE_OSA, config).run()
 
     # bottom Right
-    # config['LAYOUT'] = "risky_coordination_ring"
-    # config['replay_memory_size'] = 30_000
-    # config['epsilon_sched'] = [1.0, 0.1, 10_000]
-    # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [5.0, 5.0, 5_000]
-    # config['perc_random_start'] = 0.9
-    # config['test_rationality'] = config['rationality_sched'][1]
-    # config['lr'] = 1e-5
-    # config['tau'] = 0.01
-    # config['lr_warmup_iter'] = 5000
-    # config['lr_warmup_scale'] = 100
-    # config['num_hidden_layers'] = 6
-    # config['size_hidden_layers'] = 128
-
-    Trainer(SelfPlay_QRE_OSA,config).run()
+    config['LAYOUT'] = "risky_coordination_ring"
+    config['replay_memory_size'] = 30_000
+    config['epsilon_sched'] = [1.0, 0.15, 10_000]
+    config['rshape_sched'] = [1, 0, 10_000]
+    config['rationality_sched'] = [5.0, 5.0, 10_000]
+    config['lr_sched'] = [1e-2, 1e-4, 3_000]
+    config['perc_random_start'] = 0.9
+    config['tau'] = 0.01
+    config['num_hidden_layers'] = 5
+    config['size_hidden_layers'] = 256
+    config['p_slip'] = 0.01
+    config['gamma'] = 0.95
+    config['note'] = 'collab reward shaping + minimal risk'
+    Trainer(SelfPlay_QRE_OSA, config).run()
 
     # config['cpt_params']= {'b': 0.0, 'lam': 1.0,
     #                'eta_p': 1., 'eta_n': 1.,

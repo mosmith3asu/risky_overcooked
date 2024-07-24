@@ -13,6 +13,8 @@ import imageio
 class GIF_maker():
     def __init__(self,LAYOUT,HORIZON=400):
         self.mdp = OvercookedGridworld.from_layout_name(LAYOUT)
+
+
     def init_env(self,HORIZON):
         self.env = OvercookedEnv.from_mdp(self.mdp, horizon=HORIZON)
         self.env.reset()
@@ -37,21 +39,8 @@ class GIF_maker():
                    'I': Action.INTERACT}[action2]
         joint_action = (action1,action2)
         self.mdp.p_slip = float(prob_slip)
-        old_objects = [self.env.state.players[i].held_object for i in range(2)]
-
         next_state, reward, done, info = self.env.step(joint_action)
-        next_state = next_state.deepcopy()
-        self.state_history.append(next_state)
-
-        if float(prob_slip) ==1:
-            for i in range(2):
-                in_puddle = self.env.mdp.is_water(next_state.players[i].position)
-                lost_object = old_objects[i] is not None and next_state.players[i].held_object is None
-                if in_puddle and lost_object:
-                    # next_state = next_state.deepcopy()
-                    next_state.players[i].held_object = old_objects[i]
-                    next_state.players[i].orientation = Direction.FALL
-                    self.state_history.append(next_state)
+        self.state_history.append(next_state.deepcopy())
     def preview(self):
         self.visualizer.preview_trajectory(self.state_history)
 
@@ -59,36 +48,8 @@ class GIF_maker():
         imgs = self.visualizer.get_images(self.state_history)
         imageio.mimsave(f'{fname}.gif', imgs,loop=0,fps=5)
 
-
-def extend_directions():
-    """ Necessary for adding fall animation but breaks MDP in action selection"""
-    NORTH = (0, -1)
-    SOUTH = (0, 1)
-    EAST = (1, 0)
-    WEST = (-1, 0)
-    FALL = (0,0)
-
-    Direction.FALL = FALL
-    Direction.ALL_DIRECTIONS = INDEX_TO_DIRECTION = [NORTH, SOUTH, EAST, WEST,FALL]
-    Direction.DIRECTION_TO_INDEX = {a: i for i, a in enumerate(INDEX_TO_DIRECTION)}
-    Direction.OPPOSITE_DIRECTIONS = {NORTH: SOUTH, SOUTH: NORTH, EAST: WEST, WEST: EAST}
-    Direction.DIRECTION_TO_NAME = {
-        d: name
-        for d, name in zip(
-            [NORTH, SOUTH, EAST, WEST,FALL], ["NORTH", "SOUTH", "EAST", "WEST",'FALL']
-        )
-    }
-
 def main():
-    extend_directions()
-    LAYOUT = 'risky_cramped_room'
-    # LAYOUT = 'risky_coordination_ring'
-    # LAYOUT = 'risky_walkaround'
-    # LAYOUT = 'risky_roundabout'
-    # LAYOUT = 'risky_forced_coordination'
-    # LAYOUT = 'risky_forced_discoordination'
-    LAYOUT = 'risky_multipath'
-    # LAYOUT = 'risky_middlepuddle'
+    LAYOUT = 'risky_coordination_ring'
     S,W,N,E,X,I = 'S','W','N','E','X','I'
     gifer = GIF_maker(LAYOUT,HORIZON=200)
     seeking_joint_traj = [
@@ -223,15 +184,14 @@ def main():
         [E, I, 0], # P2 DELIVER SOUP
         [N, W, 0],  # P2 DELIVER SOUP
     ]
-
-
+    joint_traj = np.array(seeking_joint_traj)
+    # joint_traj = np.array(averse_joint_traj)
     # joint_traj = np.array(seeking_joint_traj)
-    joint_traj = np.array(averse_joint_traj)
     gifer.load_trajectory(joint_traj[:,0], joint_traj[:,1],joint_traj[:,2])
 
-    gifer.preview()
+    # gifer.preview()
     # gifer.make_gif('risky_coordination_ring_averse')
-    # gifer.make_gif('risky_coordination_ring_seeking')
+    gifer.make_gif('risky_coordination_ring_seeking')
 
 
 

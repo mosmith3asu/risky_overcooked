@@ -330,17 +330,21 @@ def main():
     # values =  np.array([-0.018, -0.018])#np.random.randint(-5,5,2)
     values = np.array([0.02, 0.02])  # np.random.randint(-5,5,2)
     p_values = np.array([0.5, 0.5])
+
+    values = np.array([-0.00110984, -0.00128507])  # np.random.randint(-5,5,2)
+    p_values = np.array([0.1, 0.9])
+
     # values = np.array([-1,1])
     # p_values = np.ones(len(values)) / len(values)
     # cpt_params = {'b':2.0, 'lam':2.0,
     #               'eta_p':0.88,'eta_n':0.5,
     #               'delta_p':0.88,'delta_n':0.6}
-    # cpt_params = {'b': 0, 'lam': 1.0,
-    #               'eta_p': 1., 'eta_n': 1.,
-    #               'delta_p': 1., 'delta_n': 1.}
-    cpt_params = {'b':1.0, 'lam':2.25,
-                  'eta_p':0.88,'eta_n':0.5,
-                  'delta_p':0.88,'delta_n':0.6}
+    cpt_params = {'b': 0, 'lam': 1.0,
+                  'eta_p': 1., 'eta_n': 1.,
+                  'delta_p': 1., 'delta_n': 1.}
+    # cpt_params = {'b':1.0, 'lam':2.25,
+    #               'eta_p':0.88,'eta_n':0.5,
+    #               'delta_p':0.88,'delta_n':0.6}
     CPT = CumulativeProspectTheory(**cpt_params)
     print(CPT.expectation(values,p_values))
     print(CPT.expectation_PT(values,p_values))

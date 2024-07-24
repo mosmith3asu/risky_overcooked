@@ -29,7 +29,7 @@ class Trainer:
         self.mdp = OvercookedGridworld.from_layout_name(LAYOUT)
         self.mdp.p_slip = config['p_slip']
         self.env = OvercookedEnv.from_mdp(self.mdp, horizon=HORIZON)
-        # self.perc_random_start = config['perc_random_start']
+        self.perc_random_start = config['perc_random_start']
         self.N_tests = 1
         self.test_interval = 10  # test every n iterations
 
@@ -37,12 +37,10 @@ class Trainer:
         EPS_START, EPS_END, EPS_DUR = config['epsilon_sched']
         RAT_START, RAT_END, RAT_DUR = config['rationality_sched']
         RSHAPE_START, RSHAPE_END, RSHAPE_DUR = config['rshape_sched']
-        RSTART_START, RSTART_END, RSTART_DUR = config['rand_start_sched']
         self.test_rationality = RAT_END #config['test_rationality']
         self.rationality_sched = np.hstack( [np.linspace(RAT_START, RAT_END, RAT_DUR), RAT_END * np.ones(self.ITERATIONS - RAT_DUR)])
         self.epsilon_sched = np.hstack([np.linspace(EPS_START, EPS_END, EPS_DUR), EPS_END * np.ones(self.ITERATIONS - EPS_DUR)])
         self.rshape_sched = np.hstack([np.linspace(RSHAPE_START, RSHAPE_END, RSHAPE_DUR), RSHAPE_END * np.ones(self.ITERATIONS - RSHAPE_DUR)])
-        self.random_start_sched = np.hstack([np.linspace(RSTART_START, RSTART_END, RSTART_DUR), RSTART_END * np.ones(self.ITERATIONS - RSTART_DUR)])
 
         # Initialize policy and target networks ----------------
         obs_shape = self.mdp.get_lossless_encoding_vector_shape()
@@ -83,7 +81,6 @@ class Trainer:
             self._epsilon = self.epsilon_sched[it]
             self._rationality = self.rationality_sched[it]
             self._rshape_scale = self.rshape_sched[it]
-            self._p_rand_start = self.random_start_sched[it]
 
             # Perform Rollout
             self.logger.start_iteration()
@@ -149,7 +146,7 @@ class Trainer:
 
         # Random start state if specified
         # if it / self.ITERATIONS < self.perc_random_start:
-        if np.random.sample() < self._p_rand_start:
+        if np.random.sample() < self.perc_random_start:
             self.env.state = self.random_start_state()
 
         losses = []
@@ -296,10 +293,10 @@ def main():
         'LAYOUT': "coordination_ring_CLDE", 'HORIZON': 200, 'ITERATIONS': 15_000,
         'AGENT': None,                  # name of agent object (computed dynamically)
         "obs_shape": None,                  # computed dynamically based on layout
+        "perc_random_start": 0.9,          # percentage of ITERATIONS with random start states
         # "shared_rew": False,                # shared reward for both agents
         "p_slip": 0.25,
         # Learning Params ----------------
-        "rand_start_sched": [1.0, 0.5, 10_000],  # percentage of ITERATIONS with random start states
         'epsilon_sched': [0.1,0.1,5000],         # epsilon-greedy range (start,end)
         'rshape_sched': [1,0,5_000],     # rationality level range (start,end)
         'rationality_sched': [0.0,5,5000],
@@ -340,7 +337,6 @@ def main():
     # config['rationality_sched'] = [5.0, 5.0, 10_000]
     # config['lr_sched'] = [1e-2, 1e-4, 3_000]
     # config['perc_random_start'] = 0.9
-    config["rand_start_sched"]= [1.0, 0.75, 10_000]  # percentage of ITERATIONS with random start states
     # config['tau'] = 0.01
     # config['num_hidden_layers'] = 5
     # config['size_hidden_layers'] = 256
@@ -358,7 +354,7 @@ def main():
     config['rshape_sched'] = [1, 0, 10_000]
     config['rationality_sched'] = [5.0, 5.0, 10_000]
     config['lr_sched'] = [1e-2, 1e-4, 3_000]
-    config["rand_start_sched"]= [1.0, 0.75, 10_000]  # percentage of ITERATIONS with random start states # config['perc_random_start'] = 0.9
+    config['perc_random_start'] = 0.9
     config['tau'] = 0.01
     config['num_hidden_layers'] = 5
     config['size_hidden_layers'] = 256

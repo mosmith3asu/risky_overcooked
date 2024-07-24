@@ -734,21 +734,6 @@ class SelfPlay_QRE_OSA(object):
                                                             prospect_next_q_values= all_next_q_value,
                                                             prospect_p_next_states= all_p_next_states)
 
-
-        # # Reduce prospects into expected next q-values
-        # # expected_next_q_values = np.zeros([BATCH_SIZE, 1])
-        # expected_next_q_values = np.nan*np.ones([BATCH_SIZE, 1])
-        # for i in range(BATCH_SIZE):
-        #     prospect_mask = prospect_idxs[i]
-        #     prospect_values = all_next_q_value[prospect_mask, :]
-        #     prospect_probs = all_p_next_states[prospect_mask, :]
-        #     assert np.sum(prospect_probs)==1, 'prospect probs should sum to 1'
-        #     expected_next_q_values[i] = np.sum(prospect_values*prospect_probs)
-        # assert not np.any(np.isnan(expected_next_q_values)), 'prospect expectations not filled'
-        # expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)
-        # expected_q_value = reward + (self.gamma) * expected_next_q_values * (1 - done)
-
-
         # Optimize ----------------
         loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
         loss = loss.mean()
@@ -765,27 +750,32 @@ class SelfPlay_QRE_OSA(object):
         - condenses prospects back into expecations of |batch_size|
         """
         BATCH_SIZE = len(prospect_masks)
-        # expected_next_q_values = np.zeros([BATCH_SIZE, 1])
-        expected_next_q_values = np.nan*np.ones([BATCH_SIZE, 1])
+        done = done.detach().cpu().numpy()
+        rewards = reward.detach().cpu().numpy()
+        expected_next_q_values = np.nan * np.ones([BATCH_SIZE, 1])
         for i in range(BATCH_SIZE):
             prospect_mask = prospect_masks[i]
             prospect_values = prospect_next_q_values[prospect_mask, :]
             prospect_probs = prospect_p_next_states[prospect_mask, :]
             assert np.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
             expected_next_q_values[i] = np.sum(prospect_values * prospect_probs)
-
-
-            # if np.any(prospect_probs==1):
-            #     expected_next_q_values[i] = prospect_values[np.argmax(prospect_probs),0]
-            # else:
-            #     raise ValueError('non-zero prob of slipping') # TODO: REMOVE FOR VALIDATION
-            #     expected_next_q_values[i] = np.sum(prospect_values * prospect_probs)
-
-
         assert not np.any(np.isnan(expected_next_q_values)), 'prospect expectations not filled'
-        expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)
-        expected_q_value = reward + (self.gamma) * expected_next_q_values * (1 - done) # TD-Target
-        return expected_q_value
+        # expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)
+        expected_q_value = rewards + (self.gamma) * expected_next_q_values * (1 - done)  # TD-Target
+        return torch.FloatTensor(expected_q_value).to(self.device)
+
+        # BATCH_SIZE = len(prospect_masks)
+        # expected_next_q_values = np.nan*np.ones([BATCH_SIZE, 1])
+        # for i in range(BATCH_SIZE):
+        #     prospect_mask = prospect_masks[i]
+        #     prospect_values = prospect_next_q_values[prospect_mask, :]
+        #     prospect_probs = prospect_p_next_states[prospect_mask, :]
+        #     assert np.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
+        #     expected_next_q_values[i] = np.sum(prospect_values * prospect_probs)
+        # assert not np.any(np.isnan(expected_next_q_values)), 'prospect expectations not filled'
+        # expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)
+        # expected_q_value = reward + (self.gamma) * expected_next_q_values * (1 - done) # TD-Target
+        # return expected_q_value
 
         # Using all torch (slower for some reason? ##########################
         # all_next_q_value = all_next_q_value[:, 0].reshape(-1, 1)
@@ -806,6 +796,7 @@ class SelfPlay_QRE_OSA(object):
          - improve model-value prediction speed
          - condensed to back to |batch_size| after using expectation
         """
+
         all_next_states = []
         all_p_next_states = []
         prospect_idxs = []
@@ -843,24 +834,85 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         # self.target = DQN_vector_feature(obs_shape, n_actions, self.num_hidden_layers,self.size_hidden_layers).to(self.device)
         # self.target.load_state_dict(self.model.state_dict())
 
-    def prospect_value_expectations(self,reward,done,prospect_masks,prospect_next_q_values,prospect_p_next_states):
+    def prospect_value_expectations(self,reward,done,prospect_masks,
+                                    prospect_next_q_values,prospect_p_next_states,
+                                    debug=True):
         """CPT expectation used for modification when class inherited by CPT version
         - condenses prospects back into expecations of |batch_size|
         """
         self.CPT.recalc_b()
-
         BATCH_SIZE = len(prospect_masks)
         done = done.detach().cpu().numpy()
-        rewards = reward.detach().cpu().numpy()
+        reward = reward.detach().cpu().numpy()
         expected_q_value = np.zeros([BATCH_SIZE, 1])
         for i in range(BATCH_SIZE):
             prospect_mask = prospect_masks[i]
             prospect_values = prospect_next_q_values[prospect_mask, :]
             prospect_probs = prospect_p_next_states[prospect_mask, :]
-            prospect_td_targets = rewards[i, :] + (self.gamma) * prospect_values * (1-done[i,:])
-            expected_q_value[i] = self.CPT.expectation(prospect_td_targets, prospect_probs.flatten())
+            if debug: assert np.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
+            prospect_td_targets = reward[i, :] + (self.gamma) * prospect_values * (1-done[i,:])
+            expected_q_value[i] = self.CPT.expectation(prospect_td_targets.flatten(), prospect_probs.flatten())
+            if debug: assert np.allclose(np.sum(prospect_td_targets * prospect_probs),expected_q_value[i] ), 'Rational CPT expectation not equal to sum of prospect values'
         expected_q_value = torch.tensor(expected_q_value, dtype=torch.float32, device=self.device)
         return expected_q_value
+
+        # BATCH_SIZE = len(prospect_masks)
+        # done = done.detach().cpu().numpy()
+        # rewards = reward.detach().cpu().numpy()
+        # expected_next_q_values = np.nan * np.ones([BATCH_SIZE, 1])
+        # expected_q_value = np.nan * np.ones([BATCH_SIZE, 1])
+        # for i in range(BATCH_SIZE):
+        #     prospect_mask = prospect_masks[i]
+        #     prospect_values = prospect_next_q_values[prospect_mask, :]
+        #     prospect_probs = prospect_p_next_states[prospect_mask, :]
+        #     assert np.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
+        #     prospect_td_targets = rewards[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])  # TD-Target
+        #     expected_q_value[i] = np.sum(prospect_td_targets * prospect_probs)
+        # return torch.FloatTensor(expected_q_value).to(self.device)
+
+
+        # Positive match-----------------
+        # BATCH_SIZE = len(prospect_masks)
+        # done = done.detach().cpu().numpy().astype(float)
+        # rewards = reward.detach().cpu().numpy()
+        # expected_next_q_values = np.nan * np.ones([BATCH_SIZE, 1])
+        # expected_q_value = np.nan * np.ones([BATCH_SIZE, 1])
+        # expected_q_value2 = np.nan * np.ones([BATCH_SIZE, 1])
+        # for i in range(BATCH_SIZE):
+        #     prospect_mask = prospect_masks[i]
+        #     prospect_values = prospect_next_q_values[prospect_mask, :]
+        #     prospect_probs = prospect_p_next_states[prospect_mask, :]
+        #     assert np.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
+        #
+        #     # calc Q' expectation
+        #     expected_next_q_values[i] = np.sum(prospect_values * prospect_probs)
+        #     expected_q_value[i] = rewards[i, :] + (self.gamma) * expected_next_q_values[i] * (1 - done[i, :])  # TD-Target
+        #
+        #     # calc Td as expectation
+        #     prospect_td_targets = rewards[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])  # TD-Target
+        #     expected_q_value2[i] = np.sum(prospect_td_targets * prospect_probs)
+        #
+        #     assert np.all(expected_q_value[i] == expected_q_value2[i]), 'CPT expectation not equal to sum of prospect values'
+        # return torch.FloatTensor(expected_q_value).to(self.device)
+
+        # BATCH_SIZE = len(prospect_masks)
+        # done = done.detach().cpu().numpy()
+        # rewards = reward.detach().cpu().numpy()
+        # expected_q_value = np.zeros([BATCH_SIZE, 1])
+        # expected_next_q_values = np.nan * np.ones([BATCH_SIZE, 1])
+        # for i in range(BATCH_SIZE):
+        #     prospect_mask = prospect_masks[i]
+        #     prospect_values = prospect_next_q_values[prospect_mask, :]
+        #     prospect_probs = prospect_p_next_states[prospect_mask, :]
+        #     assert np.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
+        #     # expected_next_q_values[i] = np.sum(prospect_values * prospect_probs)
+        #     prospect_td_targets = rewards[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])
+        #     expected_q_value[i] = np.sum(prospect_td_targets * prospect_probs)
+        # # assert not np.any(np.isnan(expected_next_q_values)), 'prospect expectations not filled'
+        # # expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)
+        # # expected_q_value = reward + (self.gamma) * expected_next_q_values * (1 - done)  # TD-Target
+        # expected_q_value = torch.FloatTensor(expected_q_value).to(self.device)
+        # return expected_q_value
 
 
     #

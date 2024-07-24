@@ -1711,6 +1711,24 @@ class OvercookedGridworld(object):
         return sparse_reward, shaped_reward
     def is_water(self, pos):
         return pos in self.terrain_pos_dict["W"]
+
+    def check_can_slip(self,old_player_state,new_player_state):
+        can_slip = True
+
+        # They end their turn in water
+        if not self.is_water(new_player_state.position): can_slip = False
+
+        # If they are waiting or interacting ==> no slip
+        # same_position = np.all(old_player_state.position==old_player_state.position)
+        # same_orientation =np.all(old_player_state.orientation==old_player_state.orientation)
+        # if same_position and same_orientation: can_slip = False
+        same_pos_and_or = np.all(np.array(old_player_state.pos_and_or)==np.array(new_player_state.pos_and_or ))
+        if same_pos_and_or: can_slip = False
+
+        # If they do not have a held item to begin with ==> no slipping
+        if not old_player_state.has_object(): can_slip = False
+
+        return can_slip
     def resolve_enter_water(self, state, new_state,events_infos):
         """
         If a player enters a puddle, they have a p_slip chance to drop their held item
@@ -1720,22 +1738,29 @@ class OvercookedGridworld(object):
 
 
         # all_objects = list(new_state.objects.values())
-        for player_idx,player in enumerate(new_state.players):
-            old_player_state = state.players[player_idx]
-            is_same_position = np.all(player.position == old_player_state.position)
-            is_entered_water = player.position in self.terrain_pos_dict["W"]
-            if not is_same_position and is_entered_water:
+        for player_idx,new_player in enumerate(new_state.players):
+            # old_player_state = state.players[player_idx]
+            # is_same_position = np.all(player.position == old_player_state.position)
+            # is_entered_water = player.position in self.terrain_pos_dict["W"]
+            # if not is_same_position and is_entered_water:
+            old_player = state.players[player_idx]
 
-                if player.held_object is not None: # if player is holding object
-                    is_dropped = np.random.choice([True, False], p=[p_slip, 1-p_slip])
-                    if is_dropped:
-                        # remove item from players hand and the environment
-                        obj = player.remove_object()
-                        # add event flag for later animation update
-                        self.log_object_slip(events_infos, obj.name, player_idx)
-                else:
-                    # still add event flag for animation update when no held object
-                    self.log_object_slip(events_infos, 'empty', player_idx)
+            if self.check_can_slip(old_player,new_player):
+                is_dropped = np.random.choice([True, False], p=[p_slip, 1-p_slip])
+                if is_dropped:
+                    obj = new_player.remove_object() # remove item from players hand and the environment
+                    self.log_object_slip(events_infos, obj.name, player_idx) # add event flag for later animation update
+
+                # if player.held_object is not None: # if player is holding object
+                #     is_dropped = np.random.choice([True, False], p=[p_slip, 1-p_slip])
+                #     if is_dropped:
+                #         # remove item from players hand and the environment
+                #         obj = player.remove_object()
+                #         # add event flag for later animation update
+                #         self.log_object_slip(events_infos, obj.name, player_idx)
+                # else:
+                #     # still add event flag for animation update when no held object
+                #     self.log_object_slip(events_infos, 'empty', player_idx)
 
     def get_recipe_value(
         self,
@@ -2558,142 +2583,401 @@ class OvercookedGridworld(object):
     ###################
     # one-step ahead #
     ###################
-    def one_step_lookahead(self,state,joint_action = None,encoded=True,as_tensor=False,device=None):
+    def one_step_lookahead(self, state, joint_action, encoded=True, as_tensor=False, device=None):
         """
 
         :param state:
         :param joint_action: if None, return all possible outcomes from all joint actions
         :return: {joint_action, next_state, p_next_state}
         """
+        def make_obs(_state):
+            if encoded and as_tensor: next_obs = self.get_lossless_encoding_vector_astensor(_state, device).unsqueeze(0)
+            elif encoded and not as_tensor: next_obs = self.get_lossless_encoding_vector(_state, device)
+            else: next_obs = next_state.deepcopy()
+            return next_obs
+
+
         if as_tensor: assert device is not None, 'If using tensor, device must be specified'
 
-        old_state = state.deepcopy()
         outcomes = []
-        joint_actions = Action.ALL_JOINT_ACTIONS if joint_action is None else [joint_action]
-        for joint_action in joint_actions:
-            next_state,mdp_infos = self.get_state_transition(old_state, joint_action,False)
+        state = state.deepcopy()
+        true_state= state.deepcopy()
 
-            # check if player moved into puddle ----------------
-            player_in_water = []
-            Wlocs = self.get_water_locations()
-            for player in next_state.players:
-                player_in_water.append(player.position in Wlocs)
-
-            # Check if player was holding object ----------------
-            # stepping in water without object is equivalent to not stepping in water
-            for ip, player in enumerate(state.players):
-                if player_in_water[ip] and not player.has_object():
-                    player_in_water[ip] = False
+        # get originally held objects
+        held_objs = []
+        for player in state.players:
+            held_objs.append(player.get_object().deepcopy() if player.has_object() else None)
 
 
-            # ENUMERATE ALL POSSIBLE OUTCOMES ----------------
-            if np.all(player_in_water == [False, False]):
-                p_next_state = 1
-                if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
-                elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
-                else: next_obs = next_state.deepcopy()
-                # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
-                # if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
-                outcomes.append([joint_action, next_obs, p_next_state])
-
-            # if p1 slipped but not p2
-            elif np.all(player_in_water == [True, False]):
-                # TODO: check if mutable object is causing problems
-                ip = 0; p_next_state = self.p_slip
-                # Lost object
-                if next_state.players[ip].has_object(): next_state.players[ip].remove_object()
-                if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
-                elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
-                else: next_obs = next_state.deepcopy()
-                # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
-                # if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
-                outcomes.append([joint_action, next_obs, p_next_state])
-                # Held object object
-                if not next_state.players[ip].has_object():
-                    old_obj = state.players[ip].get_object(); next_state.players[ip].set_object(old_obj)
-                if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
-                elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
-                else: next_obs = next_state.deepcopy()
-                # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
-                # if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
-                outcomes.append([joint_action, next_obs, p_next_state])
-
-            # if p2 slipped but not p1
-            elif np.all(player_in_water == [False, True]):
-                # TODO: check if mutable object is causing problems
-                ip = 1;  p_next_state = self.p_slip
-                if next_state.players[ip].has_object(): next_state.players[ip].remove_object()
-                if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
-                elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
-                else: next_obs = next_state.deepcopy()
-                # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
-                # if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
-                outcomes.append([joint_action, next_obs, p_next_state])
-                # Held object object
-                if not next_state.players[ip].has_object():
-                    old_obj = state.players[ip].get_object(); next_state.players[ip].set_object(old_obj)
-                if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
-                elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
-                else: next_obs = next_state.deepcopy()
-                # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
-                # if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
-                outcomes.append([joint_action, next_obs, p_next_state])
+        # Perform the joint action
+        next_state, mdp_infos = self.get_state_transition(state, joint_action)
+        can_slip = [self.check_can_slip(state.players[i],next_state.players[i]) for i in range(2)]
 
 
-            # both players slipped
-            elif np.all(player_in_water==[True, True]):
-                p_next_state = self.p_slip * self.p_slip
+        for iplayer in range(2):
+            # if self.p_slip == 0 and self.is_water(next_state.players[iplayer].position):
+            if self.p_slip == 0 and can_slip[iplayer]:
+                assert true_state.players[iplayer].has_object()==next_state.players[
+                    iplayer].has_object(), f'P{iplayer+1} unexpectedly lost object'
 
-                # Both lost object
-                for ip in range(2):
-                    if next_state.players[ip].has_object(): next_state.players[ip].remove_object()
-                if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
-                elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
-                else: next_obs = next_state.deepcopy()
-                # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
-                # if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
-                outcomes.append([joint_action, next_obs, p_next_state])
+        # can_slip = [self.is_water(next_state.players[p].position) and held_objs[p] is not None for p in range(2)]
+        true_next_state = next_state.deepcopy()
+        true_next_obs = make_obs(true_next_state)
 
-                # P1 lost object, P2 held object
-                if next_state.players[0].has_object():
-                    next_state.players[0].remove_object()
-                if not next_state.players[1].has_object():
-                    old_obj = state.players[1].get_object()
-                    next_state.players[1].set_object(old_obj)
-                if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
-                elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
-                else: next_obs = next_state.deepcopy()
-                # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
-                # if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
-                outcomes.append([joint_action, next_obs, p_next_state])
+        ########################################################################
+        # ENUMERATE ALL POSSIBLE OUTCOMES #####################################
+        ########################################################################
+        # Nobody can slip
+        if np.sum(can_slip)==0:
+            prob = 1
+            outcomes.append([joint_action, make_obs(next_state), prob])
 
-                # P1 held object, P2 lost object
-                if not next_state.players[0].has_object():
-                    old_obj = state.players[0].get_object()
-                    next_state.players[0].set_object(old_obj)
-                if next_state.players[1].has_object():
-                    next_state.players[1].remove_object()
-                if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
-                elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
-                else: next_obs = next_state.deepcopy()
-                # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
-                # if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
-                outcomes.append([joint_action, next_obs, p_next_state])
+        # One agent can slip
+        elif np.sum(can_slip)==1:
+            iplayer = np.argmax(can_slip) #player who slips
 
-                # Both held object
-                if not next_state.players[0].has_object():
-                    old_obj = state.players[0].get_object()
-                    next_state.players[0].set_object(old_obj)
-                if not next_state.players[1].has_object():
-                    old_obj = state.players[1].get_object()
-                    next_state.players[1].set_object(old_obj)
-                next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
-                if as_tensor:
-                    next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
-                    # next_obs = torch.from_numpy(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
-                outcomes.append([joint_action, next_obs, p_next_state])
-        assert len(outcomes) > 0,'empty outcome'
+            # Lost object ---------------------------------
+            prob = self.p_slip
+            if next_state.players[iplayer].has_object():
+                next_state.players[iplayer].remove_object()
+            outcomes.append([joint_action, make_obs(next_state), prob])
+
+            # Held object -----------------------
+            prob = 1 - self.p_slip
+            if not next_state.players[iplayer].has_object():
+                next_state.players[iplayer].set_object(held_objs[iplayer])
+            outcomes.append([joint_action, make_obs(next_state), prob])
+
+        # Both players can slip
+        elif np.sum(can_slip)==2:
+            # print(f'OG: {[player.has_object() for player in next_state.players]}')
+            # Both lost object ---------------------------------
+            prob = self.p_slip * self.p_slip
+            for iplayer in range(2):
+                if next_state.players[iplayer].has_object():
+                    next_state.players[iplayer].remove_object()
+            outcomes.append([joint_action, make_obs(next_state), prob])
+            # print(f'BL: {[player.has_object() for player in next_state.players]}')
+
+            # Only one (ego) player lost object (x2) ------------------
+            prob = (1 - self.p_slip) * self.p_slip
+            for iplayer in range(2):
+                if next_state.players[iplayer].has_object():
+                    next_state.players[iplayer].remove_object()
+                if not next_state.players[int(not iplayer)].has_object():
+                    next_state.players[int(not iplayer)].set_object(held_objs[int(not iplayer)])
+                outcomes.append([joint_action, make_obs(next_state), prob])
+                # print(f'1L[{iplayer}]: {[player.has_object() for player in next_state.players]}')
+
+            # Both held object ---------------------------------
+            prob = (1 - self.p_slip) * (1 - self.p_slip)
+            for iplayer in range(2):
+                if not next_state.players[iplayer].has_object():
+                    next_state.players[iplayer].set_object(held_objs[iplayer])
+            outcomes.append([joint_action, make_obs(next_state), prob])
+            # print(f'BL: {[player.has_object() for player in next_state.players]}')
+
+
+        else: raise ValueError('Invalid slip configuration')
+
+        # Check validity of outcomes
+        assert len(outcomes) > 0, 'empty outcome'
+        assert np.sum([o[2] for o in outcomes]) == 1, f'outcome probs not = 1 | p={[o[2] for o in outcomes]}'
+        if encoded:
+            assert np.any([torch.all(true_next_obs== prospect[1]).item() for prospect in outcomes]), 'state not prospects'
+
+            # TESTING ONLY-----
+            if self.p_slip == 0 or self.p_slip==1:
+                certain_idx = np.argmax([o[2] for o in outcomes])
+                assert torch.all(outcomes[certain_idx][1] == true_next_obs).item(), 'True next state not in outcomes'
+            # ------------
+        else: assert next_state in [prospect[1] for prospect in outcomes], 'state not prospects'
+
+
         return outcomes
+
+        # joint_actions = Action.ALL_JOINT_ACTIONS if joint_action is None else [joint_action]
+        # for joint_action in joint_actions:
+        #     next_state, mdp_infos = self.get_state_transition(state, joint_action)
+        #     can_slip = [self.is_water(next_state.players[p].position) and held_objs[p] is not None for p in range(2)]
+
+            # assert state != next_state, 'State and next state are the same'
+
+            # # check if player moved into puddle ----------------
+            # player_in_water = []
+            # Wlocs = self.get_water_locations()
+            # for player in next_state.players:
+            #     player_in_water.append(player.position in Wlocs)
+            #
+            # # Check if player was holding object ----------------
+            # # stepping in water without object is equivalent to not stepping in water
+            # # next_held_objs = [None,None]
+            # for ip, player in enumerate(state.players):
+            #     # Player was not holding obj to begin with ==> cant slip
+            #     if not player.has_object():
+            #         player_in_water[ip] = False
+            #     # else: # Player was holding object and get object in next position
+            #     #     next_held_objs[ip] = player.get_object().deepcopy()
+            #     #     next_held_objs[ip].position = next_state.players[ip].position
+
+
+            ########################################################################
+            # ENUMERATE ALL POSSIBLE OUTCOMES #####################################
+            ########################################################################
+
+
+            # TESTING ----------------------
+            # p_next_state = 0.5
+            # next_obs = make_obs(next_state)
+            # outcomes.append([joint_action, next_obs, p_next_state])
+            # next_obs = make_obs(next_state)
+            # outcomes.append([joint_action, next_obs, p_next_state])
+            # ------------------------------------
+
+            # Neither player can slip ####################
+            # if np.all(player_in_water == [False, False]):
+            #     p_next_state = 1
+            #     next_obs = make_obs(next_state)
+            #     outcomes.append([joint_action, next_obs, p_next_state])
+            #
+            # # if p1 slipped but not p2 ########################
+            # elif np.all(player_in_water == [True, False]):
+            #     ip = 0
+            #     # Lost object ---------------------------------
+            #     p_next_state = self.p_slip
+            #     if next_state.players[ip].has_object():
+            #         next_state.players[ip].remove_object()
+            #
+            #     next_obs = make_obs(next_state)
+            #     outcomes.append([joint_action, next_obs, p_next_state])
+            #
+            #     # Held object -----------------------
+            #     p_next_state = 1 - self.p_slip
+            #     if not next_state.players[ip].has_object():
+            #         old_obj = state.players[ip].get_object().deepcopy()
+            #         next_state.players[ip].set_object(old_obj)
+            #
+            #     next_obs = make_obs(next_state)
+            #     outcomes.append([joint_action, next_obs, p_next_state])
+            #
+            # # if p2 slipped but not p1 ##############################
+            # elif np.all(player_in_water == [False, True]):
+            #     ip = 1
+            #     # Lost object-----------------------------
+            #     p_next_state = self.p_slip
+            #     if next_state.players[ip].has_object():
+            #         next_state.players[ip].remove_object()
+            #
+            #     next_obs = make_obs(next_state)
+            #     outcomes.append([joint_action, next_obs, p_next_state])
+            #
+            #     # Held object ------------------------------
+            #     p_next_state = 1 - self.p_slip
+            #     if not next_state.players[ip].has_object():
+            #         old_obj = state.players[ip].get_object().deepcopy()
+            #         next_state.players[ip].set_object(old_obj)
+            #
+            #     next_obs = make_obs(next_state)
+            #     outcomes.append([joint_action, next_obs, p_next_state])
+            #
+            #
+            # # both players slipped ######################################
+            # elif np.all(player_in_water == [True, True]):
+            #
+            #     # Both lost object ----------------------------------
+            #     p_next_state = self.p_slip * self.p_slip
+            #     for ip in range(2):
+            #         if next_state.players[ip].has_object():
+            #             next_state.players[ip].remove_object()
+            #
+            #     next_obs = make_obs(next_state)
+            #     outcomes.append([joint_action, next_obs, p_next_state])
+            #
+            #     # P1 lost object, P2 held object -------------------------------------
+            #     p_next_state = (1 - self.p_slip) * self.p_slip
+            #     if next_state.players[0].has_object():
+            #         next_state.players[0].remove_object()
+            #     if not next_state.players[1].has_object():
+            #         old_obj = state.players[1].get_object().deepcopy()
+            #         next_state.players[1].set_object(old_obj)
+            #
+            #     next_obs = make_obs(next_state)
+            #     outcomes.append([joint_action, next_obs, p_next_state])
+            #
+            #     # P1 held object, P2 lost object ------------------------------------
+            #     p_next_state = (1 - self.p_slip) * self.p_slip
+            #     if not next_state.players[0].has_object():
+            #         old_obj = state.players[0].get_object().deepcopy()
+            #         next_state.players[0].set_object(old_obj)
+            #     if next_state.players[1].has_object():
+            #         next_state.players[1].remove_object()
+            #
+            #     next_obs = make_obs(next_state)
+            #     outcomes.append([joint_action, next_obs, p_next_state])
+            #
+            #     # Both held object ----------------------------------------------
+            #     p_next_state = (1 - self.p_slip) * (1 - self.p_slip)
+            #     if not next_state.players[0].has_object():
+            #         old_obj = state.players[0].get_object().deepcopy()
+            #         next_state.players[0].set_object(old_obj)
+            #     if not next_state.players[1].has_object():
+            #         old_obj = state.players[1].get_object().deepcopy()
+            #         next_state.players[1].set_object(old_obj)
+            #
+            #     next_obs = make_obs(next_state)
+            #     outcomes.append([joint_action, next_obs, p_next_state])
+
+        # assert len(outcomes) > 0, 'empty outcome'
+        # assert np.sum([o[2] for o in outcomes]) == 1, 'outcome probs not = 1'
+        # return outcomes
+
+    # def one_step_lookahead(self,state,joint_action = None,encoded=True,as_tensor=False,device=None):
+    #     """
+    #
+    #     :param state:
+    #     :param joint_action: if None, return all possible outcomes from all joint actions
+    #     :return: {joint_action, next_state, p_next_state}
+    #     """
+    #     if as_tensor: assert device is not None, 'If using tensor, device must be specified'
+    #
+    #     old_state = state.deepcopy()
+    #
+    #     outcomes = []
+    #     joint_actions = Action.ALL_JOINT_ACTIONS if joint_action is None else [joint_action]
+    #     for joint_action in joint_actions:
+    #         next_state,mdp_infos = self.get_state_transition(old_state, joint_action,False)
+    #
+    #         # check if player moved into puddle ----------------
+    #         player_in_water = []
+    #         Wlocs = self.get_water_locations()
+    #         for player in next_state.players:
+    #             player_in_water.append(player.position in Wlocs)
+    #
+    #         # Check if player was holding object ----------------
+    #         # stepping in water without object is equivalent to not stepping in water
+    #         for ip, player in enumerate(old_state.players):
+    #             if player_in_water[ip] and not player.has_object():
+    #                 player_in_water[ip] = False
+    #
+    #         ########################################################################
+    #         # ENUMERATE ALL POSSIBLE OUTCOMES #####################################
+    #         ########################################################################
+    #
+    #         # Neither player can slip ----------
+    #         if np.all(player_in_water == [False, False]):
+    #             p_next_state = 1
+    #             if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
+    #             elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
+    #             else: next_obs = next_state.deepcopy()
+    #             outcomes.append([joint_action, next_obs, p_next_state])
+    #
+    #         # if p1 slipped but not p2 -----------------
+    #         elif np.all(player_in_water == [True, False]):
+    #             ip = 0
+    #             # Lost object
+    #             p_next_state = self.p_slip
+    #             if next_state.players[ip].has_object(): next_state.players[ip].remove_object()
+    #             if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
+    #             elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
+    #             else: next_obs = next_state.deepcopy()
+    #             outcomes.append([joint_action, next_obs, p_next_state])
+    #
+    #             # Held object object
+    #             p_next_state = 1-self.p_slip
+    #             if not next_state.players[ip].has_object():
+    #                 old_obj = state.players[ip].get_object(); next_state.players[ip].set_object(old_obj)
+    #             if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
+    #             elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
+    #             else: next_obs = next_state.deepcopy()
+    #             # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+    #             # if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
+    #             outcomes.append([joint_action, next_obs, p_next_state])
+    #
+    #         # if p2 slipped but not p1
+    #         elif np.all(player_in_water == [False, True]):
+    #             ip = 1
+    #             # Lost object
+    #             p_next_state = self.p_slip
+    #             if next_state.players[ip].has_object(): next_state.players[ip].remove_object()
+    #             if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
+    #             elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
+    #             else: next_obs = next_state.deepcopy()
+    #             # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+    #             # if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
+    #             outcomes.append([joint_action, next_obs, p_next_state])
+    #
+    #             # Held object object
+    #             p_next_state = 1-self.p_slip
+    #             if not next_state.players[ip].has_object():
+    #                 old_obj = old_state.players[ip].get_object(); next_state.players[ip].set_object(old_obj)
+    #             if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
+    #             elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
+    #             else: next_obs = next_state.deepcopy()
+    #             # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+    #             # if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
+    #             outcomes.append([joint_action, next_obs, p_next_state])
+    #
+    #
+    #         # both players slipped
+    #         elif np.all(player_in_water==[True, True]):
+    #             # Both lost object
+    #             p_next_state = self.p_slip * self.p_slip
+    #             for ip in range(2):
+    #                 if next_state.players[ip].has_object(): next_state.players[ip].remove_object()
+    #             if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
+    #             elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
+    #             else: next_obs = next_state.deepcopy()
+    #             # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+    #             # if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
+    #             outcomes.append([joint_action, next_obs, p_next_state])
+    #
+    #             # P1 lost object, P2 held object
+    #             p_next_state = (1-self.p_slip)*self.p_slip
+    #             if next_state.players[0].has_object():
+    #                 next_state.players[0].remove_object()
+    #             if not next_state.players[1].has_object():
+    #                 old_obj = state.players[1].get_object()
+    #                 next_state.players[1].set_object(old_obj)
+    #             if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
+    #             elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
+    #             else: next_obs = next_state.deepcopy()
+    #             # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+    #             # if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
+    #             outcomes.append([joint_action, next_obs, p_next_state])
+    #
+    #             # P1 held object, P2 lost object
+    #             p_next_state = (1 - self.p_slip) * self.p_slip
+    #             if not next_state.players[0].has_object():
+    #                 old_obj = state.players[0].get_object()
+    #                 next_state.players[0].set_object(old_obj)
+    #             if next_state.players[1].has_object():
+    #                 next_state.players[1].remove_object()
+    #             if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
+    #             elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
+    #             else: next_obs = next_state.deepcopy()
+    #             # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+    #             # if as_tensor: next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
+    #             outcomes.append([joint_action, next_obs, p_next_state])
+    #
+    #             # Both held object
+    #             p_next_state = (1 - self.p_slip) * (1 - self.p_slip)
+    #             if not next_state.players[0].has_object():
+    #                 old_obj = state.players[0].get_object()
+    #                 next_state.players[0].set_object(old_obj)
+    #             if not next_state.players[1].has_object():
+    #                 old_obj = state.players[1].get_object()
+    #                 next_state.players[1].set_object(old_obj)
+    #
+    #             if encoded and as_tensor:  next_obs = self.get_lossless_encoding_vector_astensor(next_state, device).unsqueeze(0)
+    #             elif encoded and not as_tensor:  next_obs = self.get_lossless_encoding_vector(next_state, device)
+    #             else:  next_obs = next_state.deepcopy()
+    #             # next_obs = self.get_lossless_encoding_vector(next_state) if encoded else next_state.deepcopy()
+    #             # if as_tensor:  next_obs = torch.tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
+    #                 # next_obs = torch.from_numpy(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
+    #             outcomes.append([joint_action, next_obs, p_next_state])
+    #     assert len(outcomes) > 0,'empty outcome'
+    #     assert np.sum([o[2] for o in outcomes]) ==1, 'outcome probs not = 1'
+    #     return outcomes
 
 
 

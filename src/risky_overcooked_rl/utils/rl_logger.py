@@ -300,20 +300,39 @@ class RLLogger(object):
 
     ###########################################################
     # Render Utils ############################################
+    def remove_outliers(self, data, window=0.95):
+        """Remove the top and bottom 5% of the data"""
+        if len(data)>3:
+            mean = np.mean(data)
+            sd = np.std(data)
+            final_list = [x for x in data if (x > mean - 2 * sd) and (x < mean + 2 * sd)]
+            # final_list = [x for x in data if (x > mean - 2 * sd)]
+            # final_list = [x for x in final_list if (x < mean + 2 * sd)]
+            return final_list
+        else:
+            return data
     def draw(self):
         for key, data in self.logs.items():
             x = data[:, 0]
             y = data[:, 1]
-            self.axs[key].set_xlim([np.min(x), np.max(x)])
-            self.axs[key].set_ylim([np.min(y), np.max(y)])
-            # self.lines[key].set_xdata(x)
             self.lines[key].set_data(x, y)
+            self.axs[key].set_xlim([np.min(x), np.max(x)])
+            self.axs[key].set_ylim([0, np.max(y)])
+            if 'loss' in key.lower():
+                # self.lines[key].set_xdata(x)
+                _y = self.remove_outliers(y)
+                # self.axs[key].set_ylim([np.min(_y), np.max(_y)])
+                self.axs[key].set_ylim([0, np.max(_y)])
 
         for key, _ in self.filtered_lines.items():
             data = self.logs[key]
             x = data[:, 0]
             y = data[:, 1]
             y = self.filter(y, window=self.filter_widows[key])
+            # if 'loss' in key.lower():
+            #     self.axs[key].set_xlim([np.min(x), np.max(x)])
+            #     self.axs[key].set_ylim([np.min(y), np.max(y)])
+
             self.filtered_lines[key].set_data(x, y)
         self.plot_fig.canvas.draw()
         self.plot_fig.canvas.flush_events()

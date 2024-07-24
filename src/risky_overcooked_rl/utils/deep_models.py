@@ -698,6 +698,11 @@ class SelfPlay_QRE_OSA(object):
             #     joint_action = self.joint_action_space[joint_action_idx]
         return joint_action, joint_action_idx, action_probs
 
+
+    ###################################################
+    # Update Utils ######################################
+    ###################################################
+
     def update(self):
         if self.memory_len < self._memory_batch_size:
             return None
@@ -706,62 +711,112 @@ class SelfPlay_QRE_OSA(object):
         batch = self._transition(*zip(*transitions))
         BATCH_SIZE = len(transitions)
         state = torch.cat(batch.state)
-        # next_state = torch.cat(batch.next_prospects)
         action = torch.cat(batch.action)
         reward = torch.cat(batch.reward)
         done = torch.cat(batch.done)
 
-
         # Q-Learning with target network
-        # q_values = self.model(state) # .unsqueeze(0)
         q_value = self.model(state).gather(1, action)
 
         # Batch calculate Q(s'|pi) and form mask for later condensation to expectation
-        prospect_idxs = []
-        all_next_states = []
-        all_p_next_states = []
-        for i, prospect in enumerate(batch.next_prospects):
-            n_outcomes = len(prospect)
-            all_next_states +=  [outcome[1] for outcome in prospect]
-            all_p_next_states += [outcome[2] for outcome in prospect]
-            prospect_idxs += [i for _ in range(n_outcomes)]
+        all_next_states,all_p_next_states,prospect_idxs = self.flatten_next_prospects(batch.next_prospects)
+
+        # Compute equalib value for each outcome ---------------
         NF_games = self.get_normal_form_game(torch.cat(all_next_states), use_target=True)
         _, all_next_q_value = self.compute_nash(NF_games, update=True)
 
-
-        # Convert to numpy then back ###################################
+        # Convert to numpy then back ----------------------------
         all_next_q_value = all_next_q_value[:, 0].reshape(-1, 1).detach().cpu().numpy()
         all_p_next_states = np.array(all_p_next_states).reshape(-1, 1)
-        prospect_idxs = np.array(prospect_idxs)
+        expected_q_value = self.prospect_value_expectations(reward = reward,
+                                                            done = done,
+                                                            prospect_masks=prospect_idxs,
+                                                            prospect_next_q_values= all_next_q_value,
+                                                            prospect_p_next_states= all_p_next_states)
 
-        # Reduce prospects into expected next q-values
-        expected_next_q_values = np.zeros([BATCH_SIZE, 1])
-        for i in range(BATCH_SIZE):
-            mask = np.where(prospect_idxs==i)[0]
-            expected_next_q_values[i] = np.sum(all_next_q_value[mask,:]*all_p_next_states[mask,:])
-        expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)
-        expected_q_value = reward + (self.gamma) * expected_next_q_values * (1 - done)
 
-        # Using all torch (slower for some reason? ##########################
-        # prospect_idxs = np.array(prospect_idxs)
-        # all_next_q_value = all_next_q_value[:, 0].reshape(-1, 1)
-        # all_p_next_states = torch.tensor(all_p_next_states,device=self.device).reshape(-1, 1)
-        # expected_q_prime = torch.zeros([BATCH_SIZE, 1], dtype=torch.float32, device=device)
+        # # Reduce prospects into expected next q-values
+        # # expected_next_q_values = np.zeros([BATCH_SIZE, 1])
+        # expected_next_q_values = np.nan*np.ones([BATCH_SIZE, 1])
         # for i in range(BATCH_SIZE):
-        #     mask = np.where(prospect_idxs == i)[0]
-        #     expected_q_prime[i,:] = torch.sum(all_next_q_value[mask,:]*all_p_next_states[mask,:])
-        # expected_q_value= reward + (self.gamma) * expected_q_prime * (1 - done)
+        #     prospect_mask = prospect_idxs[i]
+        #     prospect_values = all_next_q_value[prospect_mask, :]
+        #     prospect_probs = all_p_next_states[prospect_mask, :]
+        #     assert np.sum(prospect_probs)==1, 'prospect probs should sum to 1'
+        #     expected_next_q_values[i] = np.sum(prospect_values*prospect_probs)
+        # assert not np.any(np.isnan(expected_next_q_values)), 'prospect expectations not filled'
+        # expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)
+        # expected_q_value = reward + (self.gamma) * expected_next_q_values * (1 - done)
+
 
         # Optimize ----------------
         loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
         loss = loss.mean()
         self.optimizer.zero_grad()
         loss.backward()
+
         # In-place gradient clipping
-        if self.clip_grad is not None:
-            torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
+        if self.clip_grad is not None:  torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
         self.optimizer.step()
         return loss.item()
+
+    def prospect_value_expectations(self,reward,done,prospect_masks,prospect_next_q_values,prospect_p_next_states):
+        """Rational expectation used for modification when class inherited by CPT version
+        - condenses prospects back into expecations of |batch_size|
+        """
+        BATCH_SIZE = len(prospect_masks)
+        # expected_next_q_values = np.zeros([BATCH_SIZE, 1])
+        expected_next_q_values = np.nan*np.ones([BATCH_SIZE, 1])
+        for i in range(BATCH_SIZE):
+            prospect_mask = prospect_masks[i]
+            prospect_values = prospect_next_q_values[prospect_mask, :]
+            prospect_probs = prospect_p_next_states[prospect_mask, :]
+            assert np.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
+            expected_next_q_values[i] = np.sum(prospect_values * prospect_probs)
+
+
+            # if np.any(prospect_probs==1):
+            #     expected_next_q_values[i] = prospect_values[np.argmax(prospect_probs),0]
+            # else:
+            #     raise ValueError('non-zero prob of slipping') # TODO: REMOVE FOR VALIDATION
+            #     expected_next_q_values[i] = np.sum(prospect_values * prospect_probs)
+
+
+        assert not np.any(np.isnan(expected_next_q_values)), 'prospect expectations not filled'
+        expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)
+        expected_q_value = reward + (self.gamma) * expected_next_q_values * (1 - done) # TD-Target
+        return expected_q_value
+
+        # Using all torch (slower for some reason? ##########################
+        # all_next_q_value = all_next_q_value[:, 0].reshape(-1, 1)
+        # all_p_next_states = torch.tensor(all_p_next_states,device=self.device).reshape(-1, 1)
+        # expected_q_value = torch.zeros([BATCH_SIZE, 1], dtype=torch.float32, device=device)
+        # for i in range(BATCH_SIZE):
+        #     prospect_mask = prospect_idxs[i]
+        #     prospect_values = all_next_q_value[prospect_mask, :]
+        #     prospect_probs = all_p_next_states[prospect_mask, :]
+        #     expected_prospect_value = torch.sum(prospect_values*prospect_probs)
+        #     expected_q_value = reward + (self.gamma) * expected_prospect_value * (1 - done)
+        #     # expected_q_prime[i,:] = torch.sum(all_next_q_value[mask,:]*all_p_next_states[mask,:])
+        # # expected_q_value= reward + (self.gamma) * expected_q_prime * (1 - done)
+
+    def flatten_next_prospects(self,next_prospects):
+        """
+        Used for flattening next_state prospects into list of outcomes for batch processing
+         - improve model-value prediction speed
+         - condensed to back to |batch_size| after using expectation
+        """
+        all_next_states = []
+        all_p_next_states = []
+        prospect_idxs = []
+        total_outcomes = 0
+        for i, prospect in enumerate(next_prospects):
+            n_outcomes = len(prospect)
+            all_next_states += [outcome[1] for outcome in prospect]
+            all_p_next_states += [outcome[2] for outcome in prospect]
+            prospect_idxs.append(np.arange(total_outcomes, total_outcomes + n_outcomes))
+            total_outcomes += n_outcomes
+        return all_next_states,all_p_next_states,prospect_idxs
 
     def update_target(self):
         # self.target = soft_update(self.model, self.target, self.tau)
@@ -784,74 +839,95 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         self._memory_batch_size = config['minibatch_size']
 
         # Define Model
-        self.model = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
-        self.target = DQN_vector_feature(obs_shape, n_actions, self.size_hidden_layers).to(self.device)
-        self.target.load_state_dict(self.model.state_dict())
+        # self.model = DQN_vector_feature(obs_shape, n_actions, self.num_hidden_layers,self.size_hidden_layers).to(self.device)
+        # self.target = DQN_vector_feature(obs_shape, n_actions, self.num_hidden_layers,self.size_hidden_layers).to(self.device)
+        # self.target.load_state_dict(self.model.state_dict())
 
-    def update(self):
-        if self.memory_len < 2*self._memory_batch_size:
-            return None
+    def prospect_value_expectations(self,reward,done,prospect_masks,prospect_next_q_values,prospect_p_next_states):
+        """CPT expectation used for modification when class inherited by CPT version
+        - condenses prospects back into expecations of |batch_size|
+        """
         self.CPT.recalc_b()
 
-        transitions = self.memory_sample()
-        batch = self._transition(*zip(*transitions))
-        BATCH_SIZE = len(transitions)
-        state = torch.cat(batch.state)
-        # next_state = torch.cat(batch.next_prospects)
-        action = torch.cat(batch.action)
-        reward = torch.cat(batch.reward)
-        done = torch.cat(batch.done)
-
-
-        # Q-Learning with target network
-        # q_values = self.model(state) # .unsqueeze(0)
-        q_value = self.model(state).gather(1, action)
-
-        # Batch calculate Q(s'|pi) and form mask for later condensation to expectation
-        prospect_idxs = []
-        all_next_states = []
-        all_p_next_states = []
-        for i, prospect in enumerate(batch.next_prospects):
-            n_outcomes = len(prospect)
-            all_next_states +=  [outcome[1] for outcome in prospect]
-            all_p_next_states += [outcome[2] for outcome in prospect]
-            prospect_idxs += [i for _ in range(n_outcomes)]
-        NF_games = self.get_normal_form_game(torch.cat(all_next_states), use_target=True)
-        _, all_next_q_value = self.compute_nash(NF_games, update=True)
-        all_next_q_value = all_next_q_value[:,0].reshape(-1, 1)
-        # all_p_next_states = torch.tensor(all_p_next_states, dtype=torch.float32, device=self.device).reshape(-1, 1)
-
-        all_next_q_value = all_next_q_value.detach().cpu().numpy()
-        all_p_next_states = np.array(all_p_next_states).reshape(-1, 1)
-        prospect_idxs = np.array(prospect_idxs)
-
-
-        # Reduce prospects into expected next q-values
-        _done = done.detach().cpu().numpy()
-        _rewards = reward.detach().cpu().numpy()
+        BATCH_SIZE = len(prospect_masks)
+        done = done.detach().cpu().numpy()
+        rewards = reward.detach().cpu().numpy()
         expected_q_value = np.zeros([BATCH_SIZE, 1])
-        _expected_q_value = np.zeros([BATCH_SIZE, 1])
         for i in range(BATCH_SIZE):
-            mask = np.where(prospect_idxs==i)[0]
-            td_targets =  _rewards[i,:] + (self.gamma)*all_next_q_value[mask,:]*(1 - _done[i,:])
-            expected_q_value[i] =  self.CPT.expectation(td_targets.flatten(), all_p_next_states[mask,:].flatten())
-        expected_q_value = torch.tensor(expected_q_value,dtype=torch.float32,device=self.device)
-        # expected_q_value = torch.zeros([BATCH_SIZE, 1], dtype = torch.float32, device=self.device)
-        # for i in range(BATCH_SIZE):
-        #     mask = np.where(prospect_idxs==i)[0]
-        #     td_targets =  reward[i,:] + (self.gamma)*all_next_q_value[mask,:]*(1 - done[i,:])
-        #     expected_q_value[i] =  self.CPT.expectation(td_targets.flatten(), all_p_next_states[mask,:].flatten())
+            prospect_mask = prospect_masks[i]
+            prospect_values = prospect_next_q_values[prospect_mask, :]
+            prospect_probs = prospect_p_next_states[prospect_mask, :]
+            prospect_td_targets = rewards[i, :] + (self.gamma) * prospect_values * (1-done[i,:])
+            expected_q_value[i] = self.CPT.expectation(prospect_td_targets, prospect_probs.flatten())
+        expected_q_value = torch.tensor(expected_q_value, dtype=torch.float32, device=self.device)
+        return expected_q_value
 
 
-        # Optimize ----------------
-        loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
-        loss = loss.mean()
-        self.optimizer.zero_grad()
-        loss.backward()
-        # In-place gradient clipping
-        if self.clip_grad is not None: torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
-        self.optimizer.step()
-        return loss.item()
+    #
+    # def update(self):
+    #     if self.memory_len < 2*self._memory_batch_size:
+    #         return None
+    #     self.CPT.recalc_b()
+    #
+    #     transitions = self.memory_sample()
+    #     batch = self._transition(*zip(*transitions))
+    #     BATCH_SIZE = len(transitions)
+    #     state = torch.cat(batch.state)
+    #     # next_state = torch.cat(batch.next_prospects)
+    #     action = torch.cat(batch.action)
+    #     reward = torch.cat(batch.reward)
+    #     done = torch.cat(batch.done)
+    #
+    #
+    #     # Q-Learning with target network
+    #     # q_values = self.model(state) # .unsqueeze(0)
+    #     q_value = self.model(state).gather(1, action)
+    #
+    #     # Batch calculate Q(s'|pi) and form mask for later condensation to expectation
+    #     prospect_idxs = []
+    #     all_next_states = []
+    #     all_p_next_states = []
+    #     for i, prospect in enumerate(batch.next_prospects):
+    #         n_outcomes = len(prospect)
+    #         all_next_states +=  [outcome[1] for outcome in prospect]
+    #         all_p_next_states += [outcome[2] for outcome in prospect]
+    #         prospect_idxs += [i for _ in range(n_outcomes)]
+    #     NF_games = self.get_normal_form_game(torch.cat(all_next_states), use_target=True)
+    #     _, all_next_q_value = self.compute_nash(NF_games, update=True)
+    #     all_next_q_value = all_next_q_value[:,0].reshape(-1, 1)
+    #     # all_p_next_states = torch.tensor(all_p_next_states, dtype=torch.float32, device=self.device).reshape(-1, 1)
+    #
+    #     all_next_q_value = all_next_q_value.detach().cpu().numpy()
+    #     all_p_next_states = np.array(all_p_next_states).reshape(-1, 1)
+    #     prospect_idxs = np.array(prospect_idxs)
+    #
+    #
+    #     # Reduce prospects into expected next q-values
+    #     _done = done.detach().cpu().numpy()
+    #     _rewards = reward.detach().cpu().numpy()
+    #     expected_q_value = np.zeros([BATCH_SIZE, 1])
+    #     _expected_q_value = np.zeros([BATCH_SIZE, 1])
+    #     for i in range(BATCH_SIZE):
+    #         mask = np.where(prospect_idxs==i)[0]
+    #         td_targets =  _rewards[i,:] + (self.gamma)*all_next_q_value[mask,:]*(1 - _done[i,:])
+    #         expected_q_value[i] =  self.CPT.expectation(td_targets.flatten(), all_p_next_states[mask,:].flatten())
+    #     expected_q_value = torch.tensor(expected_q_value,dtype=torch.float32,device=self.device)
+    #     # expected_q_value = torch.zeros([BATCH_SIZE, 1], dtype = torch.float32, device=self.device)
+    #     # for i in range(BATCH_SIZE):
+    #     #     mask = np.where(prospect_idxs==i)[0]
+    #     #     td_targets =  reward[i,:] + (self.gamma)*all_next_q_value[mask,:]*(1 - done[i,:])
+    #     #     expected_q_value[i] =  self.CPT.expectation(td_targets.flatten(), all_p_next_states[mask,:].flatten())
+    #
+    #
+    #     # Optimize ----------------
+    #     loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
+    #     loss = loss.mean()
+    #     self.optimizer.zero_grad()
+    #     loss.backward()
+    #     # In-place gradient clipping
+    #     if self.clip_grad is not None: torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
+    #     self.optimizer.step()
+    #     return loss.item()
 
 
 #

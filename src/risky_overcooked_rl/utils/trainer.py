@@ -84,23 +84,28 @@ class Trainer:
 
             # Perform Rollout
             self.logger.start_iteration()
-            cum_reward, cum_shaped_rewards,mean_loss = self.training_rollout(it)
+            cum_reward, cum_shaped_rewards,rollout_info = self.training_rollout(it)
             if it>1: self.model.scheduler.step() # updates learning rate scheduler
             self.model.update_target()  # performs soft update of target network
             self.logger.end_iteration()
 
+            slips = rollout_info['onion_slips'] + rollout_info['dish_slips'] + rollout_info['soup_slips']
+
             print(f"Iteration {it} "
-                  f"| train reward: {round(cum_reward, 3)} "
-                  f"| shaped reward: {np.round(cum_shaped_rewards, 3)} "
-                  f"| |memory| {self.model.memory_len} "
-                  f"| |rshape| {round(self._rshape_scale, 3)} "
-                  f"| rationality: {round(self._rationality, 3)}"
-                  f"| epsilon: {round(self._epsilon, 3)} "
+                  f"| train reward:{round(cum_reward, 3)} "
+                  f"| shaped reward:{np.round(cum_shaped_rewards, 3)} "
+                  f"| loss:{round(rollout_info['mean_loss'], 3)} "
+                  f"| slips:{slips} "
+                  f" |"
+                  f"| mem:{self.model.memory_len} "
+                  f"| rshape:{round(self._rshape_scale, 3)} "
+                  f"| rat:{round(self._rationality, 3)}"
+                  f"| eps:{round(self._epsilon, 3)} "
                   f"| LR={round(self.model.optimizer.param_groups[0]['lr'], 4)}"
                   )
 
             train_rewards.append(cum_reward + cum_shaped_rewards)
-            train_losses.append(mean_loss)
+            train_losses.append(rollout_info['mean_loss'])
 
             # Testing Step ##########################################
             # time4test = (it % self.test_interval == 0 and it > 2)
@@ -135,27 +140,40 @@ class Trainer:
     # Train/Test Rollouts   ########################################
     ################################################################
     def training_rollout(self,it):
+
         self.model.rationality = self._rationality
         self.env.reset()
 
         # Random start state if specified
-        if it / self.ITERATIONS < self.perc_random_start:
+        # if it / self.ITERATIONS < self.perc_random_start:
+        if np.random.sample() < self.perc_random_start:
             self.env.state = self.random_start_state()
 
         losses = []
         cum_reward = 0
         cum_shaped_reward = np.zeros(2)
+
+        rollout_info = {
+            'onion_slips': np.zeros(2),
+            'dish_slips': np.zeros(2),
+            'soup_slips': np.zeros(2),
+            'mean_loss': 0
+        }
+
         for t in count():
-            # TODO: Verify if observing correctly
-            # obs = torch.tensor(self.mdp.get_lossless_encoding_vector(self.env.state), dtype=torch.float32, device=device).unsqueeze(0)
             obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state,device=device).unsqueeze(0)
 
             joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=self._epsilon)
             next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
                                                                joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
                                                                as_tensor=True, device=device)
-            next_state, reward, done, info = self.env.step(joint_action)
+            next_state, reward, done, info = self.env.step(joint_action,get_mdp_info=True)
+            rollout_info['onion_slips'] += np.array(info['mdp_info']['event_infos']['onion_slip'])
+            rollout_info['dish_slips'] += np.array(info['mdp_info']['event_infos']['dish_slip'])
+            rollout_info['soup_slips'] += np.array(info['mdp_info']['event_infos']['soup_slip'])
 
+
+            # evemts = info['event_infos']
             # Track reward traces
             shaped_rewards = self._rshape_scale * np.array(info["shaped_r_by_agent"])
             if self.shared_rew: shaped_rewards = np.mean(shaped_rewards)*np.ones(2)
@@ -174,8 +192,8 @@ class Trainer:
             if loss is not None: losses.append(loss)
             if done:  break
             self.env.state = next_state
-        mean_loss = np.mean(losses)
-        return cum_reward, cum_shaped_reward, mean_loss
+        rollout_info['mean_loss'] = np.mean(losses)
+        return cum_reward, cum_shaped_reward, rollout_info
     def test_rollout(self):
         self.model.rationality = self._rationality
         self.env.reset()
@@ -244,12 +262,8 @@ class Trainer:
             if p < rnd_obj_prob_thresh:
                 # Different objects have different probabilities
                 obj = np.random.choice(["onion", "dish", "soup"], p=[0.6, 0.2, 0.2])
-                if obj == "soup":
-                    player.set_object(SoupState.get_soup(player.position, num_onions=3,  num_tomatoes=0, finished=True))
-                else:
-                    player.set_object(ObjectState(obj, player.position))
+                self.add_held_obj(player, obj)
         return state
-
     def add_random_counter_state(self, state, rnd_obj_prob_thresh=0.025):
         counters = self.mdp.reachable_counters
         for counter_loc in counters:
@@ -261,6 +275,13 @@ class Trainer:
                 else:
                     state.add_object(ObjectState(obj, counter_loc))
         return state
+
+    def add_held_obj(self,player,obj):
+        if obj == "soup":
+            player.set_object(SoupState.get_soup(player.position, num_onions=3, num_tomatoes=0, finished=True))
+        else:
+            player.set_object(ObjectState(obj, player.position))
+        return player
 
 def main():
 
@@ -308,27 +329,48 @@ def main():
     ###############################
 
     # Top Left
-    # lowered tau
+    # config['ITERATIONS'] = 30_000
+    # config['LAYOUT'] = "risky_coordination_ring"
     # config['replay_memory_size'] = 30_000
     # config['epsilon_sched'] = [1.0, 0.15, 10_000]
     # config['rshape_sched'] = [1, 0, 10_000]
     # config['rationality_sched'] = [5.0, 5.0, 10_000]
     # config['lr_sched'] = [1e-2, 1e-4, 3_000]
     # config['perc_random_start'] = 0.9
-    ## config['test_rationality'] = config['rationality_sched'][1]
     # config['tau'] = 0.01
     # config['num_hidden_layers'] = 5
     # config['size_hidden_layers'] = 256
-    # config['shared_rew'] = False
     # config['gamma'] = 0.95
-    # config['note'] = 'increased width'
+    # config['p_slip'] = 0.25
+    # config['note'] = 'medium risk + random chance start'
     # Trainer(SelfPlay_QRE_OSA, config).run()
 
 
 
     # # Bottom Left
+    # config['LAYOUT'] = "risky_coordination_ring"
     # config['replay_memory_size'] = 30_000
     # config['epsilon_sched'] = [1.0, 0.15, 10_000]
+    # config['rshape_sched'] = [1, 0, 10_000]
+    # config['rationality_sched'] = [5.0, 5.0, 10_000]
+    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
+    # config['perc_random_start'] = 0.9
+    # config['tau'] = 0.01
+    # config['num_hidden_layers'] = 5
+    # config['size_hidden_layers'] = 256
+    # config['gamma'] = 0.95
+    # config['p_slip'] = 0.1
+    # config['note'] = 'minimal risk + trivial cpt+ chance start'
+    # config['cpt_params'] = {'b': 0.0, 'lam': 1.0,
+    #                         'eta_p': 1., 'eta_n': 1.,
+    #                         'delta_p': 1., 'delta_n': 1.}
+    # # config['cpt_params']= {'b': 0.4, 'lam': 1.0,
+    # #                'eta_p': 0.88, 'eta_n': 0.88,
+    # #                'delta_p': 0.61, 'delta_n': 0.69}
+    # Trainer(SelfPlay_QRE_OSA_CPT, config).run()
+
+    # config['replay_memory_size'] = 30_000
+    # config['epsilon_sched'] = [1.0, 0.2, 8_000]
     # config['rshape_sched'] = [1, 0, 10_000]
     # config['rationality_sched'] = [5.0, 5.0, 10_000]
     # config['lr_sched'] = [1e-2, 1e-4, 3_000]
@@ -357,36 +399,38 @@ def main():
 
 
     # # Top Right
-    # config['replay_memory_size'] = 30_000
-    # config['epsilon_sched'] = [1.0, 0.15, 10_000]
-    # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [5.0, 5.0, 10_000]
-    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
-    # config['perc_random_start'] = 0.9
-    ## config['test_rationality'] = config['rationality_sched'][1]
-    # config['tau'] = 0.01
-    # config['num_hidden_layers'] = 5
-    # config['size_hidden_layers'] = 128
-    # config['shared_rew'] = False
-    # config['gamma'] = 0.95
-    # config['note'] = 'increased gamma'
-    # Trainer(SelfPlay_QRE_OSA, config).run()
-
-    # bottom Right
     config['LAYOUT'] = "risky_coordination_ring"
+    config['ITERATIONS'] = 30_000
     config['replay_memory_size'] = 30_000
     config['epsilon_sched'] = [1.0, 0.15, 10_000]
     config['rshape_sched'] = [1, 0, 10_000]
     config['rationality_sched'] = [5.0, 5.0, 10_000]
-    config['lr_sched'] = [1e-2, 1e-4, 3_000]
+    config['lr_sched'] = [1e-2, 1e-5, 4_000]
     config['perc_random_start'] = 0.9
     config['tau'] = 0.01
     config['num_hidden_layers'] = 5
     config['size_hidden_layers'] = 256
-    config['p_slip'] = 0.01
-    config['gamma'] = 0.95
-    config['note'] = 'collab reward shaping + minimal risk'
+    config['gamma'] = 0.97
+    config['p_slip'] = 0.1
+    config['note'] = 'minimal risk + chance start + increased gamma + lower LR'
     Trainer(SelfPlay_QRE_OSA, config).run()
+
+    # bottom Right
+    # config['LAYOUT'] = "risky_coordination_ring"
+    # config['ITERATIONS'] = 30_000
+    # config['replay_memory_size'] = 30_000
+    # config['epsilon_sched'] = [1.0, 0.15, 10_000]
+    # config['rshape_sched'] = [1, 0, 10_000]
+    # config['rationality_sched'] = [5.0, 5.0, 10_000]
+    # config['lr_sched'] = [1e-2, 1e-4, 2_000]
+    # config['perc_random_start'] = 0.9
+    # config['tau'] = 0.01
+    # config['num_hidden_layers'] = 5
+    # config['size_hidden_layers'] = 256
+    # config['gamma'] = 0.95
+    # config['p_slip'] = 0.1
+    # config['note'] = 'minimal risk + 90% chance start'
+    # Trainer(SelfPlay_QRE_OSA, config).run()
 
     # config['cpt_params']= {'b': 0.0, 'lam': 1.0,
     #                'eta_p': 1., 'eta_n': 1.,

@@ -244,7 +244,7 @@ class OvercookedEnv(object):
     ###################
 
     def step(
-        self, joint_action, joint_agent_action_info=None, display_phi=False
+        self, joint_action, joint_agent_action_info=None, display_phi=False,get_mdp_info=True
     ):
         """Performs a joint action, updating the environment state
         and providing a reward.
@@ -271,7 +271,8 @@ class OvercookedEnv(object):
         self.state = next_state
         done = self.is_done()
         env_info = self._prepare_info_dict(joint_agent_action_info, mdp_infos)
-
+        if get_mdp_info:
+            env_info["mdp_info"] = mdp_infos
         if done:
             self._add_episode_info(env_info)
 

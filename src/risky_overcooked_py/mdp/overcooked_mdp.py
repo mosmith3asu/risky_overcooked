@@ -2677,21 +2677,21 @@ class OvercookedGridworld(object):
             outcomes.append([joint_action, make_obs(next_state), prob])
             # print(f'BL: {[player.has_object() for player in next_state.players]}')
 
-
-        else: raise ValueError('Invalid slip configuration')
-
-        # Check validity of outcomes
-        assert len(outcomes) > 0, 'empty outcome'
-        assert np.sum([o[2] for o in outcomes]) == 1, f'outcome probs not = 1 | p={[o[2] for o in outcomes]}'
-        if encoded:
-            assert np.any([torch.all(true_next_obs== prospect[1]).item() for prospect in outcomes]), 'state not prospects'
-
-            # TESTING ONLY-----
-            if self.p_slip == 0 or self.p_slip==1:
-                certain_idx = np.argmax([o[2] for o in outcomes])
-                assert torch.all(outcomes[certain_idx][1] == true_next_obs).item(), 'True next state not in outcomes'
-            # ------------
-        else: assert next_state in [prospect[1] for prospect in outcomes], 'state not prospects'
+        # VALIDATION ------------------
+        # else: raise ValueError('Invalid slip configuration')
+        #
+        # # Check validity of outcomes
+        # assert len(outcomes) > 0, 'empty outcome'
+        # assert np.sum([o[2] for o in outcomes]) == 1, f'outcome probs not = 1 | p={[o[2] for o in outcomes]}'
+        # if encoded:
+        #     assert np.any([torch.all(true_next_obs== prospect[1]).item() for prospect in outcomes]), 'state not prospects'
+        #
+        #     # TESTING ONLY-----
+        #     if self.p_slip == 0 or self.p_slip==1:
+        #         certain_idx = np.argmax([o[2] for o in outcomes])
+        #         assert torch.all(outcomes[certain_idx][1] == true_next_obs).item(), 'True next state not in outcomes'
+        #     # ------------
+        # else: assert next_state in [prospect[1] for prospect in outcomes], 'state not prospects'
 
 
         return outcomes

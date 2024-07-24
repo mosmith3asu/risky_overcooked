@@ -105,6 +105,7 @@ class Trainer:
                   f"| rat:{round(self._rationality, 3)}"
                   f"| eps:{round(self._epsilon, 3)} "
                   f"| LR={round(self.model.optimizer.param_groups[0]['lr'], 4)}"
+                  f"| rstart={round(self._p_rand_start, 3)}"
                   )
 
             train_rewards.append(cum_reward + cum_shaped_rewards)
@@ -352,26 +353,41 @@ def main():
 
 
     # # Bottom Left
-    config['LAYOUT'] = "risky_coordination_ring"
-    config['replay_memory_size'] = 30_000
-    config['epsilon_sched'] = [1.0, 0.15, 10_000]
-    config['rshape_sched'] = [1, 0, 10_000]
-    config['rationality_sched'] = [5.0, 5.0, 10_000]
-    config['lr_sched'] = [1e-2, 1e-4, 3_000]
-    config["rand_start_sched"]= [1.0, 0.75, 10_000]  # percentage of ITERATIONS with random start states # config['perc_random_start'] = 0.9
-    config['tau'] = 0.01
-    config['num_hidden_layers'] = 5
-    config['size_hidden_layers'] = 256
-    config['gamma'] = 0.95
-    config['p_slip'] = 0.1
-    config['note'] = 'minimal risk + trivial cpt+ chance start'
-    config['cpt_params'] = {'b': 0.0, 'lam': 1.0,
-                            'eta_p': 1., 'eta_n': 1.,
-                            'delta_p': 1., 'delta_n': 1.}
-    # config['cpt_params']= {'b': 0.4, 'lam': 1.0,
-    #                'eta_p': 0.88, 'eta_n': 0.88,
-    #                'delta_p': 0.61, 'delta_n': 0.69}
-    Trainer(SelfPlay_QRE_OSA_CPT, config).run()
+    # config['LAYOUT'] = "risky_coordination_ring"
+    # config['ITERATIONS'] = 30_000
+    # config['replay_memory_size'] = 30_000
+    # config['epsilon_sched'] = [1.0, 0.15, 10_000]
+    # config['rshape_sched'] = [1, 0, 10_000]
+    # config['rationality_sched'] = [5.0, 5.0, 10_000]
+    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
+    # config["rand_start_sched"]= [1.0, 0.5, 15_000] #config['perc_random_start'] = 0.9
+    # config['tau'] = 0.01
+    # config['num_hidden_layers'] = 5
+    # config['size_hidden_layers'] = 256
+    # config['gamma'] = 0.97
+    # config['p_slip'] = 0.1
+    # config['note'] = 'minimal risk + chance start + increased gamma + lower LR'
+    # Trainer(SelfPlay_QRE_OSA, config).run()
+    # config['LAYOUT'] = "risky_coordination_ring"
+    # config['replay_memory_size'] = 30_000
+    # config['epsilon_sched'] = [1.0, 0.15, 10_000]
+    # config['rshape_sched'] = [1, 0, 10_000]
+    # config['rationality_sched'] = [5.0, 5.0, 10_000]
+    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
+    # config["rand_start_sched"]= [1.0, 0.75, 10_000]  # percentage of ITERATIONS with random start states # config['perc_random_start'] = 0.9
+    # config['tau'] = 0.01
+    # config['num_hidden_layers'] = 5
+    # config['size_hidden_layers'] = 256
+    # config['gamma'] = 0.95
+    # config['p_slip'] = 0.1
+    # config['note'] = 'minimal risk + trivial cpt+ chance start'
+    # config['cpt_params'] = {'b': 0.0, 'lam': 1.0,
+    #                         'eta_p': 1., 'eta_n': 1.,
+    #                         'delta_p': 1., 'delta_n': 1.}
+    # # config['cpt_params']= {'b': 0.4, 'lam': 1.0,
+    # #                'eta_p': 0.88, 'eta_n': 0.88,
+    # #                'delta_p': 0.61, 'delta_n': 0.69}
+    # Trainer(SelfPlay_QRE_OSA_CPT, config).run()
 
     # config['replay_memory_size'] = 30_000
     # config['epsilon_sched'] = [1.0, 0.2, 8_000]
@@ -420,6 +436,21 @@ def main():
     # Trainer(SelfPlay_QRE_OSA, config).run()
 
     # bottom Right
+    config['LAYOUT'] = "risky_coordination_ring"
+    config['ITERATIONS'] = 30_000
+    config['replay_memory_size'] = 30_000
+    config['epsilon_sched'] = [1.0, 0.15, 10_000]
+    config['rshape_sched'] = [1, 0, 10_000]
+    config['rationality_sched'] = [5.0, 5.0, 10_000]
+    config['lr_sched'] = [1e-2, 1e-4, 3_000]
+    config["rand_start_sched"] = [1.0, 0.1, 10_000]  # config['perc_random_start'] = 0.9
+    config['tau'] = 0.01
+    config['num_hidden_layers'] = 5
+    config['size_hidden_layers'] = 256
+    config['gamma'] = 0.97
+    config['p_slip'] = 0.1
+    config['note'] = 'minimal risk + chance start + increased gamma + lower LR'
+    Trainer(SelfPlay_QRE_OSA, config).run()
     # config['LAYOUT'] = "risky_coordination_ring"
     # config['ITERATIONS'] = 30_000
     # config['replay_memory_size'] = 30_000

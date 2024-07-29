@@ -96,6 +96,7 @@ class RLLogger(object):
         self.display_raws = {}
         self.lines = {}
         self.filtered_lines = {}
+        self.checkpoint_lines = {}
         self.trackers = {}
         self.interfaces = {}
         self.status = {}
@@ -265,6 +266,9 @@ class RLLogger(object):
 
         self.axs[key].axis('off')
 
+    def add_checkpoint_line(self):
+        for key, data in self.logs.items():
+            self.checkpoint_lines[key] = self.axs[key].axvline(x=10, color='g', linestyle='--',lw=1)
 
     def add_lineplot(self, key,
                      xlabel='', ylabel='', title='',
@@ -294,7 +298,7 @@ class RLLogger(object):
         n_buttons = len(self.interfaces)
         # self.axs[bname] = self.interface_fig.add_subplot(1, n_buttons+1, n_buttons+1)
         # self.axs[bname] = self.interface_fig.add_axes([])
-        self.axs[bname] = self.interface_fig.add_axes([0.1, 0.1, 0.25, 0.9])
+        self.axs[bname] = self.interface_fig.add_axes([0.05+0.27*n_buttons, 0.1, 0.25, 0.9])
         self.interfaces[bname] = Button(self.axs[bname], label)
         self.interfaces[bname].on_clicked(callback)
 
@@ -311,6 +315,10 @@ class RLLogger(object):
             return final_list
         else:
             return data
+
+    def update_checkpiont_line(self,iteration):
+        for key, data in self.checkpoint_lines.items():
+            self.checkpoint_lines[key].set_xdata(iteration)
     def draw(self):
         for key, data in self.logs.items():
             x = data[:, 0]
@@ -348,6 +356,9 @@ class RLLogger(object):
             plt.ioff()
             plt.show()
 
+    def save_fig(self,PATH):
+        self.root_fig.savefig(PATH)
+
 def test_logger():
     config = {'p1':1,'p2':2}
 
@@ -361,8 +372,9 @@ def test_logger():
     logger.add_lineplot('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=10, display_raw=True,loc=(1,1))
     logger.add_table('Params',config)
     logger.add_status()
-    # logger.add_button('Save',callback)
-    # logger.add_button('Close', callback)
+    logger.add_button('Preview',callback)
+    logger.add_button('Close', callback)
+    logger.add_checkpoint_line()
 
     for i in range(T):
         logger.start_iteration()
@@ -374,12 +386,14 @@ def test_logger():
         # fig.canvas.draw()
         # fig.canvas.flush_events()
         time.sleep(0.1)
+        if i % 10 == 0:
+            logger.update_checkpiont_line(i)
 
         logger.end_iteration()
         print(i)
     logger.wait_for_close(enable=True)
 
-
+    s
 class FunctionTimer(object):
     """ Used for timing functions to see how long they take to run."""
     def __init__(self):

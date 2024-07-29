@@ -526,6 +526,8 @@ class SelfPlay_QRE_OSA(object):
         self.model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
         self.target = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
         self.target.load_state_dict(self.model.state_dict())
+        self.checkpoint_model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
+        self.checkpoint_model.load_state_dict(self.model.state_dict())
 
         lr_warmup_iter = config['lr_sched'][2]
         lr_factor = config['lr_sched'][0]/config['lr_sched'][1]
@@ -536,7 +538,10 @@ class SelfPlay_QRE_OSA(object):
                                                end_factor=1 / lr_factor,
                                                total_iters=lr_warmup_iter)
         # self.scheduler = lr_scheduler.ConstantLR(self.optimizer, factor=100, end_factor=1, total_iters=100)
-
+    def update_checkpoint(self):
+        self.checkpoint_model.load_state_dict(self.model.state_dict())
+    def save_checkpoint(self,PATH):
+        torch.save(self.checkpoint_model.state_dict(), PATH)
     ###################################################
     ## Memory #########################################
     ###################################################

@@ -11,7 +11,7 @@ import math
 import random
 from datetime import datetime
 debug = False
-
+from collections import deque
 class Trainer:
     def __init__(self,model_object,config):
         np.random.seed(42)
@@ -56,9 +56,11 @@ class Trainer:
         self.logger.add_lineplot('test_reward', xlabel='', ylabel='$R_{test}$', filter_window=30, display_raw=True, loc=(0, 1))
         self.logger.add_lineplot('train_reward', xlabel='', ylabel='$R_{train}$', filter_window=30, display_raw=True, loc=(1, 1))
         self.logger.add_lineplot('loss', xlabel='iter', ylabel='$Loss$', filter_window=30, display_raw=True, loc=(2, 1))
+        self.logger.add_checkpoint_line()
         self.logger.add_table('Params', config)
         self.logger.add_status()
-        self.logger.add_button('Preview Game', callback=self.traj_visualizer.preview_qued_trajectory)
+        self.logger.add_button('Preview', callback=self.traj_visualizer.preview_qued_trajectory)
+        self.logger.add_button('Save ', callback=self.save)
 
         # Initialize Variables ----------------
         self._epsilon = None
@@ -66,6 +68,16 @@ class Trainer:
         self._rshape_scale = None
 
         self.print_config(config)
+
+        # Checkpointing/Saving utils ----------------
+        self.min_checkpoint_score = 40
+        self.checkpoint_mem = 10
+        self.min_checkpoint_score = 0
+        self.train_rewards = deque(maxlen=self.checkpoint_mem)
+        self.test_rewards = deque(maxlen=self.checkpoint_mem)
+        self.fname = f"{LAYOUT}_{config['ALGORITHM']}_{config['Date']}.pt"
+
+
 
     def print_config(self,config):
         for key, val in config.items():
@@ -135,6 +147,9 @@ class Trainer:
                       f"| Ave Shaped Reward = {np.mean(test_shaped_rewards)}"
                       # f"\n{action_history}\n"#, f"{aprob_history[0]}\n"
                       )
+                self.test_rewards.append(np.mean(test_rewards)) # for checkpointing
+                self.train_rewards.append(np.mean(train_rewards)) # for checkpointing
+                self.checkpoint(it) # for checkpointing
                 train_rewards = []
                 train_losses = []
 
@@ -279,7 +294,6 @@ class Trainer:
                 else:
                     state.add_object(ObjectState(obj, counter_loc))
         return state
-
     def add_held_obj(self,player,obj):
         if obj == "soup":
             player.set_object(SoupState.get_soup(player.position, num_onions=3, num_tomatoes=0, finished=True))
@@ -287,11 +301,37 @@ class Trainer:
             player.set_object(ObjectState(obj, player.position))
         return player
 
+    ################################################################
+    # Save Utils       #############################################
+    ################################################################
+    def checkpoint(self,it):
+        if len(self.train_rewards) == self.checkpoint_mem:
+            ave_train = np.mean(self.train_rewards)
+            ave_test = np.mean(self.test_rewards)
+            score = (ave_train + ave_test)/2
+            if score > self.checkpoint_score and score > self.min_checkpoint_score:
+                print(f'\nCheckpointing model at iteration {it} with score {score}...\n')
+                self.model.update_checkpoint()
+                self.logger.update_checkpiont_line(it)
+                # empty buffer to delay next checkpoint
+                self.train_rewards = deque(maxlen=self.checkpoint_mem)
+                self.test_rewards = deque(maxlen=self.checkpoint_mem)
+
+    def save(self,*args):
+        print(f'\n\nSaving model to {self.fname}...')
+        self.model.save_checkpoint(f"./models/{self.fname}")
+        self.logger.save_fig(f"./models/{self.fname}.png")
+        print(f'finished\n\n')
+
+
+
+
+
 def main():
 
     config = {
         'ALGORITHM': 'Boltzmann_QRE-DDQN-OSA',
-        'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
+        'Date': datetime.now().strftime("%m_%d_%Y-%H_%M"),
 
         # Env Params ----------------
         'LAYOUT': "coordination_ring_CLDE", 'HORIZON': 200, 'ITERATIONS': 15_000,

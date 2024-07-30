@@ -49,7 +49,13 @@ class GIF_maker():
         imageio.mimsave(f'{fname}.gif', imgs,loop=0,fps=5)
 
 def main():
-    LAYOUT = 'risky_coordination_ring'
+    # LAYOUT = 'risky_coordination_ring'
+    # LAYOUT = 'risky_multipath_long'
+    # LAYOUT = 'risky_dualpath_long'
+    # LAYOUT = 'risky_dualpath'
+    # LAYOUT = 'risky_multipath'
+    LAYOUT = 'forced_coordination'
+
     S,W,N,E,X,I = 'S','W','N','E','X','I'
     gifer = GIF_maker(LAYOUT,HORIZON=200)
     seeking_joint_traj = [
@@ -189,9 +195,9 @@ def main():
     # joint_traj = np.array(seeking_joint_traj)
     gifer.load_trajectory(joint_traj[:,0], joint_traj[:,1],joint_traj[:,2])
 
-    # gifer.preview()
+    gifer.preview()
     # gifer.make_gif('risky_coordination_ring_averse')
-    gifer.make_gif('risky_coordination_ring_seeking')
+    # gifer.make_gif('risky_coordination_ring_seeking')
 
 
 

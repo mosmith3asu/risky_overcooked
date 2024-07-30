@@ -268,7 +268,7 @@ class RLLogger(object):
 
     def add_checkpoint_line(self):
         for key, data in self.logs.items():
-            self.checkpoint_lines[key] = self.axs[key].axvline(x=10, color='g', linestyle='--',lw=1)
+            self.checkpoint_lines[key] = self.axs[key].axvline(x=0, color='g', linestyle='--',lw=1)
 
     def add_lineplot(self, key,
                      xlabel='', ylabel='', title='',

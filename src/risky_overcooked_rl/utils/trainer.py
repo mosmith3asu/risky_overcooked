@@ -70,9 +70,9 @@ class Trainer:
         self.print_config(config)
 
         # Checkpointing/Saving utils ----------------
-        self.min_checkpoint_score = 40
+        self.min_checkpoint_score = 20
         self.checkpoint_mem = 10
-        self.min_checkpoint_score = 0
+        self.has_checkpointed = False
         self.train_rewards = deque(maxlen=self.checkpoint_mem)
         self.test_rewards = deque(maxlen=self.checkpoint_mem)
         self.fname = f"{LAYOUT}_{config['ALGORITHM']}_{config['Date']}.pt"
@@ -127,6 +127,8 @@ class Trainer:
             # time4test = (it % self.test_interval == 0 and it > 2)
             time4test = (it % self.test_interval == 0)
             if time4test:
+
+                # Rollout test episodes ----------------------
                 test_rewards = []
                 test_shaped_rewards = []
                 self._rationality = self.test_rationality
@@ -136,8 +138,16 @@ class Trainer:
                     test_reward, test_shaped_reward, state_history, action_history, aprob_history = self.test_rollout()
                     test_rewards.append(test_reward)
                     test_shaped_rewards.append(test_shaped_reward)
-                    self.traj_visualizer.que_trajectory(state_history)
+                    if not self.has_checkpointed:
+                        self.traj_visualizer.que_trajectory(state_history)
 
+                # Checkpointing ----------------------
+                self.test_rewards.append(np.mean(test_rewards))  # for checkpointing
+                self.train_rewards.append(np.mean(train_rewards))  # for checkpointing
+                if self.checkpoint(it):  # check if should checkpoint
+                    self.traj_visualizer.que_trajectory(state_history) # load preview of checkpointed trajectory
+
+                # Logging ----------------------
                 self.logger.log(test_reward=[it, np.mean(test_rewards)],
                            train_reward=[it, np.mean(train_rewards)],
                            loss=[it, np.mean(train_losses)])
@@ -147,9 +157,7 @@ class Trainer:
                       f"| Ave Shaped Reward = {np.mean(test_shaped_rewards)}"
                       # f"\n{action_history}\n"#, f"{aprob_history[0]}\n"
                       )
-                self.test_rewards.append(np.mean(test_rewards)) # for checkpointing
-                self.train_rewards.append(np.mean(train_rewards)) # for checkpointing
-                self.checkpoint(it) # for checkpointing
+
                 train_rewards = []
                 train_losses = []
 
@@ -254,7 +262,7 @@ class Trainer:
         state = self.add_random_start_loc()
         state = self.add_random_start_pot_state(state)
         state = self.add_random_held_obj(state)
-        state = self.add_random_counter_state(state)
+        # state = self.add_random_counter_state(state)
         return state
     def add_random_start_loc(self):
         random_state = self.mdp.get_random_start_state_fn(random_start_pos=True, rnd_obj_prob_thresh=0.0)()
@@ -309,13 +317,16 @@ class Trainer:
             ave_train = np.mean(self.train_rewards)
             ave_test = np.mean(self.test_rewards)
             score = (ave_train + ave_test)/2
-            if score > self.checkpoint_score and score > self.min_checkpoint_score:
+            if score > self.min_checkpoint_score and score > self.min_checkpoint_score:
                 print(f'\nCheckpointing model at iteration {it} with score {score}...\n')
                 self.model.update_checkpoint()
                 self.logger.update_checkpiont_line(it)
                 # empty buffer to delay next checkpoint
-                self.train_rewards = deque(maxlen=self.checkpoint_mem)
-                self.test_rewards = deque(maxlen=self.checkpoint_mem)
+                # self.train_rewards = deque(maxlen=self.checkpoint_mem)
+                # self.test_rewards = deque(maxlen=self.checkpoint_mem)
+                self.has_checkpointed = True
+                return True
+        return False
 
     def save(self,*args):
         print(f'\n\nSaving model to {self.fname}...')
@@ -328,33 +339,34 @@ class Trainer:
 
 
 def main():
-
     config = {
         'ALGORITHM': 'Boltzmann_QRE-DDQN-OSA',
         'Date': datetime.now().strftime("%m_%d_%Y-%H_%M"),
 
         # Env Params ----------------
-        'LAYOUT': "coordination_ring_CLDE", 'HORIZON': 200, 'ITERATIONS': 15_000,
+        # 'LAYOUT': "risky_multipath",
+        'LAYOUT': "forced_coordination",
+        'HORIZON': 200,
+        'ITERATIONS': 30_000,
         'AGENT': None,                  # name of agent object (computed dynamically)
         "obs_shape": None,                  # computed dynamically based on layout
-        # "shared_rew": False,                # shared reward for both agents
-        "p_slip": 0.25,
+        "p_slip": 0.1,
+
         # Learning Params ----------------
-        "rand_start_sched": [1.0, 0.5, 10_000],  # percentage of ITERATIONS with random start states
-        'epsilon_sched': [0.1,0.1,5000],         # epsilon-greedy range (start,end)
-        'rshape_sched': [1,0,5_000],     # rationality level range (start,end)
-        'rationality_sched': [0.0,5,5000],
-        'lr_sched': [1e-2,1e-4,3_000],
+        "rand_start_sched": [1.0, 0.25, 10_000],  # percentage of ITERATIONS with random start states
+        'epsilon_sched': [1.0,0.15,5000],         # epsilon-greedy range (start,end)
+        'rshape_sched': [1,0,10_000],     # rationality level range (start,end)
+        'rationality_sched': [5,5,10_000],
+        'lr_sched': [1e-2,1e-4,1_000],
         # 'test_rationality': 5,          # rationality level for testing
-        'gamma': 0.95,                      # discount factor
-        'tau': 0.005,                       # soft update weight of target network
-        "num_hidden_layers": 3,             # MLP params
+        'gamma': 0.97,                      # discount factor
+        'tau': 0.01,                       # soft update weight of target network
+        "num_hidden_layers": 5,             # MLP params
         "size_hidden_layers": 256,#32,      # MLP params
         "device": device,
         "minibatch_size":256,          # size of mini-batches
         "replay_memory_size": 30_000,   # size of replay memory
         'clip_grad': 100,
-
     }
     # config['LAYOUT'] = "cramped_room_CLCE"
 
@@ -373,20 +385,22 @@ def main():
     ###############################
 
     # Top Left
-    config['ITERATIONS'] = 30_000
-    config['LAYOUT'] = "risky_coordination_ring"
-    config['replay_memory_size'] = 30_000
-    config['epsilon_sched'] = [1.0, 0.1, 15_000]
-    config['rshape_sched'] = [1, 0, 10_000]
-    config['rationality_sched'] = [5.0, 5.0, 10_000]
-    config['lr_sched'] = [1e-2, 1e-4, 3_000]
-    config["rand_start_sched"]= [1.0, 0.75, 10_000]  # percentage of ITERATIONS with random start states
-    config['tau'] = 0.01
-    config['num_hidden_layers'] = 5
-    config['size_hidden_layers'] = 256
-    config['gamma'] = 0.95
-    config['p_slip'] = 0.25
-    config['note'] = 'medium risk + random chance start'
+    # config['ITERATIONS'] = 30_000
+    # config['LAYOUT'] = "risky_coordination_ring"
+    # config['replay_memory_size'] = 30_000
+    # config['epsilon_sched'] = [1.0, 0.1, 15_000]
+    # config['rshape_sched'] = [1, 0, 10_000]
+    # config['rationality_sched'] = [5.0, 5.0, 10_000]
+    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
+    # config["rand_start_sched"]= [1.0, 0.75, 10_000]  # percentage of ITERATIONS with random start states
+    # config['tau'] = 0.01
+    # config['num_hidden_layers'] = 5
+    # config['size_hidden_layers'] = 256
+    # config['gamma'] = 0.95
+    # config['p_slip'] = 0.25
+    # config['note'] = 'medium risk + random chance start'
+    config["rand_start_sched"]= [0.0, 0.0, 10_000]  # percentage of ITERATIONS with random start states
+    config['note'] = 'Check handoff feasible'
     Trainer(SelfPlay_QRE_OSA, config).run()
 
 

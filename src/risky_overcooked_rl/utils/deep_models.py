@@ -841,7 +841,7 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
 
     def prospect_value_expectations(self,reward,done,prospect_masks,
                                     prospect_next_q_values,prospect_p_next_states,
-                                    debug=True):
+                                    debug=False):
         """CPT expectation used for modification when class inherited by CPT version
         - condenses prospects back into expecations of |batch_size|
         """

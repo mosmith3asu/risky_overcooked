@@ -1129,21 +1129,33 @@ EVENT_TYPES = [
     "tomato_drop",
     "useful_tomato_drop",
     "potting_tomato",
+    "tomato_risked",
+    "tomato_slip",
+    "tomato_handoff",
     # Onion events
     "onion_pickup",
     "useful_onion_pickup",
     "onion_drop",
     "useful_onion_drop",
     "potting_onion",
+    "onion_risked",
+    "onion_slip",
+    "onion_handoff",
     # Dish events
     "dish_pickup",
     "useful_dish_pickup",
     "dish_drop",
     "useful_dish_drop",
+    "dish_risked",
+    "dish_slip",
+    "dish_handoff",
     # Soup events
     "soup_pickup",
     "soup_delivery",
     "soup_drop",
+    "soup_risked",
+    "soup_slip",
+    "soup_handoff",
     # Potting events
     "optimal_onion_potting",
     "optimal_tomato_potting",
@@ -1153,10 +1165,12 @@ EVENT_TYPES = [
     "catastrophic_tomato_potting",
     "useless_onion_potting",
     "useless_tomato_potting",
-    "onion_slip",
-    "tomato_slip",
-    "soup_slip",
-    "dish_slip",
+
+
+
+
+
+
     "empty_slip",
 ]
 
@@ -1594,14 +1608,18 @@ class OvercookedGridworld(object):
 
                     # Pick up object from counter
                     obj = new_state.remove_object(i_pos)
+                    prev_interact = obj.player_interacts[player_idx]
                     player.set_object(obj)
 
+                    has_previously_interacted = (prev_interact == obj.player_interacts[player_idx])
+                    both_players_interacted =  np.all(obj.player_interacts)
+                    if both_players_interacted and not has_previously_interacted:
+                        self.log_object_handoff(events_infos, obj.name, player_idx)
+
                     if not self.old_reward_shaping and obj.name == 'dish':
-                        if not obj.player_interacts[player_idx]: # prevents picking up and setting down
+                        if not has_previously_interacted: # prevents picking up and setting down
                             if self.is_dish_pickup_useful(new_state, pot_states):
-                                shaped_reward[player_idx] += self.reward_shaping_params[
-                                    "DISH_PICKUP_REWARD"
-                                ]
+                                shaped_reward[player_idx] += self.reward_shaping_params["DISH_PICKUP_REWARD"]
 
             elif terrain_type == "O" and player.held_object is None:
                 self.log_object_pickup(
@@ -1746,7 +1764,9 @@ class OvercookedGridworld(object):
             old_player = state.players[player_idx]
 
             if self.check_can_slip(old_player,new_player):
+                self.log_risk_taken(events_infos, new_player.get_object().name, player_idx)
                 is_dropped = np.random.choice([True, False], p=[p_slip, 1-p_slip])
+
                 if is_dropped:
                     obj = new_player.remove_object() # remove item from players hand and the environment
                     self.log_object_slip(events_infos, obj.name, player_idx) # add event flag for later animation update
@@ -2381,6 +2401,15 @@ class OvercookedGridworld(object):
                 obj_useful_key = "useful_" + obj_name + "_drop"
                 events_infos[obj_useful_key][player_index] = True
 
+    def log_risk_taken(
+        self, events_infos, obj_name, player_index
+    ):
+        """Player dropped the object on a counter"""
+        obj_drop_key = obj_name + f"_risked"
+        if obj_drop_key not in events_infos:
+            raise ValueError("Unknown event {}".format(obj_drop_key))
+        events_infos[obj_drop_key][player_index] = True
+
     def log_object_slip(
         self, events_infos, obj_name, player_index
     ):
@@ -2390,6 +2419,11 @@ class OvercookedGridworld(object):
             raise ValueError("Unknown event {}".format(obj_drop_key))
         events_infos[obj_drop_key][player_index] = True
 
+    def log_object_handoff(self,event_infos,obj_name, player_index):
+        obj_drop_key = obj_name + "_handoff"
+        if obj_drop_key not in event_infos:
+            raise ValueError("Unknown event {}".format(obj_drop_key))
+        event_infos[obj_drop_key][player_index] = True
     def is_dish_pickup_useful(self, state, pot_states, player_index=None):
         """
         NOTE: this only works if self.num_players == 2

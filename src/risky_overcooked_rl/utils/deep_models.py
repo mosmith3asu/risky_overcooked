@@ -156,6 +156,8 @@ class SelfPlay_NashDQN(object):
         self.target.load_state_dict(self.model.state_dict())
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate, amsgrad=True)
 
+
+
     ###################################################
     ## Memory #########################################
     ###################################################
@@ -504,9 +506,6 @@ class SelfPlay_QRE_OSA(object):
         self.clip_grad = config['clip_grad']
         self.num_hidden_layers = config['num_hidden_layers']
         self.size_hidden_layers = config['size_hidden_layers']
-        # self.lr_warmup_scale = config['lr_warmup_scale']
-        # self.lr_warmup_iter = config['lr_warmup_iter']
-        # self.learning_rate = config['lr']
         self.learning_rate = config['lr_sched'][1]
         self.device = config['device']
         self.gamma = config['gamma']
@@ -538,6 +537,10 @@ class SelfPlay_QRE_OSA(object):
                                                end_factor=1 / lr_factor,
                                                total_iters=lr_warmup_iter)
         # self.scheduler = lr_scheduler.ConstantLR(self.optimizer, factor=100, end_factor=1, total_iters=100)
+
+        self.optimistic_value_expectation = False
+        if self.optimistic_value_expectation: warnings.warn("Optimistic value expectation is set to True.")
+
     def update_checkpoint(self):
         self.checkpoint_model.load_state_dict(self.model.state_dict())
     def save_checkpoint(self,PATH):
@@ -641,8 +644,17 @@ class SelfPlay_QRE_OSA(object):
         dist2 = step_QRE(invert_game(nf_games), k)
         dist = torch.cat([dist1.unsqueeze(1), dist2.unsqueeze(1)], dim=1)
         joint_dist_mat = torch.bmm(dist1.unsqueeze(-1), torch.transpose(dist2.unsqueeze(-1), -1, -2))
-        value = torch.cat([torch.sum(nf_games[:, ego, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1),
-                 torch.sum(nf_games[:, partner, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1)],dim=1)
+
+        if self.optimistic_value_expectation:
+            value = torch.zeros(batch_sz, 2, device=self.device)
+            pareto_vals = nf_games[:, partner, :] + nf_games[:, ego, :]
+            for ib, pval in enumerate(pareto_vals):
+                idx = (pval == torch.max(pval)).nonzero().flatten()
+                value[ib, ego] += nf_games[ib, ego, idx[0], idx[1]]
+                value[ib, partner] += nf_games[ib, partner, idx[0], idx[1]]
+        else:
+            value = torch.cat([torch.sum(nf_games[:, ego, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1),
+                     torch.sum(nf_games[:, partner, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1)],dim=1)
         return dist, value
 
     def solve_nash_eq(self, nf_game, stop_on_first_eq=True):

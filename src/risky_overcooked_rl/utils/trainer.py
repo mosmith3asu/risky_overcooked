@@ -105,12 +105,14 @@ class Trainer:
             self.logger.end_iteration()
 
             slips = rollout_info['onion_slips'] + rollout_info['dish_slips'] + rollout_info['soup_slips']
+            risks = rollout_info['onion_risked'] + rollout_info['dish_risked'] + rollout_info['soup_risked']
 
             print(f"Iteration {it} "
                   f"| train reward:{round(cum_reward, 3)} "
                   f"| shaped reward:{np.round(cum_shaped_rewards, 3)} "
                   f"| loss:{round(rollout_info['mean_loss'], 3)} "
-                  f"| slips:{slips} "
+                  # f"| slips:{slips} "
+                  f"| risks:{risks} "
                   f" |"
                   f"| mem:{self.model.memory_len} "
                   f"| rshape:{round(self._rshape_scale, 3)} "
@@ -181,6 +183,9 @@ class Trainer:
         cum_shaped_reward = np.zeros(2)
 
         rollout_info = {
+            'onion_risked': np.zeros(2),
+            'dish_risked': np.zeros(2),
+            'soup_risked': np.zeros(2),
             'onion_slips': np.zeros(2),
             'dish_slips': np.zeros(2),
             'soup_slips': np.zeros(2),
@@ -195,10 +200,12 @@ class Trainer:
                                                                joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
                                                                as_tensor=True, device=device)
             next_state, reward, done, info = self.env.step(joint_action,get_mdp_info=True)
-            rollout_info['onion_slips'] += np.array(info['mdp_info']['event_infos']['onion_slip'])
-            rollout_info['dish_slips'] += np.array(info['mdp_info']['event_infos']['dish_slip'])
-            rollout_info['soup_slips'] += np.array(info['mdp_info']['event_infos']['soup_slip'])
-
+            rollout_info['onion_slips']  += np.array(info['mdp_info']['event_infos']['onion_slip'])
+            rollout_info['dish_slips']   += np.array(info['mdp_info']['event_infos']['dish_slip'])
+            rollout_info['soup_slips']   += np.array(info['mdp_info']['event_infos']['soup_slip'])
+            rollout_info['onion_risked'] += np.array(info['mdp_info']['event_infos']['onion_risked'])
+            rollout_info['dish_risked']  += np.array(info['mdp_info']['event_infos']['dish_risked'])
+            rollout_info['soup_risked']  += np.array(info['mdp_info']['event_infos']['soup_risked'])
 
             # evemts = info['event_infos']
             # Track reward traces
@@ -344,8 +351,9 @@ def main():
         'Date': datetime.now().strftime("%m_%d_%Y-%H_%M"),
 
         # Env Params ----------------
+        'LAYOUT': "risky_coordination_ring",
         # 'LAYOUT': "risky_multipath",
-        'LAYOUT': "forced_coordination",
+        # 'LAYOUT': "forced_coordination",
         'HORIZON': 200,
         'ITERATIONS': 30_000,
         'AGENT': None,                  # name of agent object (computed dynamically)
@@ -357,7 +365,7 @@ def main():
         'epsilon_sched': [1.0,0.15,5000],         # epsilon-greedy range (start,end)
         'rshape_sched': [1,0,10_000],     # rationality level range (start,end)
         'rationality_sched': [5,5,10_000],
-        'lr_sched': [1e-2,1e-4,1_000],
+        'lr_sched': [1e-2,1e-4,3_000],
         # 'test_rationality': 5,          # rationality level for testing
         'gamma': 0.97,                      # discount factor
         'tau': 0.01,                       # soft update weight of target network
@@ -399,8 +407,9 @@ def main():
     # config['gamma'] = 0.95
     # config['p_slip'] = 0.25
     # config['note'] = 'medium risk + random chance start'
-    config["rand_start_sched"]= [0.0, 0.0, 10_000]  # percentage of ITERATIONS with random start states
-    config['note'] = 'Check handoff feasible'
+    # config["rand_start_sched"]= [0.0, 0.0, 10_000]  # percentage of ITERATIONS with random start states
+    # config['lr_sched'] = [1e-2, 1e-4, 1_000]
+    config['note'] = 'Optimistic value expectation'
     Trainer(SelfPlay_QRE_OSA, config).run()
 
 

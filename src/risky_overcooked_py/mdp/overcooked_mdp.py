@@ -2740,10 +2740,22 @@ class OvercookedGridworld(object):
         n_player_orient = 4 # (N,S,E,W)
         n_pot = len(self.get_pot_locations())
 
+        # feature_dims = {'player_i_coord':   n_player_coord,
+        #               'player_i_orient':    n_player_orient,
+        #               'player_i_objects':   n_objects,
+        #               'player_j_coord':     n_player_coord,
+        #               'player_j_orient':    n_player_orient,
+        #               'player_j_objects':   n_objects,
+        #                 'counter_objects':    n_objects*len(self.reachable_counters),
+        #                 'pot_num_ingred':     n_pot, # [0,1,2,3 (cooking)] + [4 (ready) if not using other feature]
+        #                 # 'pot_is_ready':       n_pot # [0,1]
+        #               }
+
         n_player_feat = n_player_coord + n_player_orient + n_objects
         n_counter_feat = len(self.reachable_counters)*n_objects
         # n_pot_feat = 3 # (num_ingredients, cooking_time, is_ready)
-        n_pot_feat = 2 # (num_ingredients, is_ready)
+        # n_pot_feat = 2 # (num_ingredients, is_ready)
+        n_pot_feat = 1  # (status)
 
         _i = 0 # running index
         feature_vector = torch.empty([2*n_player_feat + n_counter_feat +n_pot*n_pot_feat],device=device)
@@ -2773,7 +2785,6 @@ class OvercookedGridworld(object):
         # WORLD FEATURES #########################################
         # get counter status feature vector (1-Hot) ---------------
         counter_locs = self.reachable_counters  # self.mdp.get_counter_locations()
-        # counter_indicator_arr = np.zeros([len(counter_locs), len(IDX_TO_OBJ)])
         counter_indicator_arr = torch.zeros([len(counter_locs), len(IDX_TO_OBJ)],device=device)
         counter_objs = self.get_counter_objects_dict(overcooked_state)  # dictionary of pos:objects
         for counter_obj, counter_loc in counter_objs.items():
@@ -2785,30 +2796,23 @@ class OvercookedGridworld(object):
 
         # get pot status feature vector ---------------
         pot_locs = self.get_pot_locations()
-        pot_labels = torch.zeros(n_pot_feat,device=device)
         for pot_index, pot_loc in enumerate(pot_locs):
             is_empty = not overcooked_state.has_object(pot_loc)
             if is_empty:
-                feature_vector[_i:_i+n_pot_feat] = 0
+                feature_vector[_i:_i + n_pot_feat] = 0
             else:
                 soup = overcooked_state.get_object(pot_loc)
-                if soup.is_ready:
-                    num_ingred = 3
-                    # cook_time = 0
-                    is_ready = 1
-                elif soup.is_cooking:
-                    num_ingred = 3
-                    # cook_time = soup.cook_time
-                    is_ready = 0
-                elif len(soup.ingredients) > 0:
-                    num_ingred =  len(soup.ingredients)
-                    # cook_time = 0
-                    is_ready = 0
-                    pot_labels[pot_index] = len(soup.ingredients)
-                else:
-                    raise ValueError(f"Invalid pot state {soup}")
-                # feature_vector[_i:_i + n_pot_feat] = torch.tensor([num_ingred, cook_time, is_ready], device=device)
-                feature_vector[_i:_i + n_pot_feat] = torch.tensor([num_ingred, is_ready], device=device)
+                if soup.is_ready:               num_ingred = 3; is_ready = 1;  cook_time = 21
+                elif soup.is_cooking:           num_ingred = 3; is_ready = 0;  cook_time = soup.cook_time
+                elif len(soup.ingredients) > 0: num_ingred = len(soup.ingredients); is_ready = 0; cook_time = 0
+                else: raise ValueError(f"Invalid pot state {soup}")
+                if n_pot_feat== 1: # (status) ------------
+                    feature_vector[_i:_i + n_pot_feat] = torch.tensor([num_ingred + is_ready], device=device)
+                elif n_pot_feat==2: # (num_ing, is_ready) ------------
+                    feature_vector[_i:_i + n_pot_feat] = torch.tensor([num_ingred, is_ready], device=device)
+                elif n_pot_feat==3: # (num_ing, cook_time, is_ready) ------------
+                    feature_vector[_i:_i + n_pot_feat] = torch.tensor([num_ingred, cook_time, is_ready], device=device)
+                else: raise ValueError(f'Invalid n_pot_feat value={n_pot_feat}')
             _i += n_pot_feat
 
         # features["pot_status"] = pot_labels
@@ -2818,7 +2822,6 @@ class OvercookedGridworld(object):
         return feature_vector
 
     def get_lossless_encoding_vector(self, overcooked_state,is_reversed=False):
-        features = {}
         IDX_TO_OBJ = ["onion", "dish", "soup"]
         OBJ_TO_IDX = {o_name: idx for idx, o_name in enumerate(IDX_TO_OBJ)}
 
@@ -2830,8 +2833,8 @@ class OvercookedGridworld(object):
         n_player_feat = n_player_coord + n_player_orient + n_objects
         n_counter_feat = len(self.reachable_counters) * n_objects
         # n_pot_feat = 3  # (num_ingredients, cooking_time, is_ready)
-        n_pot_feat = 2  # (num_ingredients, is_ready)
-
+        # n_pot_feat = 2  # (num_ingredients, is_ready)
+        n_pot_feat = 1  # (status)
         _i = 0  # running index
 
         feature_vector = np.empty([2 * n_player_feat + n_counter_feat + n_pot*n_pot_feat])
@@ -2871,30 +2874,23 @@ class OvercookedGridworld(object):
 
         # get pot status feature vector ---------------
         pot_locs = self.get_pot_locations()
-        pot_labels = np.zeros(len(pot_locs))
         for pot_index, pot_loc in enumerate(pot_locs):
             is_empty = not overcooked_state.has_object(pot_loc)
             if is_empty:
                 feature_vector[_i:_i + n_pot_feat] = 0
             else:
                 soup = overcooked_state.get_object(pot_loc)
-                if soup.is_ready:
-                    num_ingred = 3
-                    # cook_time = 0
-                    is_ready = 1
-                elif soup.is_cooking:
-                    num_ingred = 3
-                    # cook_time = soup.cook_time
-                    is_ready = 0
-                elif len(soup.ingredients) > 0:
-                    num_ingred = len(soup.ingredients)
-                    # cook_time = 0
-                    is_ready = 0
-                    pot_labels[pot_index] = len(soup.ingredients)
-                else:
-                    raise ValueError(f"Invalid pot state {soup}")
-                # feature_vector[_i:_i + n_pot_feat] = np.array([num_ingred, cook_time, is_ready])
-                feature_vector[_i:_i + n_pot_feat] = np.array([num_ingred, is_ready])
+                if soup.is_ready: num_ingred = 3; is_ready = 1;  cook_time = 20
+                elif soup.is_cooking: num_ingred = 3; is_ready = 0;  cook_time = soup.cook_time
+                elif len(soup.ingredients) > 0:  num_ingred = len(soup.ingredients);is_ready = 0; cook_time = 0
+                else: raise ValueError(f"Invalid pot state {soup}")
+                if n_pot_feat == 1:
+                    feature_vector[_i:_i + n_pot_feat] = np.array([num_ingred + is_ready])
+                elif n_pot_feat == 2:  # (num_ing, is_ready) ------------
+                    feature_vector[_i:_i + n_pot_feat] = np.array([num_ingred, is_ready])
+                elif n_pot_feat == 3:  # (num_ing, cook_time, is_ready) ------------
+                    feature_vector[_i:_i + n_pot_feat] = np.array([num_ingred, cook_time, is_ready])
+                else: raise ValueError(f'Invalid n_pot_feat value={n_pot_feat}')
 
             _i += n_pot_feat
 

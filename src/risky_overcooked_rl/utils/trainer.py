@@ -106,6 +106,7 @@ class Trainer:
 
             slips = rollout_info['onion_slips'] + rollout_info['dish_slips'] + rollout_info['soup_slips']
             risks = rollout_info['onion_risked'] + rollout_info['dish_risked'] + rollout_info['soup_risked']
+            handoffs = rollout_info['onion_handoff'] + rollout_info['dish_handoff'] + rollout_info['soup_handoff']
 
             print(f"Iteration {it} "
                   f"| train reward:{round(cum_reward, 3)} "
@@ -113,6 +114,7 @@ class Trainer:
                   f"| loss:{round(rollout_info['mean_loss'], 3)} "
                   # f"| slips:{slips} "
                   f"| risks:{risks} "
+                  f"| handoffs:{handoffs} "
                   f" |"
                   f"| mem:{self.model.memory_len} "
                   f"| rshape:{round(self._rshape_scale, 3)} "
@@ -189,6 +191,9 @@ class Trainer:
             'onion_slips': np.zeros(2),
             'dish_slips': np.zeros(2),
             'soup_slips': np.zeros(2),
+            'onion_handoff': np.zeros(2),
+            'dish_handoff': np.zeros(2),
+            'soup_handoff': np.zeros(2),
             'mean_loss': 0
         }
 
@@ -206,6 +211,9 @@ class Trainer:
             rollout_info['onion_risked'] += np.array(info['mdp_info']['event_infos']['onion_risked'])
             rollout_info['dish_risked']  += np.array(info['mdp_info']['event_infos']['dish_risked'])
             rollout_info['soup_risked']  += np.array(info['mdp_info']['event_infos']['soup_risked'])
+            rollout_info['onion_handoff']+= np.array(info['mdp_info']['event_infos']['onion_handoff'])
+            rollout_info['dish_handoff'] += np.array(info['mdp_info']['event_infos']['dish_handoff'])
+            rollout_info['soup_handoff'] += np.array(info['mdp_info']['event_infos']['soup_handoff'])
 
             # evemts = info['event_infos']
             # Track reward traces

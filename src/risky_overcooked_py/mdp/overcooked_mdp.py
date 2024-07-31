@@ -1622,9 +1622,7 @@ class OvercookedGridworld(object):
                                 shaped_reward[player_idx] += self.reward_shaping_params["DISH_PICKUP_REWARD"]
 
             elif terrain_type == "O" and player.held_object is None:
-                self.log_object_pickup(
-                    events_infos, new_state, "onion", pot_states, player_idx
-                )
+                self.log_object_pickup(events_infos, new_state, "onion", pot_states, player_idx)
 
                 # Onion pickup from dispenser
                 obj = ObjectState("onion", pos)
@@ -1641,9 +1639,7 @@ class OvercookedGridworld(object):
 
                 # Give shaped reward if pickup is useful
                 if self.is_dish_pickup_useful(new_state, pot_states):
-                    shaped_reward[player_idx] += self.reward_shaping_params[
-                        "DISH_PICKUP_REWARD"
-                    ]
+                    shaped_reward[player_idx] += self.reward_shaping_params["DISH_PICKUP_REWARD"]
 
                 # Perform dish pickup from dispenser
                 obj = ObjectState("dish", pos)

@@ -77,7 +77,7 @@ class Trainer:
         self.test_rewards = deque(maxlen=self.checkpoint_mem)
         self.fname = f"{LAYOUT}_{config['ALGORITHM']}_{config['Date']}.pt"
 
-
+        self.monte_carlo_sampling = False
 
     def print_config(self,config):
         for key, val in config.items():
@@ -99,7 +99,22 @@ class Trainer:
 
             # Perform Rollout
             self.logger.start_iteration()
-            cum_reward, cum_shaped_rewards,rollout_info = self.training_rollout(it)
+
+            if self.monte_carlo_sampling:
+                experiences, cum_reward, cum_shaped_rewards, rollout_info = self.monte_carlo_rollout(it)
+                rewards = [experiences[i]['rewards'] for i in range(len(experiences))]
+                traces = self.calc_reward_traces(rewards)
+
+                losses = []
+                for t,experience in enumerate(experiences):
+                    experience['rewards'] = traces[t,:]
+                    self.model.memory_double_push(**experience)
+                    loss = self.model.update()
+                    if loss is not None: losses.append(loss)
+                rollout_info['mean_loss'] = np.mean(losses)
+            else:
+                cum_reward, cum_shaped_rewards,rollout_info = self.training_rollout(it)
+
             if it>1: self.model.scheduler.step() # updates learning rate scheduler
             self.model.update_target()  # performs soft update of target network
             self.logger.end_iteration()
@@ -170,6 +185,82 @@ class Trainer:
     ################################################################
     # Train/Test Rollouts   ########################################
     ################################################################
+    def calc_reward_traces(self,rewards,as_tensor=True):
+        # decay_rate = 0.97
+        # N = len(rewards)
+        # traces = torch.zeros([N, 2], device=self.device)
+        # cumulative_decay = torch.tensor([decay_rate ** i for i in range(N)], device=self.device).reshape(N,1)
+        # for t in range(N):
+        #     traces[t, :] = torch.sum(rewards[t:] * cumulative_decay[:N - t], dim=0)
+        # return traces
+
+        decay_rate = 0.97
+        N = len(rewards)
+        traces = np.zeros([N,2])
+        cumulative_decay = np.array([decay_rate**i for i in range(N)]).reshape(N,1)
+        for t in range(N):
+            traces[t,:] = np.sum(rewards[t:]*cumulative_decay[:N-t],axis=0)
+
+        if as_tensor:  return torch.tensor(traces,device=self.device)
+        else: return traces
+    def monte_carlo_rollout(self,it):
+        self.model.rationality = self._rationality
+        self.env.reset()
+
+        # Random start state if specified
+        # if it / self.ITERATIONS < self.perc_random_start:
+        if np.random.sample() < self._p_rand_start:
+            self.env.state = self.random_start_state()
+
+        ALL_EXPERIENCES = []
+        cum_reward = 0
+        cum_shaped_reward = np.zeros(2)
+
+        rollout_info = {
+            'onion_risked': np.zeros(2),
+            'dish_risked':  np.zeros(2),
+            'soup_risked':  np.zeros(2),
+            'onion_slips':  np.zeros(2),
+            'dish_slips':   np.zeros(2),
+            'soup_slips':   np.zeros(2),
+            'onion_handoff':np.zeros(2),
+            'dish_handoff': np.zeros(2),
+            'soup_handoff': np.zeros(2),
+            'mean_loss': 0
+        }
+
+        for t in count():
+            obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state,device=device).unsqueeze(0)
+            joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=self._epsilon)
+            next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
+                                                               joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
+                                                               as_tensor=True, device=device)
+            next_state, reward, done, info = self.env.step(joint_action,get_mdp_info=True)
+            rollout_info['onion_slips']  += np.array(info['mdp_info']['event_infos']['onion_slip'])
+            rollout_info['dish_slips']   += np.array(info['mdp_info']['event_infos']['dish_slip'])
+            rollout_info['soup_slips']   += np.array(info['mdp_info']['event_infos']['soup_slip'])
+            rollout_info['onion_risked'] += np.array(info['mdp_info']['event_infos']['onion_risked'])
+            rollout_info['dish_risked']  += np.array(info['mdp_info']['event_infos']['dish_risked'])
+            rollout_info['soup_risked']  += np.array(info['mdp_info']['event_infos']['soup_risked'])
+            rollout_info['onion_handoff']+= np.array(info['mdp_info']['event_infos']['onion_handoff'])
+            rollout_info['dish_handoff'] += np.array(info['mdp_info']['event_infos']['dish_handoff'])
+            rollout_info['soup_handoff'] += np.array(info['mdp_info']['event_infos']['soup_handoff'])
+
+            # Track reward traces
+            shaped_rewards = self._rshape_scale * np.array(info["shaped_r_by_agent"])
+            if self.shared_rew: shaped_rewards = np.mean(shaped_rewards)*np.ones(2)
+            total_rewards =  np.array([reward + shaped_rewards]).flatten()
+            cum_reward += reward
+            cum_shaped_reward += shaped_rewards
+
+            # Store in memory ----------------
+            this_experience = {'state':obs, 'action':joint_action_idx, 'rewards':total_rewards,
+                               'next_prospects':next_state_prospects,   'done':done}
+            ALL_EXPERIENCES.append(this_experience)
+            if done: break
+        # rollout_info['mean_loss'] = np.mean(losses)
+        return ALL_EXPERIENCES,cum_reward, cum_shaped_reward, rollout_info
+
     def training_rollout(self,it):
 
         self.model.rationality = self._rationality
@@ -417,10 +508,11 @@ def main():
     # config['note'] = 'medium risk + random chance start'
     # config["rand_start_sched"]= [0.0, 0.0, 10_000]  # percentage of ITERATIONS with random start states
     # config['lr_sched'] = [1e-2, 1e-4, 1_000]
-    config['note'] = 'Optimistic value expectation'
-    Trainer(SelfPlay_QRE_OSA, config).run()
-
-
+    # config['note'] = 'Optimistic value expectation'
+    # Trainer(SelfPlay_QRE_OSA, config).run()
+    traininer = Trainer(SelfPlay_QRE_OSA, config)
+    traininer.monte_carlo_sampling = True
+    traininer.run()
 
     # # Bottom Left
     # config['LAYOUT'] = "risky_coordination_ring"

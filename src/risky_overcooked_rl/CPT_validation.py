@@ -50,23 +50,25 @@ def main():
     # Trainer(SelfPlay_QRE_OSA, config).run()
 
     # ----------------------------------------
+    config['cpt_params']= {'b': 0.0, 'lam': 1.0,
+                   'eta_p': 1., 'eta_n': 1.,
+                   'delta_p': 1., 'delta_n': 1.}
+    config['lr_sched'] = [1e-2,1e-5,1_000]
+    config['tau'] = 0.005
+    config['note'] = 'Rational CPT + lr/tau'
+    Trainer(SelfPlay_QRE_OSA_CPT, config).run()
+
+    # ----------------------------------------
+
     # config['cpt_params']= {'b': 0.0, 'lam': 1.0,
-    #                'eta_p': 1., 'eta_n': 1.,
-    #                'delta_p': 1., 'delta_n': 1.}
-    # config['note'] = 'Rational CPT'
-    # Trainer(SelfPlay_QRE_OSA_CPT, config).run()
+    #                'eta_p': 0.95, 'eta_n': 0.95,
+    #                'delta_p': 0.95, 'delta_n': 0.95}
+    # config['note'] = 'Minimal CPT'
+    # Trainer(SelfPlay_QRE_OSA_CPT,config).run()
 
     # ----------------------------------------
-
-    config['cpt_params']= {'b': 0.4, 'lam': 1.0,
-                   'eta_p': 0.95, 'eta_n': 0.95,
-                   'delta_p': 0.95, 'delta_n': 0.95}
-    config['note'] = 'Minimal CPT'
-    Trainer(SelfPlay_QRE_OSA_CPT,config).run()
-
-    # ----------------------------------------
-    # config['note'] = 'Baseline CPT'
-    # config['cpt_params']= {'b': 0.4, 'lam': 1.0,
+    # config['note'] = 'Normal CPT'
+    # config['cpt_params']= {'b': 'mean', 'lam': 2.25,
     #                'eta_p': 0.88, 'eta_n': 0.88,
     #                'delta_p': 0.61, 'delta_n': 0.69}
     # Trainer(SelfPlay_QRE_OSA_CPT,config).run()

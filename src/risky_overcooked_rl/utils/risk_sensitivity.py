@@ -12,8 +12,9 @@ class CumulativeProspectTheory(object):
         :param delta_p: probability weighting for positive outcomes
         :param delta_n: probability weighting for negative outcomes
         """
-        self.track_value_history = isinstance(b, str)
-
+        # self.track_value_history = isinstance(b, str)
+        self.track_value_history = False
+        self.mean_value_ref = isinstance(b, str)
         self.b = b if isinstance(b, (int, float)) else 0
         self.lam = lam
         self.eta_p = eta_p
@@ -33,6 +34,9 @@ class CumulativeProspectTheory(object):
     def expectation_PT(self, values, p_values):
         if self.track_value_history:
             self.value_history.extend(values)
+
+        if  self.mean_value_ref:
+            self.b = np.mean(values)
 
         # arrange all samples in ascending order
         vp = values[np.where(values > self.b)[0]]

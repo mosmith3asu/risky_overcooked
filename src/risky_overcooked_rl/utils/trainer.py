@@ -70,6 +70,7 @@ class Trainer:
         self.print_config(config)
 
         # Checkpointing/Saving utils ----------------
+        self.checkpoint_score = 0
         self.min_checkpoint_score = 20
         self.checkpoint_mem = 10
         self.has_checkpointed = False
@@ -77,7 +78,7 @@ class Trainer:
         self.test_rewards = deque(maxlen=self.checkpoint_mem)
         self.fname = f"{LAYOUT}_{config['ALGORITHM']}_{config['Date']}.pt"
 
-        self.monte_carlo_sampling = False
+        self.monte_carlo_sampling =  config['monte_carlo'] if 'monte_carlo' in list(config.keys()) else False
 
     def print_config(self,config):
         for key, val in config.items():
@@ -194,16 +195,18 @@ class Trainer:
         #     traces[t, :] = torch.sum(rewards[t:] * cumulative_decay[:N - t], dim=0)
         # return traces
 
-        decay_rate = 0.97
+        decay_rate = 0.9
         N = len(rewards)
         traces = np.zeros([N,2])
         cumulative_decay = np.array([decay_rate**i for i in range(N)]).reshape(N,1)
         for t in range(N):
-            traces[t,:] = np.sum(rewards[t:]*cumulative_decay[:N-t],axis=0)
+            decay = cumulative_decay[:N-t]#/np.sum(cumulative_decay[:N-t])
+            traces[t,:] = np.sum(rewards[t:]*decay,axis=0)
 
         if as_tensor:  return torch.tensor(traces,device=self.device)
         else: return traces
     def monte_carlo_rollout(self,it):
+        # print(f'Monte Carlo Rollout at iteration {it}...')
         self.model.rationality = self._rationality
         self.env.reset()
 
@@ -338,14 +341,8 @@ class Trainer:
         aprob_history = []
 
         for t in count():
-            # obs = torch.tensor(self.mdp.get_lossless_encoding_vector(self.env.state), dtype=torch.float32,
-            #                    device=device).unsqueeze(0)
             obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state,device=device).unsqueeze(0)
-
             joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=self._epsilon)
-
-            # obs = torch.tensor(self.mdp.get_lossless_encoding_vector(self.env.state), dtype=torch.float32, device=device).unsqueeze(0)
-            # joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=self._epsilon)
             next_state, reward, done, info = self.env.step(joint_action)
 
             # Track reward traces
@@ -423,7 +420,7 @@ class Trainer:
             ave_train = np.mean(self.train_rewards)
             ave_test = np.mean(self.test_rewards)
             score = (ave_train + ave_test)/2
-            if score > self.min_checkpoint_score and score > self.min_checkpoint_score:
+            if score > self.min_checkpoint_score and score > self.checkpoint_score:
                 print(f'\nCheckpointing model at iteration {it} with score {score}...\n')
                 self.model.update_checkpoint()
                 self.logger.update_checkpiont_line(it)
@@ -433,7 +430,6 @@ class Trainer:
                 self.has_checkpointed = True
                 return True
         return False
-
     def save(self,*args):
         print(f'\n\nSaving model to {self.fname}...')
         self.model.save_checkpoint(f"./models/{self.fname}")
@@ -453,6 +449,7 @@ def main():
         'LAYOUT': "risky_coordination_ring",
         # 'LAYOUT': "risky_multipath",
         # 'LAYOUT': "forced_coordination",
+        # 'LAYOUT': "forced_coordination_sanity_check",
         'HORIZON': 200,
         'ITERATIONS': 30_000,
         'AGENT': None,                  # name of agent object (computed dynamically)
@@ -474,6 +471,7 @@ def main():
         "minibatch_size":256,          # size of mini-batches
         "replay_memory_size": 30_000,   # size of replay memory
         'clip_grad': 100,
+        'monte_carlo': False
     }
     # config['LAYOUT'] = "cramped_room_CLCE"
 
@@ -506,13 +504,20 @@ def main():
     # config['gamma'] = 0.95
     # config['p_slip'] = 0.25
     # config['note'] = 'medium risk + random chance start'
-    # config["rand_start_sched"]= [0.0, 0.0, 10_000]  # percentage of ITERATIONS with random start states
+    config["rand_start_sched"]= [0.5, 0.05, 10_000]  # percentage of ITERATIONS with random start states
     # config['lr_sched'] = [1e-2, 1e-4, 1_000]
     # config['note'] = 'Optimistic value expectation'
     # Trainer(SelfPlay_QRE_OSA, config).run()
-    traininer = Trainer(SelfPlay_QRE_OSA, config)
-    traininer.monte_carlo_sampling = True
-    traininer.run()
+    # config['LAYOUT'] = "forced_coordination"
+    config['note'] = 'Fixed reward shaping'
+    config['monte_carlo'] = True
+    # Trainer(SelfPlay_QRE_OSA, config).run()
+    config['cpt_params']= {'b': 0.0, 'lam': 1.,
+                   'eta_p': 1., 'eta_n': 1.,
+                   'delta_p': 1., 'delta_n': 1.}
+    Trainer(SelfPlay_QRE_OSA_CPT, config).run()
+    # traininer.monte_carlo_sampling = True
+    # traininer.run()
 
     # # Bottom Left
     # config['LAYOUT'] = "risky_coordination_ring"

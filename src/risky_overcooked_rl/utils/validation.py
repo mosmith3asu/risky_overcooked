@@ -31,8 +31,8 @@ class Validation(Trainer):
         joint_action_idxs = []
         p_slips = []
 
-        for player in self.env.state.players:
-            self.add_held_obj(player,'onion')
+        # for player in self.env.state.players:
+        #     self.add_held_obj(player,'onion')
 
         for action1, action2, prob_slip in joint_trajectory:
             action1 = {'N': Direction.NORTH,
@@ -54,6 +54,26 @@ class Validation(Trainer):
             p_slips.append(prob_slip)
 
 
+        rollout_info = {
+            'state_history': [],
+            'onion_risked': np.zeros([0,2]),
+            'onion_pickup': np.zeros([0, 2]),
+            'onion_drop': np.zeros([0, 2]),
+            'dish_risked': np.zeros([0, 2]),
+            'dish_pickup': np.zeros([0, 2]),
+            'dish_drop': np.zeros([0, 2]),
+
+            'soup_risked':  np.zeros([0,2]),
+            'onion_slip':  np.zeros([0,2]),
+            'dish_slip':   np.zeros([0,2]),
+            'soup_slip':   np.zeros([0,2]),
+            'onion_handoff':np.zeros([0,2]),
+            'dish_handoff': np.zeros([0,2]),
+            'soup_handoff': np.zeros([0,2]),
+            'shaped_reward_hist': np.zeros([0,2]),
+            'reward_hist': np.zeros([0,1]),
+            'mean_loss': 0
+        }
 
         # Random start state if specified
         # if it / self.ITERATIONS < self.perc_random_start:
@@ -62,17 +82,38 @@ class Validation(Trainer):
         losses = []
         cum_reward = 0
         cum_shaped_reward = np.zeros(2)
+        rollout_info['state_history'].append(self.env.state)
         for t in count():
             self.env.mdp.p_slip = p_slips[t]
             joint_action = joint_actions[t]
             joint_action_idx = joint_action_idxs[t]
 
             obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state,device=device).unsqueeze(0)
+
             # joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=self._epsilon)
-            next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
-                                                               joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
-                                                               as_tensor=True, device=device)
-            next_state, reward, done, info = self.env.step(joint_action)
+            # next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
+            #                                                    joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
+            #                                                    as_tensor=True, device=device)
+            next_state, reward, done, info = self.env.step(joint_action,get_mdp_info=True)
+
+            rollout_info['state_history'].append(next_state)
+            for key in rollout_info.keys():
+                if key not in ['state_history','mean_loss','reward_hist','shaped_reward_hist']:
+                    rollout_info[key] = np.vstack([rollout_info[key], np.array(info['mdp_info']['event_infos'][key])])
+
+            # rollout_info['onion_slips'] = np.vstack([rollout_info['onion_slips'], np.array(info['mdp_info']['event_infos']['onion_slip'])])
+            # rollout_info['onion_pickup'] = np.vstack([rollout_info['onion_pickup'], np.array(info['mdp_info']['event_infos']['onion_pickup'])])
+            # rollout_info['onion_drop'] = np.vstack([rollout_info['onion_drop'], np.array(info['mdp_info']['event_infos']['onion_drop'])])
+            # rollout_info['onion_handoff'] = np.vstack([rollout_info['onion_handoff'], np.array(info['mdp_info']['event_infos']['onion_handoff'])])
+            # rollout_info['dish_slips'] = np.vstack([rollout_info['dish_slips'], np.array(info['mdp_info']['event_infos']['dish_slip'])])
+            # rollout_info['soup_slips'] = np.vstack([rollout_info['soup_slips'], np.array(info['mdp_info']['event_infos']['soup_slip'])])
+            # rollout_info['onion_risked'] = np.vstack([rollout_info['onion_risked'], np.array(info['mdp_info']['event_infos']['onion_risked'])])
+            # rollout_info['dish_risked'] = np.vstack([rollout_info['dish_risked'], np.array(info['mdp_info']['event_infos']['dish_risked'])])
+            # rollout_info['soup_risked'] = np.vstack([rollout_info['soup_risked'], np.array(info['mdp_info']['event_infos']['soup_risked'])])
+            # rollout_info['dish_handoff'] = np.vstack([rollout_info['dish_handoff'], np.array(info['mdp_info']['event_infos']['dish_handoff'])])
+            # rollout_info['soup_handoff'] = np.vstack([rollout_info['soup_handoff'], np.array(info['mdp_info']['event_infos']['soup_handoff'])])
+            rollout_info['shaped_reward_hist'] = np.vstack([rollout_info['shaped_reward_hist'], np.array(info["shaped_r_by_agent"])])
+            rollout_info['reward_hist'] = np.vstack([rollout_info['reward_hist'], np.array(reward)])
 
             # Track reward traces
             shaped_rewards = self._rshape_scale * np.array(info["shaped_r_by_agent"])
@@ -84,18 +125,18 @@ class Validation(Trainer):
             print(reward)
 
             # Store in memory ----------------
-            self.model.memory_double_push(state=obs,
-                                        action=joint_action_idx,
-                                        rewards = total_rewards,
-                                        next_prospects=next_state_prospects,
-                                        done = done)
-            # Update model ----------------
-            loss = self.model.update()
-            if loss is not None: losses.append(loss)
+            # self.model.memory_double_push(state=obs,
+            #                             action=joint_action_idx,
+            #                             rewards = total_rewards,
+            #                             next_prospects=next_state_prospects,
+            #                             done = done)
+            # # Update model ----------------
+            # loss = self.model.update()
+            # if loss is not None: losses.append(loss)
             if done:  break
-            self.env.state = next_state
+            # self.env.state = next_state
         # mean_loss = np.mean(losses)
-        return cum_reward, cum_shaped_reward#, mean_loss
+        return cum_reward, cum_shaped_reward,rollout_info
     def OSA_test(self,it,joint_trajectory):
         self.model.rationality = self._rationality
         self.env.reset()
@@ -317,37 +358,124 @@ def slip_test(config):
         validator.OSA_test(0, averse_joint_traj)
 
 
+def handoff_test(config):
+    config['LAYOUT'] = "sanity_check"
+    config['replay_memory_size'] = 30_000
+    config['epsilon_sched'] = [1.0, 0.15, 10_000]
+    config['rshape_sched'] = [1, 0, 10_000]
+    config['rationality_sched'] = [5.0, 5.0, 10_000]
+    config['lr_sched'] = [1e-2, 1e-4, 5_000]
+    config['perc_random_start'] = 0.9
+    config['test_rationality'] = config['rationality_sched'][1]
+    config['tau'] = 0.01
+    config['num_hidden_layers'] = 5
+    config['size_hidden_layers'] = 128
+    config['shared_rew'] = False
+    config['gamma'] = 0.95
+    config['note'] = 'increased gamma'
+    S,W,N,E,X,I = 'S','W','N','E','X','I'
+
+
+
+    averse_joint_traj = [
+        [W, X, 0.01],
+        [I, X, 0.01],
+        [E, X, 0.01],
+        [I, W, 0.01], # p1 drops onion
+        [W, I, 0.01], # p2 picks up onion [4]
+        [I, E, 0.01],
+        [E, I, 0.01], # p2 pots onion [6]==> both recieve shaped reward
+        [I, W, 0.01],
+        [W, I, 0.01],
+        [I, E, 0.01],
+        [E, I, 0.01],
+        [I, W, 0.01],
+        [S, I, 0.01],
+        [I, E, 0.01],
+        [E, I, 0.01], # ALL THREE ONIONS POTTED
+        [I, W, 0.01],
+        [X, I, 0.01],
+        [X, E, 0.01],
+    ]
+    wait_for_cook = [[X, X, 0.01] for i in range(21)]
+    averse_joint_traj += wait_for_cook
+    averse_joint_traj +=[
+        [X, I, 0.01],
+        [X, S, 0.01],
+        [X, I, 0.01], # SOUP DELIVERED
+        [X, X, 0.01],
+    ]
+
+
+    config["HORIZON"] = len(averse_joint_traj)-1
+
+    validator = Validation(SelfPlay_QRE_OSA, config)
+    for it in range(1):
+        cum_reward, cum_shaped_reward,rollout_info = validator.trajectory_rollout(it, averse_joint_traj)
+
+
+        print(f'Shaped Reward: | Onion handoff')
+        for t in range(len(averse_joint_traj)-1):
+            disp_str = f'{averse_joint_traj[t][0:2]} \t|\t'
+            disp_str += f'{rollout_info["shaped_reward_hist"][t,:]+rollout_info["reward_hist"][t]}'
+            # disp_str += f'| {rollout_info["onion_handoff"][t]}'
+            # helds = [player.held_object for player in rollout_info["state_history"][t].players]
+            # disp_str += f'{helds}'
+
+            if np.any(rollout_info["onion_handoff"][t]):
+                disp_str += '\t onion handoff'
+            if np.any(rollout_info["onion_pickup"][t]):
+                disp_str += '\t onion pickup'
+            if np.any(rollout_info["onion_drop"][t]):
+                disp_str += '\t onion drop'
+
+            if np.any(rollout_info["dish_handoff"][t]):
+                disp_str += '\t dish handoff'
+            if np.any(rollout_info["dish_pickup"][t]):
+                disp_str += '\t dish pickup'
+            if np.any(rollout_info["dish_drop"][t]):
+                disp_str += '\t dish drop'
+            print(disp_str)
+
+
+        # validator.OSA_test(0, averse_joint_traj)
+
+
 def main():
     config = {
         'ALGORITHM': 'Boltzmann_QRE-DDQN-OSA',
-        'Date': datetime.now().strftime("%m/%d/%Y, %H:%M"),
+        'Date': datetime.now().strftime("%m_%d_%Y-%H_%M"),
 
         # Env Params ----------------
-        'LAYOUT': "coordination_ring_CLDE", 'HORIZON': 200, 'ITERATIONS': 15_000,
+        'LAYOUT': "risky_coordination_ring",
+        # 'LAYOUT': "risky_multipath",
+        # 'LAYOUT': "forced_coordination",
+        'HORIZON': 200,
+        'ITERATIONS': 30_000,
         'AGENT': None,  # name of agent object (computed dynamically)
         "obs_shape": None,  # computed dynamically based on layout
-        "perc_random_start": 0.9,  # percentage of ITERATIONS with random start states
-        # "shared_rew": False,                # shared reward for both agents
-        "p_slip": 0.25,
+        "p_slip": 0.1,
+
         # Learning Params ----------------
-        'epsilon_sched': [0.1, 0.1, 5000],  # epsilon-greedy range (start,end)
-        'rshape_sched': [1, 0, 5_000],  # rationality level range (start,end)
-        'rationality_sched': [0.0, 5, 5000],
+        "rand_start_sched": [0.0, 0.0, 10_000],  # percentage of ITERATIONS with random start states
+        'epsilon_sched': [1.0, 0.15, 5000],  # epsilon-greedy range (start,end)
+        'rshape_sched': [1, 0, 10_000],  # rationality level range (start,end)
+        'rationality_sched': [5, 5, 10_000],
         'lr_sched': [1e-2, 1e-4, 3_000],
         # 'test_rationality': 5,          # rationality level for testing
-        'gamma': 0.95,  # discount factor
-        'tau': 0.005,  # soft update weight of target network
-        "num_hidden_layers": 3,  # MLP params
+        'gamma': 0.97,  # discount factor
+        'tau': 0.01,  # soft update weight of target network
+        "num_hidden_layers": 5,  # MLP params
         "size_hidden_layers": 256,  # 32,      # MLP params
         "device": device,
         "minibatch_size": 256,  # size of mini-batches
         "replay_memory_size": 30_000,  # size of replay memory
         'clip_grad': 100,
-
+        'monte_carlo': False
     }
-    slip_test(config)
+    # slip_test(config)
 
-
+    handoff_test(config)
 
 
 

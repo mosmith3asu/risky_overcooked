@@ -1618,8 +1618,10 @@ class OvercookedGridworld(object):
 
                     if not self.old_reward_shaping and obj.name == 'dish':
                         if not has_previously_interacted: # prevents picking up and setting down
+                            obj = player.remove_object()
                             if self.is_dish_pickup_useful(new_state, pot_states):
                                 shaped_reward[player_idx] += self.reward_shaping_params["DISH_PICKUP_REWARD"]
+                            player.set_object(obj)
 
             elif terrain_type == "O" and player.held_object is None:
                 self.log_object_pickup(events_infos, new_state, "onion", pot_states, player_idx)
@@ -1660,23 +1662,29 @@ class OvercookedGridworld(object):
                     player.get_object().name == "dish"
                     and self.soup_ready_at_location(new_state, i_pos)
                 ):
-                    self.log_object_pickup(
-                        events_infos, new_state, "soup", pot_states, player_idx
-                    )
+                    self.log_object_pickup(events_infos, new_state, "soup", pot_states, player_idx)
 
                     # Pick up soup
-                    player.remove_object()  # Remove the dish
+                    old_dish = player.remove_object()  # Remove the dish
                     obj = new_state.remove_object(i_pos)  # Get soup
                     player.set_object(obj)
 
                     if self.old_reward_shaping:
                         shaped_reward[player_idx] += self.reward_shaping_params["SOUP_PICKUP_REWARD" ] # origonal shaped reward
                     else:
+
+                        both_players_interacted = np.all(old_dish.player_interacts)
+                        if both_players_interacted:
+                            scale = 1 / sum(obj.player_interacts) if self.shared_reward_split else 1
+                            for _iplayer in range(self.num_players):
+                                shaped_reward[_iplayer] += scale * self.reward_shaping_params["SOUP_PICKUP_REWARD"]
+                        else:
+                            shaped_reward[player_idx] += self.reward_shaping_params["SOUP_PICKUP_REWARD"]
                         # give shaped reward to all players who contributed to picking up soup by interacting with dish
-                        for _iplayer,did_interact in enumerate(obj.player_interacts):
-                            if did_interact:
-                                scale = 1 / sum(obj.player_interacts) if self.shared_reward_split else 1
-                                shaped_reward[_iplayer] += scale*self.reward_shaping_params["SOUP_PICKUP_REWARD"]
+                        # for _iplayer,did_interact in enumerate(obj.player_interacts):
+                        #     if did_interact:
+                        #         scale = 1 / sum(obj.player_interacts) if self.shared_reward_split else 1
+                        #         shaped_reward[_iplayer] += scale*self.reward_shaping_params["SOUP_PICKUP_REWARD"]
 
                 elif player.get_object().name in Recipe.ALL_INGREDIENTS:
                     # Adding ingredient to soup

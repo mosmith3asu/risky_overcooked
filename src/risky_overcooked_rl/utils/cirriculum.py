@@ -127,7 +127,7 @@ class Curriculum:
 
     def step_cirriculum(self, reward):
         self.reward_buffer.append(reward)
-        if (self.reward_thresh >= self.reward_thresh
+        if (np.mean(self.reward_buffer) >= self.reward_thresh
                 and self.current_cirriculum < len(self.cirriculums)
                 and self.iteration > self.min_iterations_per_cirriculum
         ):

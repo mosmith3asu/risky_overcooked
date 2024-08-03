@@ -2454,11 +2454,23 @@ class OvercookedGridworld(object):
         no_dishes_on_counters = len(dishes_on_counters) == 0
 
         num_player_dishes = len(state.player_objects_by_type["dish"])
+        # Previous logic was incorrect and missed that a partially filled pots needs
+        # to have a player with the means of filling it
+        # non_empty_pots = len(
+        #     self.get_ready_pots(pot_states)
+        #     + self.get_cooking_pots(pot_states)
+        #     + self.get_partially_full_pots(pot_states)
+        # )
         non_empty_pots = len(
             self.get_ready_pots(pot_states)
             + self.get_cooking_pots(pot_states)
-            + self.get_partially_full_pots(pot_states)
         )
+        partial_pots = len(self.get_partially_full_pots(pot_states))
+        if partial_pots>=1:
+            print('partial pot')
+        n_ingred_in_play = len(self.get_counter_objects_dict(state)["onion"])\
+                           + len(self.get_counter_objects_dict(state)["tomato"])
+
         return no_dishes_on_counters and num_player_dishes < non_empty_pots
 
     def is_dish_drop_useful(self, state, pot_states, player_index):

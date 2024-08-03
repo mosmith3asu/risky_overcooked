@@ -12,6 +12,7 @@ import random
 from datetime import datetime
 from risky_overcooked_rl.utils.trainer import Trainer
 debug = False
+from risky_overcooked_rl.utils.cirriculum import Curriculum
 
 class Validation(Trainer):
     def __init__(self,model_object,config):
@@ -62,6 +63,8 @@ class Validation(Trainer):
             'dish_risked': np.zeros([0, 2]),
             'dish_pickup': np.zeros([0, 2]),
             'dish_drop': np.zeros([0, 2]),
+            'soup_pickup': np.zeros([0, 2]),
+            'soup_delivery': np.zeros([0, 2]),
 
             'soup_risked':  np.zeros([0,2]),
             'onion_slip':  np.zeros([0,2]),
@@ -440,6 +443,120 @@ def handoff_test(config):
 
         # validator.OSA_test(0, averse_joint_traj)
 
+def cirriculum_test(config):
+    config['LAYOUT'] = "forced_coordination_sanity_check"
+    config['replay_memory_size'] = 30_000
+    config['epsilon_sched'] = [1.0, 0.15, 10_000]
+    config['rshape_sched'] = [1, 0, 10_000]
+    config['rationality_sched'] = [5.0, 5.0, 10_000]
+    config['lr_sched'] = [1e-2, 1e-4, 5_000]
+    config['perc_random_start'] = 0.9
+    config['test_rationality'] = config['rationality_sched'][1]
+    config['tau'] = 0.01
+    config['num_hidden_layers'] = 5
+    config['size_hidden_layers'] = 128
+    config['shared_rew'] = False
+    config['gamma'] = 0.95
+    config['note'] = 'increased gamma'
+    S,W,N,E,X,I = 'S','W','N','E','X','I'
+
+
+
+    averse_joint_traj = [
+        [W, X, 0.01],
+        [I, X, 0.01],
+        [E, X, 0.01],
+        [I, W, 0.01], # p1 drops onion
+        [S, I, 0.01], # p2 picks up onion [4]
+        [I, E, 0.01],
+        [E, I, 0.01], # p2 pots onion [6]==> both recieve shaped reward
+        [I, X, 0.01], # p1 drops dish
+        [X, X, 0.01],
+        [X, W, 0.01],
+        [X, X, 0.01],
+        [X, I, 0.01], # p2 picks up dish
+        [X, E, 0.01],
+        [X, I, 0.01], # p1 plates soup
+        [X, S, 0.01],
+        [X, I, 0.01],# p2 delivers soup
+        [X, X, 0.01],
+        [X, X, 0.01],
+    ]
+    # averse_joint_traj = [
+    #     [W, X, 0.01],
+    #     [I, X, 0.01],
+    #     [E, X, 0.01],
+    #     [I, W, 0.01],  # p1 drops onion
+    #     [W, I, 0.01],  # p2 picks up onion [4]
+    #     [I, E, 0.01],
+    #     [E, I, 0.01],  # p2 pots onion [6]==> both recieve shaped reward
+    #     [I, W, 0.01],
+    #     [W, I, 0.01],
+    #     [I, E, 0.01],
+    #     [E, I, 0.01],
+    #     [I, W, 0.01],
+    #     [S, I, 0.01],
+    #     [I, E, 0.01],
+    #     [E, I, 0.01],  # ALL THREE ONIONS POTTED
+    #     [I, W, 0.01],
+    #     [X, I, 0.01],
+    #     [X, E, 0.01],
+    # ]
+    # wait_for_cook = [[X, X, 0.01] for i in range(21)]
+    # averse_joint_traj += wait_for_cook
+    # averse_joint_traj += [
+    #     [X, I, 0.01],
+    #     [X, S, 0.01],
+    #     [X, I, 0.01],  # SOUP DELIVERED
+    #     [X, X, 0.01],
+    # ]
+
+
+    config["HORIZON"] = len(averse_joint_traj)-1
+
+    validator = Validation(SelfPlay_QRE_OSA, config)
+    cirriculum = Curriculum(validator.env)
+
+    cirriculum.set_cirriculum(n_onions=1,cook_time=2)
+    for it in range(1):
+        cum_reward, cum_shaped_reward,rollout_info = validator.trajectory_rollout(it, averse_joint_traj)
+
+
+        print(f'Shaped Reward: | Onion handoff')
+        for t in range(len(averse_joint_traj)-1):
+            disp_str = f'{averse_joint_traj[t][0:2]} \t|\t'
+            disp_str += f'{rollout_info["shaped_reward_hist"][t,:]+rollout_info["reward_hist"][t]}'
+            # disp_str += f'| {rollout_info["onion_handoff"][t]}'
+            # helds = [player.held_object for player in rollout_info["state_history"][t].players]
+            # disp_str += f'{helds}'
+
+            # if rollout_info["shaped_reward_hist"][t-2,1]==3:
+            #     disp_str += '\t onion potted'
+
+
+            if np.any(rollout_info["onion_handoff"][t]):
+                disp_str += '\t onion handoff'
+            if np.any(rollout_info["onion_pickup"][t]):
+                disp_str += '\t onion pickup'
+            if np.any(rollout_info["onion_drop"][t]):
+                disp_str += '\t onion drop'
+
+            if np.any(rollout_info["dish_handoff"][t]):
+                disp_str += '\t dish handoff'
+            if np.any(rollout_info["dish_pickup"][t]):
+                disp_str += '\t dish pickup'
+            if np.any(rollout_info["dish_drop"][t]):
+                disp_str += '\t dish drop'
+
+            if np.any(rollout_info["soup_pickup"][t]):
+                disp_str += '\t soup pickup'
+            if np.any(rollout_info["soup_delivery"][t]):
+                disp_str += '\t soup delivery'
+            print(disp_str)
+
+
+        # validator.OSA_test(0, averse_joint_traj)
+
 
 def main():
     config = {
@@ -475,7 +592,8 @@ def main():
     }
     # slip_test(config)
 
-    handoff_test(config)
+    # handoff_test(config)
+    cirriculum_test(config)
 
 
 

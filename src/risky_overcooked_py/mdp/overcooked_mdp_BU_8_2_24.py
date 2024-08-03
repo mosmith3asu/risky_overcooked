@@ -1229,11 +1229,6 @@ class OvercookedGridworld(object):
         order_bonus: Multiplicative factor for serving a bonus recipe
         start_state: Default start state returned by get_standard_start_state
         """
-        # Default parameters changed in cirriculum
-        # self.def_start_all_orders = start_all_orders
-        # self.def_num_items_for_soup = num_items_for_soup
-        self.num_items_for_soup = num_items_for_soup
-
         self._configure_recipes(start_all_orders, num_items_for_soup, **kwargs)
         self.start_all_orders = (
             [r.to_dict() for r in Recipe.ALL_RECIPES]
@@ -1243,8 +1238,7 @@ class OvercookedGridworld(object):
         if old_dynamics:
             assert all(
                 [
-                    # len(order["ingredients"]) == 3
-                    len(order["ingredients"]) == self.num_items_for_soup
+                    len(order["ingredients"]) == 3
                     for order in self.start_all_orders
                 ]
             ), "Only accept orders with 3 items when using the old_dynamics"
@@ -1624,10 +1618,8 @@ class OvercookedGridworld(object):
 
                     if not self.old_reward_shaping and obj.name == 'dish':
                         if not has_previously_interacted: # prevents picking up and setting down
-                            obj = player.remove_object()
                             if self.is_dish_pickup_useful(new_state, pot_states):
                                 shaped_reward[player_idx] += self.reward_shaping_params["DISH_PICKUP_REWARD"]
-                            player.set_object(obj)
 
             elif terrain_type == "O" and player.held_object is None:
                 self.log_object_pickup(events_infos, new_state, "onion", pot_states, player_idx)
@@ -1668,29 +1660,23 @@ class OvercookedGridworld(object):
                     player.get_object().name == "dish"
                     and self.soup_ready_at_location(new_state, i_pos)
                 ):
-                    self.log_object_pickup(events_infos, new_state, "soup", pot_states, player_idx)
+                    self.log_object_pickup(
+                        events_infos, new_state, "soup", pot_states, player_idx
+                    )
 
                     # Pick up soup
-                    old_dish = player.remove_object()  # Remove the dish
+                    player.remove_object()  # Remove the dish
                     obj = new_state.remove_object(i_pos)  # Get soup
                     player.set_object(obj)
 
                     if self.old_reward_shaping:
                         shaped_reward[player_idx] += self.reward_shaping_params["SOUP_PICKUP_REWARD" ] # origonal shaped reward
                     else:
-
-                        both_players_interacted = np.all(old_dish.player_interacts)
-                        if both_players_interacted:
-                            scale = 1 / sum(obj.player_interacts) if self.shared_reward_split else 1
-                            for _iplayer in range(self.num_players):
-                                shaped_reward[_iplayer] += scale * self.reward_shaping_params["SOUP_PICKUP_REWARD"]
-                        else:
-                            shaped_reward[player_idx] += self.reward_shaping_params["SOUP_PICKUP_REWARD"]
                         # give shaped reward to all players who contributed to picking up soup by interacting with dish
-                        # for _iplayer,did_interact in enumerate(obj.player_interacts):
-                        #     if did_interact:
-                        #         scale = 1 / sum(obj.player_interacts) if self.shared_reward_split else 1
-                        #         shaped_reward[_iplayer] += scale*self.reward_shaping_params["SOUP_PICKUP_REWARD"]
+                        for _iplayer,did_interact in enumerate(obj.player_interacts):
+                            if did_interact:
+                                scale = 1 / sum(obj.player_interacts) if self.shared_reward_split else 1
+                                shaped_reward[_iplayer] += scale*self.reward_shaping_params["SOUP_PICKUP_REWARD"]
 
                 elif player.get_object().name in Recipe.ALL_INGREDIENTS:
                     # Adding ingredient to soup
@@ -1910,8 +1896,7 @@ class OvercookedGridworld(object):
                 if self.old_dynamics and (
                     not obj.is_cooking
                     and not obj.is_ready
-                    # and len(obj.ingredients) == 3
-                    and len(obj.ingredients) == self.num_items_for_soup
+                    and len(obj.ingredients) == 3
                 ):
                     obj.begin_cooking()
                 if obj.is_cooking:
@@ -2817,7 +2802,7 @@ class OvercookedGridworld(object):
                 feature_vector[_i:_i + n_pot_feat] = 0
             else:
                 soup = overcooked_state.get_object(pot_loc)
-                if soup.is_ready:               num_ingred = 3; is_ready = 1;  cook_time = 20
+                if soup.is_ready:               num_ingred = 3; is_ready = 1;  cook_time = 21
                 elif soup.is_cooking:           num_ingred = 3; is_ready = 0;  cook_time = soup.cook_time
                 elif len(soup.ingredients) > 0: num_ingred = len(soup.ingredients); is_ready = 0; cook_time = 0
                 else: raise ValueError(f"Invalid pot state {soup}")

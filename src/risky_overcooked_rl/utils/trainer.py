@@ -24,6 +24,7 @@ class Trainer:
         HORIZON = config['HORIZON']
         self.device = config['device']
         self.shared_rew = False
+        self.curriculum = None
 
         self.ITERATIONS = config['ITERATIONS']
         self.mdp = OvercookedGridworld.from_layout_name(LAYOUT)
@@ -278,16 +279,35 @@ class Trainer:
         cum_reward = 0
         cum_shaped_reward = np.zeros(2)
 
+        # rollout_info = {
+        #     'onion_risked': np.zeros(2),
+        #     'dish_risked': np.zeros(2),
+        #     'soup_risked': np.zeros(2),
+        #     'onion_slips': np.zeros(2),
+        #     'dish_slips': np.zeros(2),
+        #     'soup_slips': np.zeros(2),
+        #     'onion_handoff': np.zeros(2),
+        #     'dish_handoff': np.zeros(2),
+        #     'soup_handoff': np.zeros(2),
+        #     'mean_loss': 0
+        # }
         rollout_info = {
-            'onion_risked': np.zeros(2),
-            'dish_risked': np.zeros(2),
-            'soup_risked': np.zeros(2),
-            'onion_slips': np.zeros(2),
-            'dish_slips': np.zeros(2),
-            'soup_slips': np.zeros(2),
-            'onion_handoff': np.zeros(2),
-            'dish_handoff': np.zeros(2),
-            'soup_handoff': np.zeros(2),
+            'onion_risked': np.zeros([1, 2]),
+            'onion_pickup': np.zeros([1, 2]),
+            'onion_drop': np.zeros([1, 2]),
+            'dish_risked': np.zeros([1, 2]),
+            'dish_pickup': np.zeros([1, 2]),
+            'dish_drop': np.zeros([1, 2]),
+            'soup_pickup': np.zeros([1, 2]),
+            'soup_delivery': np.zeros([1, 2]),
+
+            'soup_risked': np.zeros([1, 2]),
+            'onion_slip': np.zeros([1, 2]),
+            'dish_slip': np.zeros([1, 2]),
+            'soup_slip': np.zeros([1, 2]),
+            'onion_handoff': np.zeros([1, 2]),
+            'dish_handoff': np.zeros([1, 2]),
+            'soup_handoff': np.zeros([1, 2]),
             'mean_loss': 0
         }
 
@@ -299,15 +319,20 @@ class Trainer:
                                                                joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
                                                                as_tensor=True, device=device)
             next_state, reward, done, info = self.env.step(joint_action,get_mdp_info=True)
-            rollout_info['onion_slips']  += np.array(info['mdp_info']['event_infos']['onion_slip'])
-            rollout_info['dish_slips']   += np.array(info['mdp_info']['event_infos']['dish_slip'])
-            rollout_info['soup_slips']   += np.array(info['mdp_info']['event_infos']['soup_slip'])
-            rollout_info['onion_risked'] += np.array(info['mdp_info']['event_infos']['onion_risked'])
-            rollout_info['dish_risked']  += np.array(info['mdp_info']['event_infos']['dish_risked'])
-            rollout_info['soup_risked']  += np.array(info['mdp_info']['event_infos']['soup_risked'])
-            rollout_info['onion_handoff']+= np.array(info['mdp_info']['event_infos']['onion_handoff'])
-            rollout_info['dish_handoff'] += np.array(info['mdp_info']['event_infos']['dish_handoff'])
-            rollout_info['soup_handoff'] += np.array(info['mdp_info']['event_infos']['soup_handoff'])
+
+            for key in rollout_info.keys():
+                if key not in ['mean_loss']:
+                    rollout_info[key] += np.array(info['mdp_info']['event_infos'][key])
+
+            # rollout_info['onion_slips']  += np.array(info['mdp_info']['event_infos']['onion_slip'])
+            # rollout_info['dish_slips']   += np.array(info['mdp_info']['event_infos']['dish_slip'])
+            # rollout_info['soup_slips']   += np.array(info['mdp_info']['event_infos']['soup_slip'])
+            # rollout_info['onion_risked'] += np.array(info['mdp_info']['event_infos']['onion_risked'])
+            # rollout_info['dish_risked']  += np.array(info['mdp_info']['event_infos']['dish_risked'])
+            # rollout_info['soup_risked']  += np.array(info['mdp_info']['event_infos']['soup_risked'])
+            # rollout_info['onion_handoff']+= np.array(info['mdp_info']['event_infos']['onion_handoff'])
+            # rollout_info['dish_handoff'] += np.array(info['mdp_info']['event_infos']['dish_handoff'])
+            # rollout_info['soup_handoff'] += np.array(info['mdp_info']['event_infos']['soup_handoff'])
 
             # evemts = info['event_infos']
             # Track reward traces

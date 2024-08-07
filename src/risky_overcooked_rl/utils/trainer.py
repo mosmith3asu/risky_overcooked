@@ -17,6 +17,7 @@ class Trainer:
         np.random.seed(42)
         torch.manual_seed(42)
         random.seed(42)
+        self.config =config
 
         # Generate MDP and environment----------------
         config['AGENT'] = model_object.__name__
@@ -35,16 +36,7 @@ class Trainer:
         self.test_interval = 10  # test every n iterations
 
         # Define Parameter Schedules ------------------
-        EPS_START, EPS_END, EPS_DUR = config['epsilon_sched']
-        RAT_START, RAT_END, RAT_DUR = config['rationality_sched']
-        RSHAPE_START, RSHAPE_END, RSHAPE_DUR = config['rshape_sched']
-        RSTART_START, RSTART_END, RSTART_DUR = config['rand_start_sched']
-        self.test_rationality = RAT_END #config['test_rationality']
-        self.rationality_sched = np.hstack( [np.linspace(RAT_START, RAT_END, RAT_DUR), RAT_END * np.ones(self.ITERATIONS - RAT_DUR)])
-        self.epsilon_sched = np.hstack([np.linspace(EPS_START, EPS_END, EPS_DUR), EPS_END * np.ones(self.ITERATIONS - EPS_DUR)])
-        self.rshape_sched = np.hstack([np.linspace(RSHAPE_START, RSHAPE_END, RSHAPE_DUR), RSHAPE_END * np.ones(self.ITERATIONS - RSHAPE_DUR)])
-        self.random_start_sched = np.hstack([np.linspace(RSTART_START, RSTART_END, RSTART_DUR), RSTART_END * np.ones(self.ITERATIONS - RSTART_DUR)])
-
+        self.init_sched(config)
         # Initialize policy and target networks ----------------
         obs_shape = self.mdp.get_lossless_encoding_vector_shape()
         config['obs_shape'] = obs_shape
@@ -84,6 +76,24 @@ class Trainer:
     def print_config(self,config):
         for key, val in config.items():
             print(f'{key}={val}')
+    def init_sched(self,config,eps_decay = 1,rshape_decay=1):
+        EPS_START, EPS_END, EPS_DUR = config['epsilon_sched']
+        RAT_START, RAT_END, RAT_DUR = config['rationality_sched']
+        RSHAPE_START, RSHAPE_END, RSHAPE_DUR = config['rshape_sched']
+        RSTART_START, RSTART_END, RSTART_DUR = config['rand_start_sched']
+
+        EPS_START = EPS_START * eps_decay
+        RSHAPE_START = RSHAPE_START * rshape_decay
+
+        self.test_rationality = RAT_END  # config['test_rationality']
+        self.rationality_sched = np.hstack(
+            [np.linspace(RAT_START, RAT_END, RAT_DUR), RAT_END * np.ones(self.ITERATIONS - RAT_DUR)])
+        self.epsilon_sched = np.hstack(
+            [np.linspace(EPS_START, EPS_END, EPS_DUR), EPS_END * np.ones(self.ITERATIONS - EPS_DUR)])
+        self.rshape_sched = np.hstack(
+            [np.linspace(RSHAPE_START, RSHAPE_END, RSHAPE_DUR), RSHAPE_END * np.ones(self.ITERATIONS - RSHAPE_DUR)])
+        self.random_start_sched = np.hstack(
+            [np.linspace(RSTART_START, RSTART_END, RSTART_DUR), RSTART_END * np.ones(self.ITERATIONS - RSTART_DUR)])
 
     def run(self):
         train_rewards = []
@@ -450,8 +460,8 @@ class Trainer:
                 self.model.update_checkpoint()
                 self.logger.update_checkpiont_line(it)
                 # empty buffer to delay next checkpoint
-                # self.train_rewards = deque(maxlen=self.checkpoint_mem)
-                # self.test_rewards = deque(maxlen=self.checkpoint_mem)
+                self.train_rewards = deque(maxlen=self.checkpoint_mem)
+                self.test_rewards = deque(maxlen=self.checkpoint_mem)
                 self.has_checkpointed = True
                 return True
         return False

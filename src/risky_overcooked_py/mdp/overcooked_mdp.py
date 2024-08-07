@@ -2464,12 +2464,21 @@ class OvercookedGridworld(object):
         non_empty_pots = len(
             self.get_ready_pots(pot_states)
             + self.get_cooking_pots(pot_states)
+            # +len(self.get_partially_full_pots(pot_states)
         )
-        partial_pots = len(self.get_partially_full_pots(pot_states))
-        if partial_pots>=1:
-            print('partial pot')
-        n_ingred_in_play = len(self.get_counter_objects_dict(state)["onion"])\
-                           + len(self.get_counter_objects_dict(state)["tomato"])
+        n_ingred_in_play = 0
+
+        # TODO: want to count counter ingrediants as in play?
+        # n_ingred_in_play += len(self.get_counter_objects_dict(state)["onion"])\
+        #                    + len(self.get_counter_objects_dict(state)["tomato"])
+        for player in state.players:
+            if player.has_object():
+                obj = player.get_object()
+                if obj.name in ['onion','tomato']:
+                    n_ingred_in_play+=1
+
+        if len(pot_states['2_items']) >0 and n_ingred_in_play>=1:       non_empty_pots += 1
+        elif len(pot_states['1_items']) > 0 and n_ingred_in_play>=2:    non_empty_pots += 1
 
         return no_dishes_on_counters and num_player_dishes < non_empty_pots
 

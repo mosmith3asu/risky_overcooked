@@ -10,10 +10,8 @@ from collections import deque
 class CirriculumTrainer(Trainer):
     def __init__(self,model_object,config):
         super().__init__(model_object,config)
-        reward_thresh = config['reward_thresh'] if 'reward_thresh' in config else 40
+        reward_thresh = config['reward_thresh'] if 'reward_thresh' in config else 30
         self.curriculum = Curriculum(self.env,reward_thresh,config)
-        self.schedule_decay = 0.7
-
 
     def run(self):
         train_rewards = []
@@ -38,18 +36,17 @@ class CirriculumTrainer(Trainer):
             self.model.update_target()  # performs soft update of target network
             self.logger.end_iteration()
 
-            next_cirriculum = self.curriculum.step_cirriculum(cum_reward)
-            if next_cirriculum:
-                self.init_sched(self.config, eps_decay=self.schedule_decay, rshape_decay=self.schedule_decay)
+            self.curriculum.step_cirriculum(cum_reward)
+
             slips = rollout_info['onion_slip'] + rollout_info['dish_slip'] + rollout_info['soup_slip']
             risks = rollout_info['onion_risked'] + rollout_info['dish_risked'] + rollout_info['soup_risked']
             handoffs = rollout_info['onion_handoff'] + rollout_info['dish_handoff'] + rollout_info['soup_handoff']
 
-            print(f"[it:{it}"
+            print(f"[it:{it}]"
                   f" cur:{self.curriculum.current_cirriculum}-{cit}]"
-                  f"[R:{round(cum_reward, 3)} "
-                  f" Rshape:{np.round(cum_shaped_rewards, 3)} "
-                  f" L:{round(rollout_info['mean_loss'], 3)} ]"
+                  f"[ train reward:{round(cum_reward, 3)} "
+                  f" shaped reward:{np.round(cum_shaped_rewards, 3)} "
+                  f" loss:{round(rollout_info['mean_loss'], 3)} ]"
                   # f"| slips:{slips} "
                   f"[ risks:{risks} "
                   f" handoffs:{handoffs} ]"
@@ -134,10 +131,9 @@ class Curriculum:
         ):
             self.set_cirriculum(**self.cirriculums[self.current_cirriculum])
             self.current_cirriculum += 1
-            self.iteration = 0
-            return True
+            self.curriculum_iteration = 0
         self.iteration += 1
-        return False
+
     def set_cirriculum(self, n_onions, cook_time):
         Recipe.MAX_NUM_INGREDIENTS = n_onions
         recipe_config = {
@@ -159,9 +155,9 @@ def main():
         'Date': datetime.now().strftime("%m_%d_%Y-%H_%M"),
 
         # Env Params ----------------
-        # 'LAYOUT': "risky_coordination_ring",
+        'LAYOUT': "risky_coordination_ring",
         # 'LAYOUT': "risky_multipath",
-        'LAYOUT': "forced_coordination",
+        # 'LAYOUT': "forced_coordination",
         # 'LAYOUT': "forced_coordination_sanity_check",
         'HORIZON': 200,
         'ITERATIONS': 30_000,
@@ -186,11 +182,6 @@ def main():
         'monte_carlo': False,
         'note': 'Cirriculum OSA',
     }
-
-    # config['LAYOUT'] = 'forced_coordination'; config['rand_start_sched'] = [0,0,1]
-    config['LAYOUT'] = 'risky_coordination_ring'; config['tau'] = 0.005
-    # config['LAYOUT'] = 'risky_multipath'
-    # config['LAYOUT'] = 'forced_coordination_sanity_check'; config['rand_start_sched'] = [0,0,1]
     CirriculumTrainer(SelfPlay_QRE_OSA, config).run()
 
 if __name__ == '__main__':

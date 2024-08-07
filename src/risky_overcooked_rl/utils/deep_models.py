@@ -512,13 +512,14 @@ class SelfPlay_QRE_OSA(object):
         self.tau = config['tau']
         self.rationality = 5
         self.num_agents = 2
+        self.mem_size = config['replay_memory_size']
         self.joint_action_space = list(itertools.product(Action.ALL_ACTIONS, repeat=2))
         self.joint_action_dim = n_actions
         self.player_action_dim = int(np.sqrt(n_actions))
 
         # Define Memory
         self._transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_prospects', 'done'))
-        self._memory = deque([], maxlen=config['replay_memory_size'])
+        self._memory = deque([], maxlen=self.mem_size)
         self._memory_batch_size = config['minibatch_size']
 
         # Define Model
@@ -721,8 +722,10 @@ class SelfPlay_QRE_OSA(object):
     ###################################################
 
     def update(self):
-        if self.memory_len < self._memory_batch_size:
-            return None
+        if (
+                self.memory_len < self._memory_batch_size
+                # or self.memory_len < 0.25*self.mem_size
+        ):  return 0
 
         transitions = self.memory_sample()
         batch = self._transition(*zip(*transitions))

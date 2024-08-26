@@ -77,6 +77,10 @@ class Trainer:
         for key, val in config.items():
             print(f'{key}={val}')
     def init_sched(self,config,eps_decay = 1,rshape_decay=1):
+        def exponential_decay(N0, Nf, t, T):
+            if t > T: return Nf
+            return N0 * (Nf / N0) ** (t / T)
+
         EPS_START, EPS_END, EPS_DUR = config['epsilon_sched']
         RAT_START, RAT_END, RAT_DUR = config['rationality_sched']
         RSHAPE_START, RSHAPE_END, RSHAPE_DUR = config['rshape_sched']
@@ -88,8 +92,10 @@ class Trainer:
         self.test_rationality = RAT_END  # config['test_rationality']
         self.rationality_sched = np.hstack(
             [np.linspace(RAT_START, RAT_END, RAT_DUR), RAT_END * np.ones(self.ITERATIONS - RAT_DUR)])
-        self.epsilon_sched = np.hstack(
-            [np.linspace(EPS_START, EPS_END, EPS_DUR), EPS_END * np.ones(self.ITERATIONS - EPS_DUR)])
+        # self.epsilon_sched = np.hstack(
+        #     [np.linspace(EPS_START, EPS_END, EPS_DUR), EPS_END * np.ones(self.ITERATIONS - EPS_DUR)])
+        self.epsilon_sched = [exponential_decay(N0=EPS_START, Nf=EPS_END, t=t, T=EPS_DUR) for t in range(self.ITERATIONS)]
+
         self.rshape_sched = np.hstack(
             [np.linspace(RSHAPE_START, RSHAPE_END, RSHAPE_DUR), RSHAPE_END * np.ones(self.ITERATIONS - RSHAPE_DUR)])
         self.random_start_sched = np.hstack(

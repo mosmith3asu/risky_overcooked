@@ -112,6 +112,7 @@ class CirriculumTrainer(Trainer):
 
     def curriculum_rollout(self, it):
         self.model.rationality = self._rationality
+        self.env.reset()
         self.env.state = self.curriculum.sample_cirriculum_state()
 
         losses = []
@@ -231,7 +232,7 @@ class Curriculum:
 
 
     def sample_cirriculum_state(self, rand_start_chance = 0.9, sample_decay =0.5):
-        self.env.reset()
+        # self.env.reset()
         state = self.env.state
 
         # i = self.current_cirriculum
@@ -250,7 +251,7 @@ class Curriculum:
              - other pots unfilled since filling other pot before first is suboptimal
             """
             n_onions = 1
-            onion_quants = np.eye(self.mdp.num_pots)[np.random.choice(self.mdp.num_pots)] * n_onions
+            onion_quants = np.eye(self.mdp.num_pots,dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
             state = self.add_onions_to_pots(state, onion_quants)
 
         elif self.cirriculums[i] == 'deliver_onion3':
@@ -259,7 +260,7 @@ class Curriculum:
             - other pots unfilled since filling other pot before first is suboptimal
             """
             n_onions = 2
-            onion_quants = np.eye(self.mdp.num_pots)[np.random.choice(self.mdp.num_pots)] * n_onions
+            onion_quants = np.eye(self.mdp.num_pots,dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
             state = self.add_onions_to_pots(state, onion_quants)
 
         elif self.cirriculums[i] == 'wait_to_cook':
@@ -269,7 +270,7 @@ class Curriculum:
             """
             # TODO: random num onions for other pots?
             n_onions = 3
-            onion_quants = np.eye(self.mdp.num_pots)[np.random.choice(self.mdp.num_pots)] * n_onions
+            onion_quants = np.eye(self.mdp.num_pots,dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
             state = self.add_onions_to_pots(state, onion_quants, cooking_tick= 0)
 
 
@@ -297,7 +298,7 @@ class Curriculum:
             # Decide who is holding dish and other is holding rand object
             possibilities = [["dish", np.random.choice([None, "onion"], p=[0.75, 0.25])],
                              [np.random.choice([None, "onion"], p=[0.75, 0.25]), "dish"]]
-            held_objs = np.random.choice(possibilities)
+            held_objs = possibilities[np.random.randint(len(possibilities))]
             state = self.add_held_objs(state, held_objs)
 
             # Sample how many onions to put in each pot (i.e. one is full rest are empty)

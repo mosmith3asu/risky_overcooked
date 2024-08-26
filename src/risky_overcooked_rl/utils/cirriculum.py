@@ -139,7 +139,7 @@ class CirriculumTrainer(Trainer):
             'mean_loss': 0
         }
 
-        for t in itertools.count():
+        for t in range(self.env.horizon+1):#itertools.count():
             obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=device).unsqueeze(0)
 
             joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,epsilon=self._epsilon)
@@ -232,9 +232,6 @@ class Curriculum:
 
 
     def sample_cirriculum_state(self, rand_start_chance = 0.9, sample_decay =0.5):
-        # self.env.reset()
-        state = self.env.state
-
         # i = self.current_cirriculum
         pi = [sample_decay**(self.current_cirriculum-i) for i in range(self.current_cirriculum+1)]
         i = np.random.choice(np.arange(self.current_cirriculum+1), p=np.array(pi)/np.sum(pi))

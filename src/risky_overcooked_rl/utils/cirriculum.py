@@ -239,8 +239,9 @@ class Curriculum:
         pi = [sample_decay**(self.current_cirriculum-i) for i in range(self.current_cirriculum+1)]
         i = np.random.choice(np.arange(self.current_cirriculum+1), p=np.array(pi)/np.sum(pi))
 
-        if np.random.rand() < rand_start_chance:
-            state = self.add_random_start_loc()
+        # if np.random.rand() < rand_start_chance:
+            # state = self.add_random_start_loc()
+        state = self.add_random_start_loc()
 
         if self.cirriculums[i] == 'full_task':
             state = self.env.state # undo random start loc

@@ -78,8 +78,9 @@ class Trainer:
             print(f'{key}={val}')
     def init_sched(self,config,eps_decay = 1,rshape_decay=1):
         def exponential_decay(N0, Nf, t, T):
+            w = 0.75
             if t > T: return Nf
-            return N0 * (Nf / N0) ** (t / T)
+            return N0 * (Nf / N0) ** ((t / T) ** w)
 
         EPS_START, EPS_END, EPS_DUR = config['epsilon_sched']
         RAT_START, RAT_END, RAT_DUR = config['rationality_sched']

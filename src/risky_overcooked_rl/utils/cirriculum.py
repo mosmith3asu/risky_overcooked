@@ -141,8 +141,12 @@ class CirriculumTrainer(Trainer):
 
         for t in range(self.env.horizon+1):#itertools.count():
             obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=device).unsqueeze(0)
+            feasible_JAs = self.feasible_action.get_feasible_joint_actions(self.env.state, as_joint_idx=True)
+            joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,
+                                                                                          epsilon=self._epsilon,
+                                                                                          feasible_JAs=feasible_JAs)
 
-            joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,epsilon=self._epsilon)
+            # joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,epsilon=self._epsilon)
             next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
                                                                joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
                                                                as_tensor=True, device=device)

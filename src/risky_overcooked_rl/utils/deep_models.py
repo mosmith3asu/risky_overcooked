@@ -291,10 +291,14 @@ class SelfPlay_QRE_OSA(object):
                 all_joint_actions.append(joint_action_idx)
             return np.array(all_joint_actions), all_dists, all_ne_values
 
-    def choose_joint_action(self, obs, epsilon=0.0, debug=False):
+    def choose_joint_action(self, obs, epsilon=0.0, feasible_JAs= None, debug=False):
         sample = random.random()
         if sample < epsilon:  # Explore
             action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
+            if feasible_JAs is not None:
+                action_probs = feasible_JAs*action_probs
+                action_probs = action_probs/np.sum(action_probs)
+
             joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
             joint_action = self.joint_action_space[joint_action_idx]
         else:  # Exploit
@@ -304,18 +308,8 @@ class SelfPlay_QRE_OSA(object):
                 joint_action_idx = joint_action_idx[0]
                 joint_action = self.joint_action_space[joint_action_idx]
                 action_probs = dists
-            # try:
-            #     with torch.no_grad():
-            #         NF_Game = self.get_normal_form_game(obs)
-            #         joint_action_idx, dists, ne_vs = self.compute_EQ(NF_Game)
-            #         joint_action_idx = joint_action_idx[0]
-            #         joint_action = self.joint_action_space[joint_action_idx]
-            #         action_probs = dists
-            # except:
-            #     warnings.warn('Invalid Nash computation. Random action is chosen.')
-            #     action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
-            #     joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
-            #     joint_action = self.joint_action_space[joint_action_idx]
+                #TODO: Constrain actions to be feasible here?
+
         return joint_action, joint_action_idx, action_probs
 
 

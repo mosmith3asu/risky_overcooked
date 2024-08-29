@@ -1,7 +1,73 @@
+import itertools
+
 import numpy as np
 # import matplotlib.pyplot as plt
-
+from risky_overcooked_py.mdp.actions import Action, Direction
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
+
+class FeasibleActionManager(object):
+    def __init__(self, env):
+        self.env = env
+    def is_feasible_move(self,player, action):
+        facing = player.orientation
+        adj_pos = Action.move_in_direction(player.position, action)
+        terr = self.env.mdp.get_terrain_type_at_pos(adj_pos)
+
+        # move into counter already facing
+        same_dir = (facing == action)
+        is_counter = (terr == "X")
+        if same_dir and is_counter:
+            return False
+
+        # move into resource without prerequisite object
+        if not player.has_object() and terr in ['X', 'P', 'S', 'D']:
+            return False
+
+        return True
+    def is_feasible_interact(self, player, action='Interact'):
+        facing = player.orientation
+        adj_pos = Action.move_in_direction(player.position, facing)
+        terr = self.env.mdp.get_terrain_type_at_pos(adj_pos)
+        if not player.has_object() and terr in ['X', 'P', 'S', 'D']: return False
+        elif player.has_object() and terr in ["D","O","T"]: return False
+        return True
+    def is_feasible_action(self,player,action):
+        # Movement actions
+        if action in Direction.INDEX_TO_DIRECTION:
+            return self.is_feasible_move(player, action)
+
+        # Pointless interact action
+        elif action == 'interact':
+            return self.is_feasible_interact(player, action)
+
+        elif action == (0, 0): return True
+        else: raise ValueError(f"Uknown Action {action}")
+    def get_feasible_joint_actions(self, state, as_joint_idx = False):
+        """
+        Actions that are not useful:
+        - moving into counter you are already facing
+        - moving to face a {counter, service, pot} without held object
+        - attempting to interact with anything but ingredient resource w/o held object
+        :param state:
+        :param as_idx: returns array of feasible actions
+        :return:
+        """
+        feasible_actions = np.ones([2,len(Action.ALL_ACTIONS)])
+        for ip, player in enumerate(state.players):
+            for ia, action in enumerate(Action.INDEX_TO_ACTION):
+                feasible_actions[ip, ia] = int(self.is_feasible_action(player, action))
+
+        # Convert to joint index if specified
+        if as_joint_idx:
+            # feasible_actions = itertools.product(*feasible_actions)
+            feasible_actions = np.array(list(itertools.product(*feasible_actions)))
+            feasible_actions = (feasible_actions[:,0]*feasible_actions[:,1]).flatten()
+
+        return feasible_actions
+
+
+
+
 
 class StartStateManager:
     def __init__(self,mdp):

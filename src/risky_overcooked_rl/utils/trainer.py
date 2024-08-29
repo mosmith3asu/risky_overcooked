@@ -5,6 +5,7 @@ from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
 from risky_overcooked_py.mdp.actions import Action
 from itertools import product,count
+from risky_overcooked_rl.utils.state_utils import FeasibleActionManager
 import torch
 import torch.optim as optim
 import math
@@ -34,6 +35,8 @@ class Trainer:
         # self.perc_random_start = config['perc_random_start']
         self.N_tests = 1
         self.test_interval = 10  # test every n iterations
+
+        self.feasible_action = FeasibleActionManager(self.env)
 
         # Define Parameter Schedules ------------------
         self.init_sched(config)
@@ -223,64 +226,6 @@ class Trainer:
 
         if as_tensor:  return torch.tensor(traces,device=self.device)
         else: return traces
-    def monte_carlo_rollout(self,it):
-        # print(f'Monte Carlo Rollout at iteration {it}...')
-        self.model.rationality = self._rationality
-        self.env.reset()
-
-        # Random start state if specified
-        # if it / self.ITERATIONS < self.perc_random_start:
-        if np.random.sample() < self._p_rand_start:
-            self.env.state = self.random_start_state()
-
-        ALL_EXPERIENCES = []
-        cum_reward = 0
-        cum_shaped_reward = np.zeros(2)
-
-        rollout_info = {
-            'onion_risked': np.zeros(2),
-            'dish_risked':  np.zeros(2),
-            'soup_risked':  np.zeros(2),
-            'onion_slips':  np.zeros(2),
-            'dish_slips':   np.zeros(2),
-            'soup_slips':   np.zeros(2),
-            'onion_handoff':np.zeros(2),
-            'dish_handoff': np.zeros(2),
-            'soup_handoff': np.zeros(2),
-            'mean_loss': 0
-        }
-
-        for t in count():
-            obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state,device=device).unsqueeze(0)
-            joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=self._epsilon)
-            next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
-                                                               joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
-                                                               as_tensor=True, device=device)
-            next_state, reward, done, info = self.env.step(joint_action,get_mdp_info=True)
-            rollout_info['onion_slips']  += np.array(info['mdp_info']['event_infos']['onion_slip'])
-            rollout_info['dish_slips']   += np.array(info['mdp_info']['event_infos']['dish_slip'])
-            rollout_info['soup_slips']   += np.array(info['mdp_info']['event_infos']['soup_slip'])
-            rollout_info['onion_risked'] += np.array(info['mdp_info']['event_infos']['onion_risked'])
-            rollout_info['dish_risked']  += np.array(info['mdp_info']['event_infos']['dish_risked'])
-            rollout_info['soup_risked']  += np.array(info['mdp_info']['event_infos']['soup_risked'])
-            rollout_info['onion_handoff']+= np.array(info['mdp_info']['event_infos']['onion_handoff'])
-            rollout_info['dish_handoff'] += np.array(info['mdp_info']['event_infos']['dish_handoff'])
-            rollout_info['soup_handoff'] += np.array(info['mdp_info']['event_infos']['soup_handoff'])
-
-            # Track reward traces
-            shaped_rewards = self._rshape_scale * np.array(info["shaped_r_by_agent"])
-            if self.shared_rew: shaped_rewards = np.mean(shaped_rewards)*np.ones(2)
-            total_rewards =  np.array([reward + shaped_rewards]).flatten()
-            cum_reward += reward
-            cum_shaped_reward += shaped_rewards
-
-            # Store in memory ----------------
-            this_experience = {'state':obs, 'action':joint_action_idx, 'rewards':total_rewards,
-                               'next_prospects':next_state_prospects,   'done':done}
-            ALL_EXPERIENCES.append(this_experience)
-            if done: break
-        # rollout_info['mean_loss'] = np.mean(losses)
-        return ALL_EXPERIENCES,cum_reward, cum_shaped_reward, rollout_info
 
     def training_rollout(self,it):
 
@@ -296,18 +241,6 @@ class Trainer:
         cum_reward = 0
         cum_shaped_reward = np.zeros(2)
 
-        # rollout_info = {
-        #     'onion_risked': np.zeros(2),
-        #     'dish_risked': np.zeros(2),
-        #     'soup_risked': np.zeros(2),
-        #     'onion_slips': np.zeros(2),
-        #     'dish_slips': np.zeros(2),
-        #     'soup_slips': np.zeros(2),
-        #     'onion_handoff': np.zeros(2),
-        #     'dish_handoff': np.zeros(2),
-        #     'soup_handoff': np.zeros(2),
-        #     'mean_loss': 0
-        # }
         rollout_info = {
             'onion_risked': np.zeros([1, 2]),
             'onion_pickup': np.zeros([1, 2]),
@@ -330,8 +263,10 @@ class Trainer:
 
         for t in count():
             obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state,device=device).unsqueeze(0)
-
-            joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=self._epsilon)
+            feasible_JAs = self.feasible_action.get_feasible_joint_actions(self.env.state,as_joint_idx=True)
+            joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,
+                                                                                          epsilon=self._epsilon,
+                                                                                          feasible_JAs = feasible_JAs)
             next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
                                                                joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
                                                                as_tensor=True, device=device)

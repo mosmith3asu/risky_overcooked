@@ -439,6 +439,7 @@ class SoupState(ObjectState):
         ingredients=[],
         cooking_tick=-1,
         cook_time=None,
+        player_interacts=None,
         **kwargs
     ):
         """
@@ -456,6 +457,8 @@ class SoupState(ObjectState):
         self._cooking_tick = cooking_tick
         self._recipe = None
         self._cook_time = cook_time
+        self.player_interacts = [False, False] if player_interacts is None else player_interacts
+
 
     def __eq__(self, other):
         return (
@@ -612,6 +615,7 @@ class SoupState(ObjectState):
             self.position,
             [ingredient.deepcopy() for ingredient in self._ingredients],
             self._cooking_tick,
+            player_interacts= self.player_interacts
         )
 
     def to_dict(self):
@@ -1568,6 +1572,7 @@ class OvercookedGridworld(object):
         Currently if two players both interact with a terrain, we resolve player 1's interact
         first and then player 2's, without doing anything like collision checking.
         """
+
         pot_states = self.get_pot_states(new_state)
         # We divide reward by agent to keep track of who contributed
         sparse_reward, shaped_reward = (
@@ -1590,6 +1595,7 @@ class OvercookedGridworld(object):
             if terrain_type == "X":
                 if player.has_object() and not new_state.has_object(i_pos):
                     obj_name = player.get_object().name
+
                     self.log_object_drop(
                         events_infos,
                         new_state,
@@ -1600,10 +1606,13 @@ class OvercookedGridworld(object):
 
                     # Drop object on counter
                     obj = player.remove_object()
+
                     new_state.add_object(obj, i_pos)
 
                 elif not player.has_object() and new_state.has_object(i_pos):
                     obj_name = new_state.get_object(i_pos).name
+
+
                     self.log_object_pickup(
                         events_infos,
                         new_state,
@@ -1612,6 +1621,7 @@ class OvercookedGridworld(object):
                         player_idx,
                     )
 
+
                     # Pick up object from counter
                     obj = new_state.remove_object(i_pos)
                     prev_interact = obj.player_interacts[player_idx]
@@ -1619,6 +1629,9 @@ class OvercookedGridworld(object):
 
                     has_previously_interacted = (prev_interact == obj.player_interacts[player_idx])
                     both_players_interacted =  np.all(obj.player_interacts)
+                    # if obj.name == "soup":
+                    #     pass
+
                     if both_players_interacted and not has_previously_interacted:
                         self.log_object_handoff(events_infos, obj.name, player_idx)
 
@@ -1678,7 +1691,6 @@ class OvercookedGridworld(object):
                     if self.old_reward_shaping:
                         shaped_reward[player_idx] += self.reward_shaping_params["SOUP_PICKUP_REWARD" ] # origonal shaped reward
                     else:
-
                         both_players_interacted = np.all(old_dish.player_interacts)
                         if both_players_interacted:
                             scale = 1 / sum(obj.player_interacts) if self.shared_reward_split else 1
@@ -2666,7 +2678,7 @@ class OvercookedGridworld(object):
         if as_tensor: assert device is not None, 'If using tensor, device must be specified'
 
         outcomes = []
-        state = state.deepcopy()
+        # state = state.deepcopy()
         true_state= state.deepcopy()
 
         # get originally held objects

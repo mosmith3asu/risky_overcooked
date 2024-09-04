@@ -120,6 +120,8 @@ class SelfPlay_QRE_OSA(object):
         self.device = config['device']
         self.gamma = config['gamma']
         self.tau = config['tau']
+        # self.eq_sol = 'QRE'
+        self.eq_sol = 'scaling_QRE'
         self.rationality = 5
         self.num_agents = 2
         self.mem_size = config['replay_memory_size']
@@ -225,13 +227,12 @@ class SelfPlay_QRE_OSA(object):
             all_games[:, i, :, :] = q_values if i == 0 else torch.transpose(q_values, -1, -2)
         return all_games
 
-    def level_k_qunatal(self,nf_games, sophistication=8, belief_trick=True):
+    def level_k_qunatal(self,nf_games, sophistication=8, belief_trick=True,scaling=False):
         """Implementes a k-bounded QRE computation
         https://en.wikipedia.org/wiki/Quantal_response_equilibrium
         as reationality -> infty, QRE -> Nash Equilibrium
         """
         rationality = self.rationality
-        num_players = nf_games.shape[1]
         batch_sz = nf_games.shape[0]
         player_action_dim = nf_games.shape[2]
         uniform_dist = (torch.ones(batch_sz, player_action_dim,device=self.device)) / player_action_dim
@@ -249,8 +250,10 @@ class SelfPlay_QRE_OSA(object):
         def step_QRE(game, k):
             if k == 0:  partner_dist = uniform_dist
             else:  partner_dist = step_QRE(invert_game(game), k - 1)
+
             Exp_qAi = torch.bmm(game[:, ego, :, :], partner_dist.unsqueeze(-1)).squeeze(-1)
-            return softmax(rationality * Exp_qAi)
+            _rat = rationality * ((k+1) / (sophistication+1)) if scaling else rationality
+            return softmax(_rat * Exp_qAi)
 
         dist1 = step_QRE(nf_games, sophistication)
         if belief_trick:
@@ -278,7 +281,14 @@ class SelfPlay_QRE_OSA(object):
         NF_Games = NF_Games.reshape(-1, self.num_agents, self.player_action_dim, self.player_action_dim)
         all_joint_actions = []
         # Compute equilibrium for each game
-        all_dists,all_ne_values = self.level_k_qunatal(NF_Games)
+        if self.eq_sol == 'QRE':
+            all_dists,all_ne_values = self.level_k_qunatal(NF_Games)
+        elif self.eq_sol == 'scaling_QRE':
+            all_dists,all_ne_values = self.level_k_qunatal(NF_Games,scaling=True)
+        elif self.eq_sol == 'Pareto':
+            raise NotImplementedError
+        else:
+            raise ValueError(f"Invalid EQ solution:{self.eq_sol}")
 
         if update:
             return all_dists, all_ne_values

@@ -49,7 +49,7 @@ class CirriculumTrainer(Trainer):
             handoffs = rollout_info['onion_handoff'] + rollout_info['dish_handoff'] + rollout_info['soup_handoff']
 
             print(f"[it:{it}"
-                  f" cur:{self.curriculum.current_cirriculum}-{cit}]"
+                  f" {self.curriculum.name}:{self.curriculum.current_cirriculum}-{cit}]"
                   f"[R:{round(cum_reward, 3)} "
                   f" Rshape:{np.round(cum_shaped_rewards, 3)} "
                   f" L:{round(rollout_info['mean_loss'], 3)} ]"
@@ -123,37 +123,47 @@ class CirriculumTrainer(Trainer):
             'onion_risked': np.zeros([1, 2]),
             'onion_pickup': np.zeros([1, 2]),
             'onion_drop': np.zeros([1, 2]),
+            'onion_handoff': np.zeros([1, 2]),
+
             'dish_risked': np.zeros([1, 2]),
             'dish_pickup': np.zeros([1, 2]),
             'dish_drop': np.zeros([1, 2]),
-            'soup_pickup': np.zeros([1, 2]),
-            'soup_delivery': np.zeros([1, 2]),
+            'dish_handoff': np.zeros([1, 2]),
 
             'soup_risked': np.zeros([1, 2]),
+            'soup_pickup': np.zeros([1, 2]),
+            'soup_delivery': np.zeros([1, 2]),
+            'soup_drop': np.zeros([1, 2]),
+            'soup_handoff': np.zeros([1, 2]),
+
+            'soup_slip': np.zeros([1, 2]),
             'onion_slip': np.zeros([1, 2]),
             'dish_slip': np.zeros([1, 2]),
-            'soup_slip': np.zeros([1, 2]),
-            'onion_handoff': np.zeros([1, 2]),
-            'dish_handoff': np.zeros([1, 2]),
-            'soup_handoff': np.zeros([1, 2]),
+
+
+
+
             'mean_loss': 0
         }
 
         for t in range(self.env.horizon+1):#itertools.count():
+            old_state = self.env.state.deepcopy()
             obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=device).unsqueeze(0)
             feasible_JAs = self.feasible_action.get_feasible_joint_actions(self.env.state, as_joint_idx=True)
             joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,
                                                                                           epsilon=self._epsilon,
                                                                                           feasible_JAs=feasible_JAs)
-
             # joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,epsilon=self._epsilon)
-            next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
+            # next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
+            #                                                    joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
+            #                                                    as_tensor=True, device=device)
+            next_state, reward, done, info = self.env.step(joint_action, get_mdp_info=True)
+            next_state_prospects = self.mdp.one_step_lookahead(old_state, # must be called after step....
                                                                joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
                                                                as_tensor=True, device=device)
-            next_state, reward, done, info = self.env.step(joint_action, get_mdp_info=True)
 
             for key in rollout_info.keys():
-                if key not in ['mean_loss']:
+                if not key == 'mean_loss':
                     rollout_info[key] += np.array(info['mdp_info']['event_infos'][key])
 
 
@@ -182,6 +192,7 @@ class CirriculumTrainer(Trainer):
             else: self.env.state = next_state
 
         rollout_info['mean_loss'] = np.mean(losses)
+
         return cum_reward, cum_shaped_reward, rollout_info
 class Curriculum:
     def __init__(self, env, reward_thresh=40, config=None):
@@ -205,6 +216,7 @@ class Curriculum:
             'full_task': 40
         }
         self.cirriculums = list(self.cirriculum_step_threshs.keys())
+        self.name = self.cirriculums[self.current_cirriculum]
 
         # self.set_cirriculum(**self.cirriculums[self.current_cirriculum]) # set initial cirriculum
 
@@ -218,6 +230,12 @@ class Curriculum:
         ):
             self.current_cirriculum += 1
             self.iteration = 0
+            try:
+                #TODO: Bad way of doing this. Fix
+                self.name = self.cirriculums[self.current_cirriculum]
+            except:
+                self.current_cirriculum -= 1
+                self.name = self.cirriculums[self.current_cirriculum]
             return True
         self.iteration += 1
         return False
@@ -243,6 +261,7 @@ class Curriculum:
         # if np.random.rand() < rand_start_chance:
             # state = self.add_random_start_loc()
         state = self.add_random_start_loc()
+
 
         if self.cirriculums[i] == 'full_task':
             state = self.env.state # undo random start loc
@@ -274,7 +293,6 @@ class Curriculum:
             n_onions = 3
             onion_quants = np.eye(self.mdp.num_pots,dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
             state = self.add_onions_to_pots(state, onion_quants, cooking_tick= 0)
-
 
         elif self.cirriculums[i] == 'pick_up_dish':
             """
@@ -395,8 +413,9 @@ def main():
         # Env Params ----------------
         # 'LAYOUT': "risky_coordination_ring",
         # 'LAYOUT': "risky_multipath",
-        'LAYOUT': "forced_coordination",
+        # 'LAYOUT': "forced_coordination",
         # 'LAYOUT': "forced_coordination_sanity_check",
+        'LAYOUT': "sanity_check",
         'HORIZON': 200,
         'ITERATIONS': 30_000,
         'AGENT': None,  # name of agent object (computed dynamically)
@@ -422,7 +441,7 @@ def main():
     }
 
     # config['LAYOUT'] = 'forced_coordination'; config['rand_start_sched'] = [0,0,1]
-    config['LAYOUT'] = 'risky_coordination_ring'; config['tau'] = 0.005
+    # config['LAYOUT'] = 'risky_coordination_ring'; config['tau'] = 0.005
     # config['LAYOUT'] = 'risky_multipath'
     # config['LAYOUT'] = 'forced_coordination_sanity_check'; config['rand_start_sched'] = [0,0,1]
     CirriculumTrainer(SelfPlay_QRE_OSA, config).run()

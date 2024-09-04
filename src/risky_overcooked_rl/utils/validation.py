@@ -70,6 +70,7 @@ class Validation(Trainer):
             'onion_slip':  np.zeros([0,2]),
             'dish_slip':   np.zeros([0,2]),
             'soup_slip':   np.zeros([0,2]),
+            'soup_drop': np.zeros([0, 2]),
             'onion_handoff':np.zeros([0,2]),
             'dish_handoff': np.zeros([0,2]),
             'soup_handoff': np.zeros([0,2]),
@@ -90,6 +91,7 @@ class Validation(Trainer):
             self.env.mdp.p_slip = p_slips[t]
             joint_action = joint_actions[t]
             joint_action_idx = joint_action_idxs[t]
+            old_state = self.env.state.deepcopy()
 
             obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state,device=device).unsqueeze(0)
 
@@ -98,6 +100,10 @@ class Validation(Trainer):
             #                                                    joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
             #                                                    as_tensor=True, device=device)
             next_state, reward, done, info = self.env.step(joint_action,get_mdp_info=True)
+
+            next_state_prospects = self.mdp.one_step_lookahead(old_state,
+                                                               joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
+                                                               as_tensor=True, device=device)
 
             rollout_info['state_history'].append(next_state)
             for key in rollout_info.keys():
@@ -402,22 +408,38 @@ def handoff_test(config):
     ]
     wait_for_cook = [[X, X, 0.01] for i in range(21)]
     averse_joint_traj += wait_for_cook
-    averse_joint_traj +=[
+    # averse_joint_traj +=[
+    #     [X, I, 0.01],
+    #     [X, S, 0.01],
+    #     [X, I, 0.01], # SOUP DELIVERED
+    #     [X, X, 0.01],
+    # ]
+    averse_joint_traj += [
+        [X, I, 0.01], # SOUP PICKUP
+        [X, W, 0.01],
+        [E, I, 0.01],  # SOUP DROPPED
+        [I, X, 0.01],
+        [I, X, 0.01],
         [X, I, 0.01],
-        [X, S, 0.01],
-        [X, I, 0.01], # SOUP DELIVERED
+        [X, I, 0.01],
+        [I, X, 0.01],
+        [I, X, 0.01],
+        [X, I, 0.01],
+        [X, I, 0.01],
         [X, X, 0.01],
+
     ]
 
 
     config["HORIZON"] = len(averse_joint_traj)-1
 
     validator = Validation(SelfPlay_QRE_OSA, config)
+
     for it in range(1):
         cum_reward, cum_shaped_reward,rollout_info = validator.trajectory_rollout(it, averse_joint_traj)
-
-
         print(f'Shaped Reward: | Onion handoff')
+
+
         for t in range(len(averse_joint_traj)-1):
             disp_str = f'{averse_joint_traj[t][0:2]} \t|\t'
             disp_str += f'{rollout_info["shaped_reward_hist"][t,:]+rollout_info["reward_hist"][t]}'
@@ -425,22 +447,37 @@ def handoff_test(config):
             # helds = [player.held_object for player in rollout_info["state_history"][t].players]
             # disp_str += f'{helds}'
 
-            if np.any(rollout_info["onion_handoff"][t]):
-                disp_str += '\t onion handoff'
-            if np.any(rollout_info["onion_pickup"][t]):
-                disp_str += '\t onion pickup'
-            if np.any(rollout_info["onion_drop"][t]):
-                disp_str += '\t onion drop'
+            for obj in ['onion','dish','soup']:
+                if np.any(rollout_info[f"{obj}_handoff"][t]):
+                    disp_str += f'\t {obj} handoff'
+                if np.any(rollout_info[f"{obj}_pickup"][t]):
+                    disp_str += f'\t {obj} pickup'
+                if np.any(rollout_info[f"{obj}_drop"][t]):
+                    disp_str += f'\t {obj} drop'
 
-            if np.any(rollout_info["dish_handoff"][t]):
-                disp_str += '\t dish handoff'
-            if np.any(rollout_info["dish_pickup"][t]):
-                disp_str += '\t dish pickup'
-            if np.any(rollout_info["dish_drop"][t]):
-                disp_str += '\t dish drop'
+
+            # if np.any(rollout_info["onion_handoff"][t]):
+            #     disp_str += '\t onion handoff'
+            # if np.any(rollout_info["onion_pickup"][t]):
+            #     disp_str += '\t onion pickup'
+            # if np.any(rollout_info["onion_drop"][t]):
+            #     disp_str += '\t onion drop'
+            #
+            # if np.any(rollout_info["dish_handoff"][t]):
+            #     disp_str += '\t dish handoff'
+            # if np.any(rollout_info["dish_pickup"][t]):
+            #     disp_str += '\t dish pickup'
+            # if np.any(rollout_info["dish_drop"][t]):
+            #     disp_str += '\t dish drop'
+            #
+            # if np.any(rollout_info["soup_pickup"][t]):
+            #     disp_str += '\t soup pickup'
+            # if np.any(rollout_info["soup_handoff"][t]):
+            #     disp_str += '\t soup handoff'
             print(disp_str)
 
-
+        validator.traj_visualizer.que_trajectory(rollout_info['state_history'])
+        validator.traj_visualizer.preview_qued_trajectory()
         # validator.OSA_test(0, averse_joint_traj)
 
 def cirriculum_test(config):
@@ -592,8 +629,8 @@ def main():
     }
     # slip_test(config)
 
-    # handoff_test(config)
-    cirriculum_test(config)
+    handoff_test(config)
+    # cirriculum_test(config)
 
 
 

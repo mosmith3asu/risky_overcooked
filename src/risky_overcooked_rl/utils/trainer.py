@@ -74,7 +74,6 @@ class Trainer:
         self.test_rewards = deque(maxlen=self.checkpoint_mem)
         self.fname = f"{LAYOUT}_{config['ALGORITHM']}_{config['Date']}.pt"
 
-        self.monte_carlo_sampling =  config['monte_carlo'] if 'monte_carlo' in list(config.keys()) else False
 
     def print_config(self,config):
         for key, val in config.items():
@@ -122,26 +121,13 @@ class Trainer:
             # Perform Rollout
             self.logger.start_iteration()
 
-            if self.monte_carlo_sampling:
-                experiences, cum_reward, cum_shaped_rewards, rollout_info = self.monte_carlo_rollout(it)
-                rewards = [experiences[i]['rewards'] for i in range(len(experiences))]
-                traces = self.calc_reward_traces(rewards)
-
-                losses = []
-                for t,experience in enumerate(experiences):
-                    experience['rewards'] = traces[t,:]
-                    self.model.memory_double_push(**experience)
-                    loss = self.model.update()
-                    if loss is not None: losses.append(loss)
-                rollout_info['mean_loss'] = np.mean(losses)
-            else:
-                cum_reward, cum_shaped_rewards,rollout_info = self.training_rollout(it)
+            cum_reward, cum_shaped_rewards,rollout_info = self.training_rollout(it)
 
             if it>1: self.model.scheduler.step() # updates learning rate scheduler
             self.model.update_target()  # performs soft update of target network
             self.logger.end_iteration()
 
-            slips = rollout_info['onion_slips'] + rollout_info['dish_slips'] + rollout_info['soup_slips']
+            # slips = rollout_info['onion_slips'] + rollout_info['dish_slips'] + rollout_info['soup_slips']
             risks = rollout_info['onion_risked'] + rollout_info['dish_risked'] + rollout_info['soup_risked']
             handoffs = rollout_info['onion_handoff'] + rollout_info['dish_handoff'] + rollout_info['soup_handoff']
 
@@ -448,7 +434,6 @@ def main():
         "minibatch_size":256,          # size of mini-batches
         "replay_memory_size": 30_000,   # size of replay memory
         'clip_grad': 100,
-        'monte_carlo': False
     }
     # config['LAYOUT'] = "cramped_room_CLCE"
 
@@ -487,7 +472,7 @@ def main():
     # Trainer(SelfPlay_QRE_OSA, config).run()
     # config['LAYOUT'] = "forced_coordination"
     config['note'] = 'Fixed reward shaping'
-    config['monte_carlo'] = True
+
     # Trainer(SelfPlay_QRE_OSA, config).run()
     config['cpt_params']= {'b': 0.0, 'lam': 1.,
                    'eta_p': 1., 'eta_n': 1.,

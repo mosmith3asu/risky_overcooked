@@ -206,31 +206,20 @@ class Curriculum:
         self.default_params = {'n_onions': 3, 'cook_time': 20}
 
         self.current_cirriculum = 0
-        # self.cirriculum_step_threshs = {
-        #     'deliver_soup': 80,
-        #     'pick_up_soup': 80,
-        #     'pick_up_dish': 60,
-        #     'wait_to_cook': 40,
-        #     'deliver_onion3': 40,
-        #     'deliver_onion2': 40,
-        #     'full_task': 40
-        # }
         self.cirriculum_step_threshs = {
-            'deliver_soup': -1,
-            # 'pick_up_soup': 1,
-            # 'pick_up_dish': 1,
-            # 'wait_to_cook': 1,
-            # 'deliver_onion3': 1,
-            # 'deliver_onion2': 1,
-            'full_task': -1
+            'deliver_soup': 80,
+            'pick_up_soup': 80,
+            'pick_up_dish': 60,
+            'wait_to_cook': 40,
+            'deliver_onion3': 40,
+            'deliver_onion2': 40,
+            'full_task': 40
         }
-        self.min_iterations_per_cirriculum = 1
-        self.reward_buffer = deque(maxlen=3)
 
         self.cirriculums = list(self.cirriculum_step_threshs.keys())
         self.name = self.cirriculums[self.current_cirriculum]
 
-        # self.set_cirriculum(**self.cirriculums[self.current_cirriculum]) # set initial cirriculum
+
 
     def step_cirriculum(self, reward):
         self.reward_buffer.append(reward)

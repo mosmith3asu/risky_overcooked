@@ -6,7 +6,6 @@ sys.path.append('\\'.join(os.getcwd().split('\\')[:-1]))
 
 import numpy as np
 from risky_overcooked_rl.utils.cirriculum import CirriculumTrainer
-from risky_overcooked_rl.utils.cirriculum import Curriculum
 from risky_overcooked_rl.utils.deep_models import device, SelfPlay_QRE_OSA, SelfPlay_QRE_OSA_CPT
 import argparse
 
@@ -68,7 +67,7 @@ def main():
     # # config['p_slip'] = 0.5
     # # config['num_hidden_layers'] = 7
     # config['rationality_sched'] = [10, 10, 10_000]
-    CirriculumTrainer(SelfPlay_QRE_OSA, config).run()
+    # CirriculumTrainer(SelfPlay_QRE_OSA, config).run()
 
     # ----------------------------------------
     # config['cpt_params']= {'b': 0.0, 'lam': 1.0,

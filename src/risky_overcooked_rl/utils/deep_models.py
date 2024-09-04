@@ -120,9 +120,8 @@ class SelfPlay_QRE_OSA(object):
         self.device = config['device']
         self.gamma = config['gamma']
         self.tau = config['tau']
-        # self.eq_sol = 'QRE'
-        self.eq_sol = 'scaling_QRE'
-        self.rationality = 5
+        self.eq_sol = 'QRE'
+        self.rationality = 10
         self.num_agents = 2
         self.mem_size = config['replay_memory_size']
         self.joint_action_space = list(itertools.product(Action.ALL_ACTIONS, repeat=2))
@@ -280,21 +279,19 @@ class SelfPlay_QRE_OSA(object):
     def compute_EQ(self, NF_Games, update=False):
         NF_Games = NF_Games.reshape(-1, self.num_agents, self.player_action_dim, self.player_action_dim)
         all_joint_actions = []
+
         # Compute equilibrium for each game
-        if self.eq_sol == 'QRE':
-            all_dists,all_ne_values = self.level_k_qunatal(NF_Games)
-        elif self.eq_sol == 'scaling_QRE':
-            all_dists,all_ne_values = self.level_k_qunatal(NF_Games,scaling=True)
-        elif self.eq_sol == 'Pareto':
-            raise NotImplementedError
-        else:
-            raise ValueError(f"Invalid EQ solution:{self.eq_sol}")
+        if self.eq_sol == 'QRE': all_dists,all_ne_values = self.level_k_qunatal(NF_Games)
+        elif self.eq_sol == 'scaling_QRE': all_dists,all_ne_values = self.level_k_qunatal(NF_Games,scaling=True)
+        elif self.eq_sol == 'Pareto': raise NotImplementedError
+        elif self.eq_sol == 'Nash': raise NotImplementedError # not feasible for gen. sum. game
+        else: raise ValueError(f"Invalid EQ solution:{self.eq_sol}")
 
         if update:
             return all_dists, all_ne_values
         else:
-            # Sample actions from Nash strategies
-            for ne in all_dists:
+            # Sample actions from strategies
+            for _ in all_dists:
                 a1, a2 = torch.multinomial(all_dists[0, :], 1).detach().cpu().numpy().flatten()
                 action_idxs = (a1, a2)
                 joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
@@ -303,22 +300,38 @@ class SelfPlay_QRE_OSA(object):
 
     def choose_joint_action(self, obs, epsilon=0.0, feasible_JAs= None, debug=False):
         sample = random.random()
-        if sample < epsilon:  # Explore
+
+        # Explore -------------------------------------
+        if sample < epsilon:
             action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
             if feasible_JAs is not None:
                 action_probs = feasible_JAs*action_probs
                 action_probs = action_probs/np.sum(action_probs)
-
             joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
             joint_action = self.joint_action_space[joint_action_idx]
-        else:  # Exploit
+
+        # Exploit -------------------------------------
+        else:
             with torch.no_grad():
                 NF_Game = self.get_normal_form_game(obs)
                 joint_action_idx, dists, ne_vs = self.compute_EQ(NF_Game)
                 joint_action_idx = joint_action_idx[0]
                 joint_action = self.joint_action_space[joint_action_idx]
                 action_probs = dists
-                #TODO: Constrain actions to be feasible here?
+
+                # Check feasible actions and resample
+                # if feasible_JAs is not None:
+                #     na = len(Action.ALL_ACTIONS)
+                #     feasibleM = feasible_JAs.reshape([na, na])
+                #     feasible_As = np.array([[np.any(feasibleM[ia,:]) for ia in range(6)],
+                #                             [np.any(feasibleM[:,ia]) for ia in range(6)]])
+                #     action_probs = feasible_As * action_probs.detach().cpu().numpy()[0]
+                #     action_idxs = [np.random.choice(np.arange(self.player_action_dim),
+                #                                     p=action_probs[ip]/action_probs[ip].sum())
+                #                          for ip in range(2)]
+                #     joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(tuple(action_idxs))
+                #     joint_action = self.joint_action_space[joint_action_idx]
+
 
         return joint_action, joint_action_idx, action_probs
 

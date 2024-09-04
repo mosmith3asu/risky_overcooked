@@ -186,7 +186,7 @@ class CirriculumTrainer(Trainer):
 
             # Terminate episode
             if done: break
-            elif self.curriculum.is_early_stopping(reward):  # Cirriculum Complete, reset state in this episode
+            elif self.curriculum.is_early_stopping(self.env.state,reward):  # Cirriculum Complete, reset state in this episode
                 self.env.state = self.curriculum.sample_cirriculum_state()
                 print(f"Early Stopping at t={t}")
             else: self.env.state = next_state
@@ -206,15 +206,27 @@ class Curriculum:
         self.default_params = {'n_onions': 3, 'cook_time': 20}
 
         self.current_cirriculum = 0
+        # self.cirriculum_step_threshs = {
+        #     'deliver_soup': 80,
+        #     'pick_up_soup': 80,
+        #     'pick_up_dish': 60,
+        #     'wait_to_cook': 40,
+        #     'deliver_onion3': 40,
+        #     'deliver_onion2': 40,
+        #     'full_task': 40
+        # }
         self.cirriculum_step_threshs = {
-            'deliver_soup': 80,
-            'pick_up_soup': 80,
-            'pick_up_dish': 60,
-            'wait_to_cook': 40,
-            'deliver_onion3': 40,
-            'deliver_onion2': 40,
-            'full_task': 40
+            'deliver_soup': -1,
+            # 'pick_up_soup': 1,
+            # 'pick_up_dish': 1,
+            # 'wait_to_cook': 1,
+            # 'deliver_onion3': 1,
+            # 'deliver_onion2': 1,
+            'full_task': -1
         }
+        self.min_iterations_per_cirriculum = 1
+        self.reward_buffer = deque(maxlen=3)
+
         self.cirriculums = list(self.cirriculum_step_threshs.keys())
         self.name = self.cirriculums[self.current_cirriculum]
 
@@ -225,22 +237,17 @@ class Curriculum:
         reward_thresh  = self.cirriculum_step_threshs[self.cirriculums[self.current_cirriculum]]
         if (
                 np.mean(self.reward_buffer) >= reward_thresh#self.reward_thresh
-                and self.current_cirriculum < len(self.cirriculums)
+                and self.current_cirriculum < len(self.cirriculums) -1
                 and self.iteration > self.min_iterations_per_cirriculum
         ):
             self.current_cirriculum += 1
             self.iteration = 0
-            try:
-                #TODO: Bad way of doing this. Fix
-                self.name = self.cirriculums[self.current_cirriculum]
-            except:
-                self.current_cirriculum -= 1
-                self.name = self.cirriculums[self.current_cirriculum]
+            self.name = self.cirriculums[self.current_cirriculum]
             return True
         self.iteration += 1
         return False
 
-    def is_early_stopping(self,reward):
+    def is_early_stopping(self,state,reward):
         """
         Goal of each cirriculum is to deliver 1 soup except for full_task
         """
@@ -248,8 +255,9 @@ class Curriculum:
         #TODO: Change to when each subtask is complete?
 
         i = self.current_cirriculum
-        if not self.cirriculums[i] == 'full_task' and reward == 20: # reward for delivering soup
-            return True
+        if not self.cirriculums[i] == 'full_task' :
+            if reward == 20: return True # reward for delivering soup
+            elif len(state.all_objects_list) ==0: return True # lost all objects
         return False
 
 
@@ -420,7 +428,7 @@ def main():
         'ITERATIONS': 30_000,
         'AGENT': None,  # name of agent object (computed dynamically)
         "obs_shape": None,  # computed dynamically based on layout
-        "p_slip": 0.1,
+        "p_slip": 0.5,
 
         # Learning Params ----------------
         "rand_start_sched": [0.1, 0.1, 10_000],  # percentage of ITERATIONS with random start states

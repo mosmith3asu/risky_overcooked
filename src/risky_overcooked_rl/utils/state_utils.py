@@ -16,21 +16,28 @@ class FeasibleActionManager(object):
         # move into counter already facing
         same_dir = (facing == action)
         is_counter = (terr == "X")
-        if same_dir and is_counter:
-            return False
+        if same_dir and is_counter: return False
 
         # move into resource without prerequisite object
-        if not player.has_object() and terr in ['X', 'P', 'S', 'D']:
-            return False
-
+        # ==> Not valid if player is just moving by in constrained space
+        if not player.has_object() and terr in ['P', 'S', 'D']: return False
         return True
+
     def is_feasible_interact(self, player, action='Interact'):
         facing = player.orientation
         adj_pos = Action.move_in_direction(player.position, facing)
         terr = self.env.mdp.get_terrain_type_at_pos(adj_pos)
-        if not player.has_object() and terr in ['X', 'P', 'S', 'D']: return False
+
+        # Invalid cases
+        if terr in [" ","W"]: return False
+        if not player.has_object() and terr in ['P', 'S']: return False
         elif player.has_object() and terr in ["D","O","T"]: return False
-        return True
+
+        # Valid cases
+        elif player.has_object() and terr in ["P","S","X"]: return True
+        elif not player.has_object() and terr in ["D","O","T","X"]: return True
+        else: raise ValueError(f"Unknown interact case {terr} + {player.has_object()} [{player.held_object}]")
+
     def is_feasible_action(self,player,action):
         # Movement actions
         if action in Direction.INDEX_TO_DIRECTION:

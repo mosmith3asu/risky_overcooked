@@ -79,9 +79,17 @@ class Trainer:
         for key, val in config.items():
             print(f'{key}={val}')
     def init_sched(self,config,eps_decay = 1,rshape_decay=1):
-        def exponential_decay(N0, Nf, t, T):
+        # def exponential_decay(N0, Nf, t, T):
+        #     w = 0.75
+        #     if t > T: return Nf
+        #     return N0 * (Nf / N0) ** ((t / T) ** w)
+        def exponential_decay(N0, Nf, t, T, cycle=True):
             w = 0.75
-            if t > T: return Nf
+            if t > T:
+                if cycle: # cycle through min and max decay after final iteration reached
+                    _t = t % T if int(t / T) % 2 == 0 else T - t % T
+                    return (N0 * (Nf / N0) ** ((_t / T) ** w))
+                else: return Nf
             return N0 * (Nf / N0) ** ((t / T) ** w)
 
         EPS_START, EPS_END, EPS_DUR = config['epsilon_sched']

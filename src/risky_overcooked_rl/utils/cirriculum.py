@@ -16,6 +16,7 @@ class CirriculumTrainer(Trainer):
         self.schedule_decay = 0.7
 
 
+
     def run(self):
         train_rewards = []
         train_losses = []
@@ -206,14 +207,29 @@ class Curriculum:
         self.default_params = {'n_onions': 3, 'cook_time': 20}
 
         self.current_cirriculum = 0
+        # self.cirriculum_step_threshs = {
+        #     'deliver_soup': 80,
+        #     'pick_up_soup': 80,
+        #     'pick_up_dish': 60,
+        #     'wait_to_cook': 40,
+        #     #'deliver_onion3': 40,
+        #     'pick_up_onion3': 40,
+        #     #'deliver_onion2': 40,
+        #     'pick_up_onion2': 40,
+        #     #'deliver_onion1': 40,
+        #     'full_task': 40
+        # }
         self.cirriculum_step_threshs = {
             'deliver_soup': 80,
             'pick_up_soup': 80,
-            'pick_up_dish': 60,
-            'wait_to_cook': 40,
-            'deliver_onion3': 40,
+            'pick_up_dish': 70,
+            'wait_to_cook': 50,
+            'deliver_onion3': 50,
+            'pick_up_onion3': 50,
             'deliver_onion2': 40,
-            'full_task': 40
+            'pick_up_onion2': 40,
+            'deliver_onion1': 40,
+            'full_task': 999
         }
 
         self.cirriculums = list(self.cirriculum_step_threshs.keys())
@@ -255,28 +271,58 @@ class Curriculum:
         pi = [sample_decay**(self.current_cirriculum-i) for i in range(self.current_cirriculum+1)]
         i = np.random.choice(np.arange(self.current_cirriculum+1), p=np.array(pi)/np.sum(pi))
 
-        # if np.random.rand() < rand_start_chance:
-            # state = self.add_random_start_loc()
         state = self.add_random_start_loc()
-
 
         if self.cirriculums[i] == 'full_task':
             state = self.env.state # undo random start loc
 
+        elif self.cirriculums[i] == 'deliver_onion1':
+            """
+            Start pot with 0 onion & one player with onion            
+            """
+            possibilities = [["onion", None], [None, "onion"]]
+            held_objs = possibilities[np.random.randint(len(possibilities))]
+            state = self.add_held_objs(state, held_objs)
+
+        elif self.cirriculums[i] == 'pick_up_onion2':
+            """
+            Start pot with 1 onion            
+            """
+            n_onions = 1
+            onion_quants = np.eye(self.mdp.num_pots, dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
+            state = self.add_onions_to_pots(state, onion_quants)
+
         elif self.cirriculums[i] == 'deliver_onion2':
             """
-            Start pot with 1 onion
+            Start pot with 1 onion & one player with onion
              - other pots unfilled since filling other pot before first is suboptimal
             """
             n_onions = 1
             onion_quants = np.eye(self.mdp.num_pots,dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
             state = self.add_onions_to_pots(state, onion_quants)
 
-        elif self.cirriculums[i] == 'deliver_onion3':
+            possibilities = [["onion", None], [None, "onion"]]
+            held_objs = possibilities[np.random.randint(len(possibilities))]
+            state = self.add_held_objs(state, held_objs)
+
+        elif self.cirriculums[i] == 'pick_up_onion3':
             """
             Start with one pot filled with 2 onions
             - other pots unfilled since filling other pot before first is suboptimal
             """
+            n_onions = 2
+            onion_quants = np.eye(self.mdp.num_pots,dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
+            state = self.add_onions_to_pots(state, onion_quants)
+
+        elif self.cirriculums[i] == 'deliver_onion3':
+            """
+            Start with one pot filled with 2 onions & one player with onion
+            - other pots unfilled since filling other pot before first is suboptimal
+            """
+            possibilities = [["onion", None], [None, "onion"]]
+            held_objs = possibilities[np.random.randint(len(possibilities))]
+            state = self.add_held_objs(state, held_objs)
+
             n_onions = 2
             onion_quants = np.eye(self.mdp.num_pots,dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
             state = self.add_onions_to_pots(state, onion_quants)

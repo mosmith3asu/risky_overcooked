@@ -30,7 +30,7 @@ def main():
         "p_slip": 0.1,
 
         # Learning Params ----------------
-        # "rand_start_sched": [0.0, 0.0, 10_000],  # percentage of ITERATIONS with random start states
+        "rand_start_sched": [0.0, 0.0, 10_000],  # percentage of ITERATIONS with random start states
         'epsilon_sched': [1.0, 0.15, 2000],  # epsilon-greedy range (start,end)
         'rshape_sched': [1, 0, 5_000],  # rationality level range (start,end)
         'rationality_sched': [10, 10, 10_000],

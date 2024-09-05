@@ -44,6 +44,7 @@ def main():
         "minibatch_size": 256,  # size of mini-batches
         "replay_memory_size": 20_000,  # size of replay memory
         'clip_grad': 100,
+        'cpt_params': {},  # CPT params
         'note': ''
     }
 
@@ -51,9 +52,15 @@ def main():
     parser = argparse.ArgumentParser()
     for key, val in config.items():
         if 'cpt_params' == key:
-            parser.add_argument('--' + 'cpt', dest=str(key), action=type('', (argparse.Action,), dict(
-                __call__=lambda a, p, n, v, o: getattr(n, a.dest).update(dict([v.split('=')])))),
-                                default={})  # anonymously subclassing argparse.Action
+            # parser.add_argument('--' + 'cpt', dest=str(key), action=type('', (argparse.Action,), dict(
+            #     __call__=lambda a, p, n, v, o: getattr(n, a.dest).update(dict([v.split('=')])))),
+            #                     default={})  # anonymously subclassing argparse.Action
+            parser.add_argument('--' + 'cpt', dest=str(key), nargs=6,
+                                action=type('', (argparse.Action,),
+                                            dict(__call__=lambda a, p, n, v, o: getattr(n, a.dest).update(
+                                                dict([[vi.split('=')[0], float(vi.split('=')[1])] for vi in v])
+                                            ))),
+                                default={})
         else:
             parser.add_argument('--' + str(key), dest=str(key), type=type(val), default=val)
 

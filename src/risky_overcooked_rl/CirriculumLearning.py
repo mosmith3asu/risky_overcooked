@@ -50,13 +50,22 @@ def main():
     # Handle arguments pass in terminal
     parser = argparse.ArgumentParser()
     for key, val in config.items():
-        parser.add_argument('--' + str(key), dest=str(key), type=type(val), default=val)
+        if 'cpt_params' == key:
+            parser.add_argument('--' + 'cpt', dest=str(key), action=type('', (argparse.Action,), dict(
+                __call__=lambda a, p, n, v, o: getattr(n, a.dest).update(dict([v.split('=')])))),
+                                default={})  # anonymously subclassing argparse.Action
+        else:
+            parser.add_argument('--' + str(key), dest=str(key), type=type(val), default=val)
+
     args = parser.parse_args()
     config.update(vars(args))
 
-
     # Run Curriculum learning
-    CirriculumTrainer(SelfPlay_QRE_OSA, config).run()
+    if len(config['cpt_params'].keys()) == 0:
+        CirriculumTrainer(SelfPlay_QRE_OSA, config).run()
+    else:
+        for key, val in config['cpt_params'].items():  config['cpt_params'][key] = float(val)
+        CirriculumTrainer(SelfPlay_QRE_OSA_CPT, config).run()
 
     # ----------------------------------------
     # # config['note'] = 'Standard OSA'

@@ -240,6 +240,99 @@ class Validation(Trainer):
         # mean_loss = np.mean(losses)
         return cum_reward, cum_shaped_reward  # , mean_loss
 
+def heatmap_test(config):
+    from risky_overcooked_rl.utils.rl_logger import TrajectoryHeatmap
+
+
+    config['LAYOUT'] = "coordination_ring"
+    config['replay_memory_size'] = 30_000
+    config['epsilon_sched'] = [1.0, 0.15, 10_000]
+    config['rshape_sched'] = [1, 0, 10_000]
+    config['rationality_sched'] = [5.0, 5.0, 10_000]
+    config['lr_sched'] = [1e-2, 1e-4, 5_000]
+    config['perc_random_start'] = 0.9
+    config['test_rationality'] = config['rationality_sched'][1]
+    config['tau'] = 0.01
+    config['num_hidden_layers'] = 5
+    config['size_hidden_layers'] = 128
+    config['shared_rew'] = False
+    config['gamma'] = 0.95
+    config['note'] = 'increased gamma'
+
+    S,W,N,E,X,I = 'S','W','N','E','X','I'
+
+    averse_joint_traj = [
+        [S, W, 1],
+        [W, I, 1],# P2 PICK UP ONION
+        [X, E, 1],
+        [X, N, 1],
+        [X, I, 1], # P2 SETS DOWN ONION
+        [I, W, 1], # P1 PICK UP ONION
+        [N, I, 1], # P2 PICK UP ONION
+        [I, N, 1], # P1 DELIVERS ONION 1
+        [W, E, 1],
+        [S, I, 1], # P2 SETS DOWN ONION
+        [I, S, 1], # P1 PICK UP ONION
+        [E, I, 1], # P2 PICK UP ONION
+        [N, N, 1],
+        [I, E, 1], # P1 DELIVERS ONION 2
+        [S, I, 1], # P2 SETS DOWN ONION
+        [W, S, 1],
+        [I, I, 1], # P1 PICK UP ONION | P2 PICK UP ONION
+        [N, N, 1],
+        [I, E, 1], # P1 DELIVERS ONION 3
+        [S, I, 1], # P2 SETS DOWN ONION
+        [W, S, 1],
+        [I, W, 1], # P1 PICK UP ONION
+        [N, I, 1], # P2 PICK UP ONION
+        [E, N, 1],
+        [I, E, 1], # P1 DELIVERS ONION 1
+        [W, I, 1], # P2 SETS DOWN ONION
+        [S, S, 1],
+        [I, I, 1], # P1 PICK UP ONION | P2 PICK UP ONION
+        [E, E, 1],
+        [I, N, 1], # P1 DELIVERS ONION 2
+        [S, I, 1],  # P2 SETS DOWN ONION
+        [W, W, 1],
+        [I, N, 1], # P1 PICK UP ONION
+        [N, W, 1],
+        [E, I, 1], # P2 PICK UP DISH
+        [I, E, 1], # P1 DELIVERS ONION 3
+        [S, I, 1], # P2 SET DOWN DISH
+        [W, S, 1],
+        [I, I, 1], # P1 PICK UP DISH
+        [N, N, 1],
+        [I, N, 1], # P1 PICK UP SOUP | P2 DROP ONION
+        [W, S, 0],
+        [S, S, 0],
+        [I, E, 0], # P1 SET DOWN SOUP
+        [W, N, 0],
+        [S, I, 0],# P2 PICK UP SOUP
+        [W, S, 0],
+        [I, I, 0], # P2 DELIVER SOUP | P1 PICK UP DISH
+        [N, W, 0],
+        [E, I, 0],
+        [E, E, 0],
+        [X, E, 1], # P2 DROP ONION
+        [X, W, 1],
+        [X, W, 1],
+        [X, I, 1],
+        [I, E, 1], # P1 PICK UP SOUP
+        [S, E, 1], # P2 DROP ONION
+        [W, W, 0],
+        [I, N, 0],# P1 SET DOWN SOUP
+        [N, I, 0],
+        [W, S, 0],
+        [E, I, 0], # P2 DELIVER SOUP
+        [N, W, 0],  # P2 DELIVER SOUP
+    ]
+    config["HORIZON"] = len(averse_joint_traj)-1
+    validator = Validation(SelfPlay_QRE_OSA,config)
+    cum_reward, cum_shaped_reward, rollout_info = validator.trajectory_rollout(0, averse_joint_traj)
+    state_history = rollout_info['state_history']
+    HM = TrajectoryHeatmap(validator.env)
+    HM.que_trajectory(state_history)
+    HM.preview()
 
 def averse1(config):
     config['LAYOUT'] = "coordination_ring"
@@ -629,9 +722,9 @@ def main():
     }
     # slip_test(config)
 
-    handoff_test(config)
+    # handoff_test(config)
     # cirriculum_test(config)
-
+    heatmap_test(config)
 
 
 

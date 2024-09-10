@@ -10,13 +10,12 @@ import matplotlib.pyplot as plt
 def exponential_decay(N0, Nf, t, T, cycle=True):
     w = 0.75
     if t> T:
+        # cycle through min and max decay after final iteration reached
         if cycle:
-            # cycle through min and max decay after final iteration reached
             if int(t/T) % 2 == 0: _t = t%T
             else:  _t = T - t%T
             return (N0 * (Nf / N0) ** ((_t / T)**w))
-        else:
-            return Nf
+        else: return Nf
     return N0 * (Nf / N0) ** ((t / T)**w)
 
 N0 = 0.9  # Initial value

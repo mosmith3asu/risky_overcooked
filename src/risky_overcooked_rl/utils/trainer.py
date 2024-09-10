@@ -1,6 +1,6 @@
 import numpy as np
 from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature,device,SelfPlay_QRE_OSA,SelfPlay_QRE_OSA_CPT
-from risky_overcooked_rl.utils.rl_logger import RLLogger,TrajectoryVisualizer
+from risky_overcooked_rl.utils.rl_logger import RLLogger,TrajectoryVisualizer, TrajectoryHeatmap
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
 from risky_overcooked_py.mdp.actions import Action
@@ -48,6 +48,7 @@ class Trainer:
 
         # Initiate Logger ----------------
         self.traj_visualizer = TrajectoryVisualizer(self.env)
+        self.traj_heatmap = TrajectoryHeatmap(self.env)
         self.logger = RLLogger(rows=3, cols=1, num_iterations=self.ITERATIONS)
         self.logger.add_lineplot('test_reward', xlabel='', ylabel='$R_{test}$', filter_window=30, display_raw=True, loc=(0, 1))
         self.logger.add_lineplot('train_reward', xlabel='', ylabel='$R_{train}$', filter_window=30, display_raw=True, loc=(1, 1))
@@ -56,6 +57,7 @@ class Trainer:
         self.logger.add_table('Params', config)
         self.logger.add_status()
         self.logger.add_button('Preview', callback=self.traj_visualizer.preview_qued_trajectory)
+        self.logger.add_button('Heatmap', callback=self.traj_heatmap.preview)
         self.logger.add_button('Save ', callback=self.save)
 
         # Initialize Variables ----------------
@@ -175,13 +177,14 @@ class Trainer:
                     test_shaped_rewards.append(test_shaped_reward)
                     if not self.has_checkpointed:
                         self.traj_visualizer.que_trajectory(state_history)
+                        self.traj_heatmap.que_trajectory(state_history)
 
                 # Checkpointing ----------------------
                 self.test_rewards.append(np.mean(test_rewards))  # for checkpointing
                 self.train_rewards.append(np.mean(train_rewards))  # for checkpointing
                 if self.checkpoint(it):  # check if should checkpoint
                     self.traj_visualizer.que_trajectory(state_history) # load preview of checkpointed trajectory
-
+                    self.traj_heatmap.que_trajectory(state_history)
                 # Logging ----------------------
                 self.logger.log(test_reward=[it, np.mean(test_rewards)],
                            train_reward=[it, np.mean(train_rewards)],

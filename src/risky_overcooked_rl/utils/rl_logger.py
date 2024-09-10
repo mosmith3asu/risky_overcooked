@@ -114,15 +114,49 @@ class TrajectoryHeatmap(object):
         return image
     def spawn_figure(self):
         self.fig, self.ax = plt.subplots()
+        # plt.subplots_adjust(right=0.7)
+        # # self.fig.close()
+        # self.ax.set_xticks([])
+        # self.ax.set_yticks([])
+        #
+        # ax_cb = self.fig.add_axes([0.75, 0.1, 0.2, 0.8]) # (left, bottom, width, height)
+        # check = CheckButtons(
+        #     ax=ax_cb,
+        #     labels= [key for key in self.checkboxes.keys()],#self.checkboxes.keys(),
+        #     actives=[v for v in self.checkboxes.values()],
+        #     # label_props={'color': line_colors},
+        #     # frame_props={'edgecolor': line_colors},
+        #     # check_props={'facecolor': line_colors},
+        # )
+        # check.on_clicked(self.cb_callback)
+
+        self.fig_number = self.fig.number
+    def cb_callback(self,label):
+        print(f'{label} clicked')
+        self.checkboxes[label] = not self.checkboxes[label]
+
+    def que_trajectory(self, state_history):
+        self.qued_trajectory = state_history
+
+    def preview(self,*args):
+        self.spawn_figure()
+        self.img = self.render_image(self.qued_trajectory[0])
+        self.ax.imshow(self.img)
+
+        # masks = self.calc_masks()
+        # cum_mask = self.calc_cumulative_mask(masks)
+        # self.draw_heatmap(cum_mask, img_shape = np.shape(self.img)[:2])
+        self.draw_heatmap()
+        # ADD CHECKBOXES
         plt.subplots_adjust(right=0.7)
         # self.fig.close()
         self.ax.set_xticks([])
         self.ax.set_yticks([])
 
-        ax_cb = self.fig.add_axes([0.75, 0.1, 0.2, 0.8]) # (left, bottom, width, height)
+        ax_cb = self.fig.add_axes([0.75, 0.2, 0.2, 0.8])  # (left, bottom, width, height)
         check = CheckButtons(
             ax=ax_cb,
-            labels=self.checkboxes.keys(),
+            labels=[key for key in self.checkboxes.keys()],  # self.checkboxes.keys(),
             actives=[v for v in self.checkboxes.values()],
             # label_props={'color': line_colors},
             # frame_props={'edgecolor': line_colors},
@@ -130,20 +164,10 @@ class TrajectoryHeatmap(object):
         )
         check.on_clicked(self.cb_callback)
 
-        self.fig_number = self.fig.number
-    def cb_callback(self,label):
-        self.checkboxes[label] = not self.checkboxes[label]
-    def que_trajectory(self, state_history):
-        self.qued_trajectory = state_history
+        ax_draw_button = self.fig.add_axes([0.75, 0.1, 0.2, 0.1])  # (left, bottom, width, height)
+        draw_button = Button(ax_draw_button, 'Draw')
+        draw_button.on_clicked(self.draw_heatmap)
 
-    def preview(self,*args):
-        self.spawn_figure()
-        img = self.render_image(self.qued_trajectory[0])
-        self.ax.imshow(img)
-
-        masks = self.calc_masks()
-        cum_mask = self.calc_cumulative_mask(masks)
-        self.draw_heatmap(cum_mask, img_shape = np.shape(img)[:2])
         if self.blocking:
             # while plt.fignum_exists(self.fig_number):
             #     self.fig.canvas.flush_events()
@@ -196,7 +220,7 @@ class TrajectoryHeatmap(object):
         return cum_mask
 
 
-    def draw_heatmap(self,mask,img_shape):
+    def draw_heatmap(self,*args):
 
         """
         https://python-graph-gallery.com/2d-density-plot/
@@ -204,6 +228,10 @@ class TrajectoryHeatmap(object):
         :param mask:
         :return:
         """
+        img_shape = np.shape(self.img)[:2]
+        all_masks = self.calc_masks()
+        mask = self.calc_cumulative_mask(all_masks)
+
         # fig, ax = plt.subplots(1, 1, figsize=(15, 15))
         # draw the overcooked grid
 

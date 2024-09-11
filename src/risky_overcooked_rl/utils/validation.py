@@ -241,10 +241,10 @@ class Validation(Trainer):
         return cum_reward, cum_shaped_reward  # , mean_loss
 
 def heatmap_test(config):
-    from risky_overcooked_rl.utils.rl_logger import TrajectoryHeatmap
+    from risky_overcooked_rl.utils.rl_logger import TrajectoryHeatmap, TrajectoryVisualizer
 
 
-    config['LAYOUT'] = "coordination_ring"
+    config['LAYOUT'] = "risky_coordination_ring"
     config['replay_memory_size'] = 30_000
     config['epsilon_sched'] = [1.0, 0.15, 10_000]
     config['rshape_sched'] = [1, 0, 10_000]
@@ -260,76 +260,146 @@ def heatmap_test(config):
     config['note'] = 'increased gamma'
 
     S,W,N,E,X,I = 'S','W','N','E','X','I'
-
+    seeking_joint_traj = [
+    [W, S, 0],
+    [W, I, 0], # P2 PICK ONION
+    [S, E, 0],
+    [S, E, 0],
+    [I, N, 0], # P1 PICK ONION
+    [E, N, 0],
+    [E, I, 1], # P2 PLACE ONION 1 | P1 DROP ONION
+    [W, W, 1],
+    [W, W, 0],
+    [I, S, 0], # P1 PICK ONION
+    [E, S, 0],
+    [E, I, 0], # P2 PICK ONION
+    [N, N, 0],
+    [N, N, 0],
+    [I, E, 0],  # P1 PLACE ONION 2
+    [S, E, 0],
+    [S, N, 0],
+    [W, I, 0], # P2 PLACE ONION 3
+    [W, W, 0],
+    [I, W, 0], # P1 PICK ONION
+    [E, S, 0],
+    [E,S, 0],
+    [N,W, 0],
+    [N,I, 0],
+    [E,E, 0],
+    [I,E, 1], # P2 DROP ONION 1 | P1 PALCE ONION 1
+    [S,W, 0],
+    [S,W, 0],
+    [W,I, 0], #  P2 PICK ONION
+    [W,N, 0],
+    [I,N, 0], #  P1 PICK ONION
+    [E,E, 0],
+    [E,E, 0],
+    [N,I, 0], #  P2 PLACE ONION 2
+    [N,W, 0],
+    [E,W, 0],
+    [I,S, 0], #  P1 PLACE ONION 3
+    [S,W, 0],
+    [S,I, 0], #  P2 PICK DISH
+    [W,N, 0],
+    [W,N, 0],
+    [N,E, 0],
+    [W,E, 0],
+    [I,N, 0], #  P1 PICK DISH
+    [N,I, 0],#  P1 PICK SOUP
+    [E,S, 0],
+    [E,S, 1], #  P2 DROP SOUP
+    [I,W, 0],
+    [X,W, 0],
+    [X,I, 0], #  P2 PICK ONION
+    [X,N, 0],
+    [X,N, 0],
+    [S,E, 0],
+    [X,E, 0],
+    [X, N, 0],
+    [X, I, 0],#  P2 PLACE ONION 1
+    [N,W, 0],
+    [E,W, 0],
+    [I,S, 0], # P1 PICK SOUP
+    [S,S, 0],
+    [S,I, 0], #  P2 PICK ONION
+    [W,N, 0],
+    [S,N, 1], # P2 DROP ONION
+    [I,S, 0],
+    [X,X, 0],
+    ]
     averse_joint_traj = [
         [S, W, 1],
-        [W, I, 1],# P2 PICK UP ONION
+        [W, I, 1],  # P2 PICK UP ONION
         [X, E, 1],
         [X, N, 1],
-        [X, I, 1], # P2 SETS DOWN ONION
-        [I, W, 1], # P1 PICK UP ONION
-        [N, I, 1], # P2 PICK UP ONION
-        [I, N, 1], # P1 DELIVERS ONION 1
+        [X, I, 1],  # P2 SETS DOWN ONION
+        [I, W, 1],  # P1 PICK UP ONION
+        [N, I, 1],  # P2 PICK UP ONION
+        [I, N, 1],  # P1 DELIVERS ONION 1
         [W, E, 1],
-        [S, I, 1], # P2 SETS DOWN ONION
-        [I, S, 1], # P1 PICK UP ONION
-        [E, I, 1], # P2 PICK UP ONION
+        [S, I, 1],  # P2 SETS DOWN ONION
+        [I, S, 1],  # P1 PICK UP ONION
+        [E, I, 1],  # P2 PICK UP ONION
         [N, N, 1],
-        [I, E, 1], # P1 DELIVERS ONION 2
-        [S, I, 1], # P2 SETS DOWN ONION
+        [I, E, 1],  # P1 DELIVERS ONION 2
+        [S, I, 1],  # P2 SETS DOWN ONION
         [W, S, 1],
-        [I, I, 1], # P1 PICK UP ONION | P2 PICK UP ONION
+        [I, I, 1],  # P1 PICK UP ONION | P2 PICK UP ONION
         [N, N, 1],
-        [I, E, 1], # P1 DELIVERS ONION 3
-        [S, I, 1], # P2 SETS DOWN ONION
+        [I, E, 1],  # P1 DELIVERS ONION 3
+        [S, I, 1],  # P2 SETS DOWN ONION
         [W, S, 1],
-        [I, W, 1], # P1 PICK UP ONION
-        [N, I, 1], # P2 PICK UP ONION
+        [I, W, 1],  # P1 PICK UP ONION
+        [N, I, 1],  # P2 PICK UP ONION
         [E, N, 1],
-        [I, E, 1], # P1 DELIVERS ONION 1
-        [W, I, 1], # P2 SETS DOWN ONION
+        [I, E, 1],  # P1 DELIVERS ONION 1
+        [W, I, 1],  # P2 SETS DOWN ONION
         [S, S, 1],
-        [I, I, 1], # P1 PICK UP ONION | P2 PICK UP ONION
+        [I, I, 1],  # P1 PICK UP ONION | P2 PICK UP ONION
         [E, E, 1],
-        [I, N, 1], # P1 DELIVERS ONION 2
+        [I, N, 1],  # P1 DELIVERS ONION 2
         [S, I, 1],  # P2 SETS DOWN ONION
         [W, W, 1],
-        [I, N, 1], # P1 PICK UP ONION
+        [I, N, 1],  # P1 PICK UP ONION
         [N, W, 1],
-        [E, I, 1], # P2 PICK UP DISH
-        [I, E, 1], # P1 DELIVERS ONION 3
-        [S, I, 1], # P2 SET DOWN DISH
+        [E, I, 1],  # P2 PICK UP DISH
+        [I, E, 1],  # P1 DELIVERS ONION 3
+        [S, I, 1],  # P2 SET DOWN DISH
         [W, S, 1],
-        [I, I, 1], # P1 PICK UP DISH
+        [I, I, 1],  # P1 PICK UP DISH
         [N, N, 1],
-        [I, N, 1], # P1 PICK UP SOUP | P2 DROP ONION
+        [I, N, 1],  # P1 PICK UP SOUP | P2 DROP ONION
         [W, S, 0],
         [S, S, 0],
-        [I, E, 0], # P1 SET DOWN SOUP
+        [I, E, 0],  # P1 SET DOWN SOUP
         [W, N, 0],
-        [S, I, 0],# P2 PICK UP SOUP
+        [S, I, 0],  # P2 PICK UP SOUP
         [W, S, 0],
-        [I, I, 0], # P2 DELIVER SOUP | P1 PICK UP DISH
+        [I, I, 0],  # P2 DELIVER SOUP | P1 PICK UP DISH
         [N, W, 0],
         [E, I, 0],
         [E, E, 0],
-        [X, E, 1], # P2 DROP ONION
+        [X, E, 1],  # P2 DROP ONION
         [X, W, 1],
         [X, W, 1],
         [X, I, 1],
-        [I, E, 1], # P1 PICK UP SOUP
-        [S, E, 1], # P2 DROP ONION
+        [I, E, 1],  # P1 PICK UP SOUP
+        [S, E, 1],  # P2 DROP ONION
         [W, W, 0],
-        [I, N, 0],# P1 SET DOWN SOUP
+        [I, N, 0],  # P1 SET DOWN SOUP
         [N, I, 0],
         [W, S, 0],
-        [E, I, 0], # P2 DELIVER SOUP
-        [N, W, 0],  # P2 DELIVER SOUP
+        [E, I, 0],  # P2 DELIVER SOUP
+        [X, X, 0],  # P2 DELIVER SOUP
+        [X, X, 0],  # P2 DELIVER SOUP
     ]
-    config["HORIZON"] = len(averse_joint_traj)-1
+    config["HORIZON"] = len(seeking_joint_traj)-1
     validator = Validation(SelfPlay_QRE_OSA,config)
-    cum_reward, cum_shaped_reward, rollout_info = validator.trajectory_rollout(0, averse_joint_traj)
+    cum_reward, cum_shaped_reward, rollout_info = validator.trajectory_rollout(0, seeking_joint_traj)
     state_history = rollout_info['state_history']
+    TV = TrajectoryVisualizer(validator.env)
+    TV.que_trajectory(state_history)
+    TV.preview_qued_trajectory()
     HM = TrajectoryHeatmap(validator.env)
     HM.que_trajectory(state_history)
     HM.preview()

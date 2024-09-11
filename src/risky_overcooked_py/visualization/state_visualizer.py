@@ -268,6 +268,66 @@ class StateVisualizer:
 
         return img_path
 
+    def render_state_nochefs(self, state, grid, hud_data=None, action_probs=None):
+        """
+        returns surface with rendered game state scaled to selected size,
+        decoupled from display_rendered_state function to make testing easier
+        """
+        pygame.init()
+        grid = grid or self.grid
+        assert grid
+        grid_surface = pygame.surface.Surface(
+            self._unscaled_grid_pixel_size(grid)
+        )
+        self._render_grid(grid_surface, grid)
+        # self._render_players(grid_surface, state.players)
+        self._render_objects(grid_surface, state.objects, grid)
+
+        if self.scale_by_factor != 1:
+            grid_surface = scale_surface_by_factor(
+                grid_surface, self.scale_by_factor
+            )
+
+        # render text after rescaling as text looks bad when is rendered small resolution and then rescalled to bigger one
+        if self.is_rendering_cooking_timer:
+            self._render_cooking_timers(grid_surface, state.objects, grid)
+
+        # arrows does not seem good when rendered in very small resolution
+        if self.is_rendering_action_probs and action_probs is not None:
+            self._render_actions_probs(
+                grid_surface, state.players, action_probs
+            )
+
+        if self.is_rendering_hud and hud_data:
+            hud_width = self.width or grid_surface.get_width()
+            hud_surface = pygame.surface.Surface(
+                (hud_width, self._calculate_hud_height(hud_data))
+            )
+            hud_surface.fill(self.background_color)
+            self._render_hud_data(hud_surface, hud_data)
+            rendered_surface = vstack_surfaces(
+                [hud_surface, grid_surface], self.background_color
+            )
+        else:
+            hud_width = None
+            rendered_surface = grid_surface
+
+        result_surface_size = (
+            self.width or rendered_surface.get_width(),
+            self.height or rendered_surface.get_height(),
+        )
+
+        if result_surface_size != rendered_surface.get_size():
+            result_surface = blit_on_new_surface_of_size(
+                rendered_surface,
+                result_surface_size,
+                background_color=self.background_color,
+            )
+        else:
+            result_surface = rendered_surface
+
+        return result_surface
+
     def render_state(self, state, grid, hud_data=None, action_probs=None):
         """
         returns surface with rendered game state scaled to selected size,

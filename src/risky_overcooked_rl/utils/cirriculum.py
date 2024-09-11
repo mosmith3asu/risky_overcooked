@@ -88,12 +88,14 @@ class CirriculumTrainer(Trainer):
                     test_shaped_rewards.append(test_shaped_reward)
                     if not self.has_checkpointed:
                         self.traj_visualizer.que_trajectory(state_history)
+                        self.traj_heatmap.que_trajectory(state_history)
 
                 # Checkpointing ----------------------
                 self.test_rewards.append(np.mean(test_rewards))  # for checkpointing
                 self.train_rewards.append(np.mean(train_rewards))  # for checkpointing
                 if self.checkpoint(it):  # check if should checkpoint
                     self.traj_visualizer.que_trajectory(state_history)  # load preview of checkpointed trajectory
+                    self.traj_heatmap.que_trajectory(state_history)
 
                 # Logging ----------------------
                 self.logger.log(test_reward=[it, np.mean(test_rewards)],

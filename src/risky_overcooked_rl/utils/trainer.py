@@ -400,8 +400,8 @@ class Trainer:
                 self.model.update_checkpoint()
                 self.logger.update_checkpiont_line(it)
                 # empty buffer to delay next checkpoint
-                self.train_rewards = deque(maxlen=self.checkpoint_mem)
-                self.test_rewards = deque(maxlen=self.checkpoint_mem)
+                # self.train_rewards = deque(maxlen=self.checkpoint_mem)
+                # self.test_rewards = deque(maxlen=self.checkpoint_mem)
                 self.has_checkpointed = True
                 return True
         return False

@@ -479,7 +479,7 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         """CPT expectation used for modification when class inherited by CPT version
         - condenses prospects back into expecations of |batch_size|
         """
-        self.CPT.recalc_b()
+        # self.CPT.recalc_b()
         BATCH_SIZE = len(prospect_masks)
         done = done.detach().cpu().numpy()
         reward = reward.detach().cpu().numpy()

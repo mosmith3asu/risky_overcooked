@@ -59,13 +59,13 @@ def main():
                                 action=type('', (argparse.Action,),
                                             dict(__call__=lambda a, p, n, v, o: getattr(n, a.dest).update(
                                                 dict([[vi.split('=')[0],
-                                                       float(vi.split('=')[1]) if vi.split('=')[1].isdigit() else vi.split('=')[1]
+                                                       float(vi.split('=')[1]) if vi.split('=')[1].replace('.','').isnumeric() else vi.split('=')[1]
                                                        ] for vi in v])
                                             ))),
                                 default={})
         else:
             parser.add_argument('--' + str(key), dest=str(key), type=type(val), default=val)
-
+    '1.0'.is
     args = parser.parse_args()
     config.update(vars(args))
 

@@ -65,7 +65,7 @@ def main():
                                 default={})
         else:
             parser.add_argument('--' + str(key), dest=str(key), type=type(val), default=val)
-    '1.0'.is
+
     args = parser.parse_args()
     config.update(vars(args))
 

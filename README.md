@@ -88,6 +88,8 @@ Full examples of training algorithms can be found in `src/risky_overcooked_rl/`.
 ### Running Algorithms
 ```bash
 python .\CirriculumLearning.py --cpt b=1 lam=1 eta_p=1 eta_n=1 delta_p=1 delta_n=1
+python .\CirriculumLearning.py --cpt b=0 lam=1 eta_p=0.88 eta_n=0.88 delta_p=0.61 delta_n=0.69
+
 ```
 ---
 ## Risk-Sensitive Reinforcement Learning (RSRL)

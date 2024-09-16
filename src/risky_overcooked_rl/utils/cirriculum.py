@@ -212,8 +212,12 @@ class CirriculumTrainer(Trainer):
                 self.train_rewards = deque(maxlen=self.checkpoint_mem)
                 self.test_rewards = deque(maxlen=self.checkpoint_mem)
                 self.has_checkpointed = True
+                self.checkpoint_score = score
                 return True
         return False
+
+
+
 class Curriculum:
     def __init__(self, env, reward_thresh=40, config=None):
         self.env = env
@@ -281,7 +285,7 @@ class Curriculum:
         i = self.current_cirriculum
         if not self.cirriculums[i] == 'full_task' :
             if reward == 20: return True # reward for delivering soup
-            elif len(state.all_objects_list) ==0: return True # lost all objects
+            # elif len(state.all_objects_list) ==0: return True # lost all objects
         return False
 
 

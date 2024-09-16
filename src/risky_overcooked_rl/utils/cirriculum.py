@@ -204,7 +204,7 @@ class CirriculumTrainer(Trainer):
             ave_test = np.mean(self.test_rewards)
             # score = (ave_train + ave_test)/2
             score = ave_test
-            if score > self.min_checkpoint_score and score > self.checkpoint_score:
+            if score > self.min_checkpoint_score and score >= self.checkpoint_score:
                 print(f'\nCheckpointing model at iteration {it} with score {score}...\n')
                 self.model.update_checkpoint()
                 self.logger.update_checkpiont_line(it)

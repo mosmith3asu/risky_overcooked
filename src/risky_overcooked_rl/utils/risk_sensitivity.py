@@ -13,19 +13,33 @@ class CumulativeProspectTheory(object):
         :param delta_p: probability weighting for positive outcomes
         :param delta_n: probability weighting for negative outcomes
         """
-
-        self.mean_value_ref = isinstance(b, str)
-        self.b = b if isinstance(b, (int, float)) else None
-        self.lam = lam
-        self.eta_p = eta_p
-        self.eta_n = eta_n
-        self.delta_p = delta_p
-        self.delta_n = delta_n
+        self.mean_value_ref = False
+        self.exp_value_ref = False
+        if isinstance(b, str):
+            assert b in ['m','e'], "b must be either 'm' for mean or 'e' fo expected value"
+            if b == 'm': self.mean_value_ref = True
+            elif b=='e': self.exp_value_ref = True
+            else: raise NotImplementedError()
+            self.b = None
+        # self.exp_value_ref = isinstance(b, str)
+        # self.mean_value_ref = isinstance(b, str)
+        else:
+            # STATICALLY DEFINED REFERENCE
+            self.b = np.float64(b)
+        self.lam = np.float64(lam)
+        self.eta_p = np.float64(eta_p)
+        self.eta_n = np.float64(eta_n)
+        self.delta_p = np.float64(delta_p)
+        self.delta_n = np.float64(delta_n)
+        # self.lam = lam
+        # self.eta_p = eta_p
+        # self.eta_n = eta_n
+        # self.delta_p = delta_p
+        # self.delta_n = delta_n
 
     def expectation_PT(self, values, p_values):
-        if  self.mean_value_ref:
-            self.b = np.mean(values)
-
+        if  self.mean_value_ref:    self.b = np.mean(values)
+        elif self.exp_value_ref:    self.b = np.sum(values*p_values)
         # arrange all samples in ascending order
         vp = values[np.where(values > self.b)[0]]
         vn = values[np.where(values <= self.b)[0]]
@@ -43,9 +57,8 @@ class CumulativeProspectTheory(object):
         return rho
 
     def expectation(self, values, p_values):
-        if self.mean_value_ref:
-            self.b = np.mean(values)
-
+        if self.mean_value_ref:     self.b = np.mean(values)
+        elif self.exp_value_ref:    self.b = np.sum(values*p_values)
         # arrange all samples in ascending order
         sorted_idxs = np.argsort(values)
         sorted_v = values[sorted_idxs]
@@ -78,8 +91,8 @@ class CumulativeProspectTheory(object):
             #      [np.sum(sorted_p[i:K]) for i in range(l + 1, K)]  # cumulative probability
             # Fk = [np.sum(sorted_p[0:i + 1]) for i in range(l)] + \
             #      [np.sum(sorted_p[i:K]) for i in range(l, K)]  # cumulative probability
-            Fk = [np.sum(sorted_p[0:i + 1]) for i in range(l+1)] + \
-                 [np.sum(sorted_p[i:K]) for i in range(l+1, K)]  # cumulative probability
+            Fk = [np.sum(sorted_p[0:i + 1],dtype=np.float64) for i in range(l+1)] + \
+                 [np.sum(sorted_p[i:K],dtype=np.float64) for i in range(l+1, K)]  # cumulative probability
             rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K)
             rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
             rho = rho_p - rho_n
@@ -95,7 +108,6 @@ class CumulativeProspectTheory(object):
         rho_n = self.u_neg(sorted_v[0]) * self.w_neg(sorted_p[0])
         for i in range(1, l + 1):
             rho_n += self.u_neg(sorted_v[i]) * (self.w_neg(Fk[i]) - self.w_neg(Fk[i - 1]))
-
         return rho_n
     def u_plus(self,v):
         return np.abs(v-self.b)**self.eta_p
@@ -194,6 +206,11 @@ class CumulativeProspectTheory(object):
         else:
             plt.show()
 
+    @property
+    def is_rational(self):
+        return (self.b==0 and self.lam==1
+                and self.eta_p == 1 and self.eta_n == 1
+                and self.delta_p == 1 and self.delta_n == 1)
 def animation():
     fps = 10
     fname = 'CPT_animation'
@@ -311,7 +328,7 @@ def animation():
     imageio.mimsave(f'{fname}.gif', IMGS,loop=0,fps=fps)
 
 def main():
-    animation()
+    # animation()
     # # example from https://engineering.purdue.edu/DELP/education/decision_making_slides/Module_12___Cumulative_Prospect_Theory.pdf
     # # values = np.array([80,60,40,20,0])
     # # p_values = np.array([0.2,0.2,0.2,0.2,0.2])
@@ -344,5 +361,14 @@ def main():
     # print(np.sum(values*p_values))
     # CPT.plot_curves()
 
+    values = np.array([0.01073038, 0.01114906])
+    p_values = np.array([0.1,0.9])
+    cpt_params = {'b': np.sum(values*p_values), 'lam': 1,
+                  'eta_p':1,'eta_n':1,
+                  'delta_p':1,'delta_n':1}
+    CPT = CumulativeProspectTheory(**cpt_params)
+    print(CPT.expectation(values, p_values))
+    print(CPT.expectation_PT(values, p_values))
+    print(np.sum(values * p_values))
 if __name__ == "__main__":
     main()

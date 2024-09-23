@@ -50,7 +50,7 @@ def main():
     # Trainer(SelfPlay_QRE_OSA, config).run()
 
     # ----------------------------------------
-    config['cpt_params']= {'b': 0.0, 'lam': 1.0,
+    config['cpt_params']= {'b': 0, 'lam': 1.0,
                    'eta_p': 1., 'eta_n': 1.,
                    'delta_p': 1., 'delta_n': 1.}
     config['lr_sched'] = [1e-2,1e-5,1_000]

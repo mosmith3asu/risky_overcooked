@@ -1,7 +1,13 @@
 from risky_overcooked_rl.utils.trainer import Trainer
 from risky_overcooked_rl.utils.deep_models import device,SelfPlay_QRE_OSA,SelfPlay_QRE_OSA_CPT
 from datetime import datetime
+
 def main():
+    import yaml
+    with open('utils/_default_config.yaml') as f:
+        data = yaml.load(f, Loader=yaml.SafeLoader)
+    print(data)
+def main2():
 
     config = {
         'ALGORITHM': 'Boltzmann_QRE-DDQN-OSA',

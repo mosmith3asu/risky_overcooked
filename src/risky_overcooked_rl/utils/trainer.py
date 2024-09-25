@@ -1,52 +1,62 @@
 import numpy as np
-from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature,device,SelfPlay_QRE_OSA,SelfPlay_QRE_OSA_CPT
+from risky_overcooked_rl.utils.deep_models import device,SelfPlay_QRE_OSA_CPT
 from risky_overcooked_rl.utils.rl_logger import RLLogger,TrajectoryVisualizer, TrajectoryHeatmap
+from risky_overcooked_rl.utils.model_manager import ModelManager
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
-from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
+from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,SoupState, ObjectState
 from risky_overcooked_py.mdp.actions import Action
-from itertools import product,count
+from itertools import count
 from risky_overcooked_rl.utils.state_utils import FeasibleActionManager
 import torch
-import torch.optim as optim
-import math
+
 import random
 from datetime import datetime
 debug = False
 from collections import deque
+
 class Trainer:
-    def __init__(self,model_object,config):
+    def __init__(self,model_object,custom_config):
         np.random.seed(42)
         torch.manual_seed(42)
         random.seed(42)
-        self.config =config
+
+        # Load default and parse custom config ---
+        # self.config = config
+        self.model_manager = ModelManager()
+        config = self.model_manager.get_default_config()
+        for key, val in custom_config.items(): config[key] = val
+        config['obs_shape'] = None # defined later
+        config['device'] = device
+        config['AGENT'] = model_object.__name__
+        config['Date'] = datetime.now().strftime("%m_%d_%Y-%H_%M")
+        self.config = config
+        self.cpt_params = config['cpt_params']
 
         # Generate MDP and environment----------------
-        config['AGENT'] = model_object.__name__
-        LAYOUT = config['LAYOUT']
-        HORIZON = config['HORIZON']
+        self.LAYOUT = config['LAYOUT']
+        self.HORIZON = config['HORIZON']
         self.device = config['device']
         self.shared_rew = False
         self.curriculum = None
 
         self.ITERATIONS = config['ITERATIONS']
-        self.mdp = OvercookedGridworld.from_layout_name(LAYOUT)
+        self.mdp = OvercookedGridworld.from_layout_name(self.LAYOUT)
         self.mdp.p_slip = config['p_slip']
-        self.env = OvercookedEnv.from_mdp(self.mdp, horizon=HORIZON)
-        # self.perc_random_start = config['perc_random_start']
+        self.env = OvercookedEnv.from_mdp(self.mdp, horizon=self.HORIZON)
         self.N_tests = 1
         self.test_interval = 10  # test every n iterations
-
         self.feasible_action = FeasibleActionManager(self.env)
 
         # Define Parameter Schedules ------------------
         self.init_sched(config)
+
         # Initialize policy and target networks ----------------
         obs_shape = self.mdp.get_lossless_encoding_vector_shape()
         config['obs_shape'] = obs_shape
         n_actions = 36
-        self.model = model_object(obs_shape, n_actions, config) #SelfPlay_QRE_OSA(obs_shape, config['n_actions'], config)
+        self.model = model_object(obs_shape, n_actions, config)
 
-        # Initiate Logger ----------------
+        # Initiate Logger and Managers ----------------
         self.traj_visualizer = TrajectoryVisualizer(self.env)
         self.traj_heatmap = TrajectoryHeatmap(self.env)
         self.logger = RLLogger(rows=3, cols=1, num_iterations=self.ITERATIONS)
@@ -60,12 +70,11 @@ class Trainer:
         self.logger.add_button('Heatmap', callback=self.traj_heatmap.preview)
         self.logger.add_button('Save ', callback=self.save)
 
+
         # Initialize Variables ----------------
         self._epsilon = None
         self._rationality = None
         self._rshape_scale = None
-
-        self.print_config(config)
 
         # Checkpointing/Saving utils ----------------
         self.checkpoint_score = 0
@@ -74,7 +83,12 @@ class Trainer:
         self.has_checkpointed = False
         self.train_rewards = deque(maxlen=self.checkpoint_mem)
         self.test_rewards = deque(maxlen=self.checkpoint_mem)
-        self.fname = f"{LAYOUT}_{config['ALGORITHM']}_{config['Date']}.pt"
+        self.timestamp = config['Date']
+        # self.fname = f"{self.LAYOUT}_{config['ALGORITHM']}_{config['Date']}.pt"
+        self.fname = f"{self.LAYOUT}_{config['Date']}"
+
+        # Report ----------------
+        self.print_config(config)
 
 
     def print_config(self,config):
@@ -204,26 +218,6 @@ class Trainer:
     ################################################################
     # Train/Test Rollouts   ########################################
     ################################################################
-    def calc_reward_traces(self,rewards,as_tensor=True):
-        # decay_rate = 0.97
-        # N = len(rewards)
-        # traces = torch.zeros([N, 2], device=self.device)
-        # cumulative_decay = torch.tensor([decay_rate ** i for i in range(N)], device=self.device).reshape(N,1)
-        # for t in range(N):
-        #     traces[t, :] = torch.sum(rewards[t:] * cumulative_decay[:N - t], dim=0)
-        # return traces
-
-        decay_rate = 0.9
-        N = len(rewards)
-        traces = np.zeros([N,2])
-        cumulative_decay = np.array([decay_rate**i for i in range(N)]).reshape(N,1)
-        for t in range(N):
-            decay = cumulative_decay[:N-t]#/np.sum(cumulative_decay[:N-t])
-            traces[t,:] = np.sum(rewards[t:]*decay,axis=0)
-
-        if as_tensor:  return torch.tensor(traces,device=self.device)
-        else: return traces
-
     def training_rollout(self,it):
 
         self.model.rationality = self._rationality
@@ -407,217 +401,23 @@ class Trainer:
         return False
     def save(self,*args):
         print(f'\n\nSaving model to {self.fname}...')
-        self.model.save_checkpoint(f"./models/{self.fname}")
+        # self.model.save_checkpoint(f"./models/{self.fname}")
+        model = self.model.checkpoint_model
+        model_info = {
+            'timestamp':self.timestamp,
+            'layout': self.LAYOUT,
+            'p_slip':self.mdp.p_slip,
+            'b':self.cpt_params['b'],
+            'lam':self.cpt_params['lam'],
+            'eta_p':self.cpt_params['eta_p'],
+            'eta_n':self.cpt_params['eta_n'],
+            'delta_p':self.cpt_params['delta_p'],
+            'delta_n':self.cpt_params['delta_n']
+        }
+        self.model_manager.save(model,model_info,self.fname)
         self.logger.save_fig(f"./models/{self.fname}.png")
         print(f'finished\n\n')
 
 
-
-
-
-def main():
-    config = {
-        'ALGORITHM': 'Boltzmann_QRE-DDQN-OSA',
-        'Date': datetime.now().strftime("%m_%d_%Y-%H_%M"),
-
-        # Env Params ----------------
-        'LAYOUT': "risky_coordination_ring",
-        # 'LAYOUT': "risky_multipath",
-        # 'LAYOUT': "forced_coordination",
-        # 'LAYOUT': "forced_coordination_sanity_check",
-        'HORIZON': 200,
-        'ITERATIONS': 30_000,
-        'AGENT': None,                  # name of agent object (computed dynamically)
-        "obs_shape": None,                  # computed dynamically based on layout
-        "p_slip": 0.1,
-
-        # Learning Params ----------------
-        "rand_start_sched": [1.0, 0.25, 10_000],  # percentage of ITERATIONS with random start states
-        'epsilon_sched': [1.0,0.15,5000],         # epsilon-greedy range (start,end)
-        'rshape_sched': [1,0,10_000],     # rationality level range (start,end)
-        'rationality_sched': [5,5,10_000],
-        'lr_sched': [1e-2,1e-4,3_000],
-        # 'test_rationality': 5,          # rationality level for testing
-        'gamma': 0.97,                      # discount factor
-        'tau': 0.01,                       # soft update weight of target network
-        "num_hidden_layers": 5,             # MLP params
-        "size_hidden_layers": 256,#32,      # MLP params
-        "device": device,
-        "minibatch_size":256,          # size of mini-batches
-        "replay_memory_size": 30_000,   # size of replay memory
-        'clip_grad': 100,
-    }
-    # config['LAYOUT'] = "cramped_room_CLCE"
-
-    # BEST ##########################
-    # config['replay_memory_size'] = 30_000
-    # config['epsilon_sched'] = [1.0, 0.15, 10_000]
-    # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [5.0, 5.0, 10_000]
-    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
-    # config['perc_random_start'] = 0.9
-    # config['tau'] = 0.01
-    # config['num_hidden_layers'] = 5
-    # config['size_hidden_layers'] = 256
-    # config['shared_rew'] = False
-    # config['gamma'] = 0.95
-    ###############################
-
-    # Top Left
-    # config['ITERATIONS'] = 30_000
-    # config['LAYOUT'] = "risky_coordination_ring"
-    # config['replay_memory_size'] = 30_000
-    # config['epsilon_sched'] = [1.0, 0.1, 15_000]
-    # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [5.0, 5.0, 10_000]
-    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
-    # config["rand_start_sched"]= [1.0, 0.75, 10_000]  # percentage of ITERATIONS with random start states
-    # config['tau'] = 0.01
-    # config['num_hidden_layers'] = 5
-    # config['size_hidden_layers'] = 256
-    # config['gamma'] = 0.95
-    # config['p_slip'] = 0.25
-    # config['note'] = 'medium risk + random chance start'
-    config["rand_start_sched"]= [0.5, 0.05, 10_000]  # percentage of ITERATIONS with random start states
-    # config['lr_sched'] = [1e-2, 1e-4, 1_000]
-    # config['note'] = 'Optimistic value expectation'
-    # Trainer(SelfPlay_QRE_OSA, config).run()
-    # config['LAYOUT'] = "forced_coordination"
-    config['note'] = 'Fixed reward shaping'
-
-    # Trainer(SelfPlay_QRE_OSA, config).run()
-    config['cpt_params']= {'b': 0.0, 'lam': 1.,
-                   'eta_p': 1., 'eta_n': 1.,
-                   'delta_p': 1., 'delta_n': 1.}
-    Trainer(SelfPlay_QRE_OSA_CPT, config).run()
-    # traininer.monte_carlo_sampling = True
-    # traininer.run()
-
-    # # Bottom Left
-    # config['LAYOUT'] = "risky_coordination_ring"
-    # config['ITERATIONS'] = 30_000
-    # config['replay_memory_size'] = 30_000
-    # config['epsilon_sched'] = [1.0, 0.15, 10_000]
-    # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [5.0, 5.0, 10_000]
-    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
-    # config["rand_start_sched"]= [1.0, 0.5, 15_000] #config['perc_random_start'] = 0.9
-    # config['tau'] = 0.01
-    # config['num_hidden_layers'] = 5
-    # config['size_hidden_layers'] = 256
-    # config['gamma'] = 0.97
-    # config['p_slip'] = 0.1
-    # config['note'] = 'minimal risk + chance start + increased gamma + lower LR'
-    # Trainer(SelfPlay_QRE_OSA, config).run()
-    # config['LAYOUT'] = "risky_coordination_ring"
-    # config['replay_memory_size'] = 30_000
-    # config['epsilon_sched'] = [1.0, 0.15, 10_000]
-    # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [5.0, 5.0, 10_000]
-    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
-    # config["rand_start_sched"]= [1.0, 0.75, 10_000]  # percentage of ITERATIONS with random start states # config['perc_random_start'] = 0.9
-    # config['tau'] = 0.01
-    # config['num_hidden_layers'] = 5
-    # config['size_hidden_layers'] = 256
-    # config['gamma'] = 0.95
-    # config['p_slip'] = 0.1
-    # config['note'] = 'minimal risk + trivial cpt+ chance start'
-    # config['cpt_params'] = {'b': 0.0, 'lam': 1.0,
-    #                         'eta_p': 1., 'eta_n': 1.,
-    #                         'delta_p': 1., 'delta_n': 1.}
-    # # config['cpt_params']= {'b': 0.4, 'lam': 1.0,
-    # #                'eta_p': 0.88, 'eta_n': 0.88,
-    # #                'delta_p': 0.61, 'delta_n': 0.69}
-    # Trainer(SelfPlay_QRE_OSA_CPT, config).run()
-
-    # config['replay_memory_size'] = 30_000
-    # config['epsilon_sched'] = [1.0, 0.2, 8_000]
-    # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [5.0, 5.0, 10_000]
-    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
-    # config['perc_random_start'] = 0.9
-    # config['tau'] = 0.01
-    # config['num_hidden_layers'] = 5
-    # config['size_hidden_layers'] = 256
-    # config['shared_rew'] = False
-    # config['gamma'] = 0.95
-    # config['note'] = 'added collab reward shaping'
-    # Trainer(SelfPlay_QRE_OSA, config).run()
-    # # config['replay_memory_size'] = 30_000
-    # # config['epsilon_sched'] = [1.0, 0.15, 10_000]
-    # # config['rshape_sched'] = [1, 0, 10_000]
-    # # config['rationality_sched'] = [5.0, 5.0, 10_000]
-    # # config['lr_sched'] = [1e-2, 1e-4, 5_000]
-    # # config['perc_random_start'] = 0.9
-    # # config['test_rationality'] = config['rationality_sched'][1]
-    # # config['tau'] = 0.01
-    # # config['num_hidden_layers'] = 6
-    # # config['size_hidden_layers'] = 128
-    # # config['shared_rew'] = False
-    # # config['gamma'] = 0.95
-    # # config['note'] = 'increased depth'
-    # # Trainer(SelfPlay_QRE_OSA, config).run()
-
-
-    # # Top Right
-    # config['LAYOUT'] = "risky_coordination_ring"
-    # config['ITERATIONS'] = 30_000
-    # config['replay_memory_size'] = 30_000
-    # config['epsilon_sched'] = [1.0, 0.15, 10_000]
-    # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [5.0, 5.0, 10_000]
-    # config['lr_sched'] = [1e-2, 1e-4, 4_000]
-    # config["rand_start_sched"] = [0.0, 0.00, 15_000]  # config['perc_random_start'] = 0.9
-    # config['tau'] = 0.01
-    # config['num_hidden_layers'] = 5
-    # config['size_hidden_layers'] = 256
-    # config['gamma'] = 0.97
-    # config['p_slip'] = 0.99
-    # config['note'] = 'max risk + (test handoff)'
-    # Trainer(SelfPlay_QRE_OSA, config).run()
-
-    # bottom Right
-    # config['LAYOUT'] = "risky_coordination_ring"
-    # config['ITERATIONS'] = 30_000
-    # config['replay_memory_size'] = 30_000
-    # config['epsilon_sched'] = [1.0, 0.15, 10_000]
-    # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [5.0, 5.0, 10_000]
-    # config['lr_sched'] = [1e-2, 1e-4, 3_000]
-    # config["rand_start_sched"] = [1.5, 0.05, 15_000]  # config['perc_random_start'] = 0.9
-    # config['tau'] = 0.01
-    # config['num_hidden_layers'] = 5
-    # config['size_hidden_layers'] = 256
-    # config['gamma'] = 0.95
-    # config['p_slip'] = 0.1
-    # config['note'] = 'minimal risk + chance start'
-    # Trainer(SelfPlay_QRE_OSA, config).run()
-    # config['LAYOUT'] = "risky_coordination_ring"
-    # config['ITERATIONS'] = 30_000
-    # config['replay_memory_size'] = 30_000
-    # config['epsilon_sched'] = [1.0, 0.15, 10_000]
-    # config['rshape_sched'] = [1, 0, 10_000]
-    # config['rationality_sched'] = [5.0, 5.0, 10_000]
-    # config['lr_sched'] = [1e-2, 1e-4, 2_000]
-    # config['perc_random_start'] = 0.9
-    # config['tau'] = 0.01
-    # config['num_hidden_layers'] = 5
-    # config['size_hidden_layers'] = 256
-    # config['gamma'] = 0.95
-    # config['p_slip'] = 0.1
-    # config['note'] = 'minimal risk + 90% chance start'
-    # Trainer(SelfPlay_QRE_OSA, config).run()
-
-    # config['cpt_params']= {'b': 0.0, 'lam': 1.0,
-    #                'eta_p': 1., 'eta_n': 1.,
-    #                'delta_p': 1., 'delta_n': 1.}
-    # # config['cpt_params']= {'b': 0.4, 'lam': 1.0,
-    # #                'eta_p': 0.88, 'eta_n': 0.88,
-    # #                'delta_p': 0.61, 'delta_n': 0.69}
-    # Trainer(SelfPlay_QRE_OSA_CPT,config).run()
-
-
-
-
 if __name__ == "__main__":
-    main()
+    raise NotImplementedError

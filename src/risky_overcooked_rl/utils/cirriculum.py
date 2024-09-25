@@ -1,21 +1,17 @@
-import numpy as np
 from risky_overcooked_py.mdp.overcooked_mdp import Recipe,OvercookedGridworld,ObjectState,SoupState,OvercookedState
 from risky_overcooked_rl.utils.trainer import Trainer
 import numpy as np
 from risky_overcooked_rl.utils.deep_models import device,SelfPlay_QRE_OSA,SelfPlay_QRE_OSA_CPT
-import itertools
 from datetime import datetime
 from risky_overcooked_py.mdp.actions import Action
-debug = False
 from collections import deque
+debug = False
+
 class CirriculumTrainer(Trainer):
-    def __init__(self,model_object,config):
-        super().__init__(model_object,config)
-        reward_thresh = config['reward_thresh'] if 'reward_thresh' in config else 40
-        self.curriculum = Curriculum(self.env,reward_thresh,config)
+    def __init__(self,model_object,custom_config):
+        super().__init__(model_object,custom_config)
+        self.curriculum = Curriculum(self.env)
         self.schedule_decay = 0.7
-
-
 
     def run(self):
         train_rewards = []
@@ -219,11 +215,11 @@ class CirriculumTrainer(Trainer):
 
 
 class Curriculum:
-    def __init__(self, env, reward_thresh=40, config=None):
+    def __init__(self, env):
         self.env = env
         self.mdp = env.mdp
         self.layout = self.mdp.layout_name
-        self.reward_thresh = reward_thresh
+        # self.reward_thresh = reward_thresh
         self.reward_buffer = deque(maxlen=10)
         self.iteration = 0 #iteration for this cirriculum
         self.min_iterations_per_cirriculum = 100
@@ -264,7 +260,7 @@ class Curriculum:
         self.reward_buffer.append(reward)
         reward_thresh  = self.cirriculum_step_threshs[self.cirriculums[self.current_cirriculum]]
         if (
-                np.mean(self.reward_buffer) >= reward_thresh#self.reward_thresh
+                np.mean(self.reward_buffer) >= reward_thresh
                 and self.current_cirriculum < len(self.cirriculums) -1
                 and self.iteration > self.min_iterations_per_cirriculum
         ):

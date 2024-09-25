@@ -155,8 +155,8 @@ class SelfPlay_QRE_OSA(object):
 
     def update_checkpoint(self):
         self.checkpoint_model.load_state_dict(self.model.state_dict())
-    def save_checkpoint(self,PATH):
-        torch.save(self.checkpoint_model.state_dict(), PATH)
+    # def save_checkpoint(self,PATH):
+    #     torch.save(self.checkpoint_model.state_dict(), PATH)
 
     ###################################################
     ## Memory #########################################

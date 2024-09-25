@@ -31,6 +31,7 @@ class Trainer:
         config['Date'] = datetime.now().strftime("%m_%d_%Y-%H_%M")
         self.config = config
         self.cpt_params = config['cpt_params']
+        self.timestamp = config['Date']
 
         # Generate MDP and environment----------------
         self.LAYOUT = config['LAYOUT']
@@ -54,7 +55,12 @@ class Trainer:
         obs_shape = self.mdp.get_lossless_encoding_vector_shape()
         config['obs_shape'] = obs_shape
         n_actions = 36
-        self.model = model_object(obs_shape, n_actions, config)
+        if config['loads'] == '': loaded_model = None
+        elif config['loads'] == 'rational': loaded_model = self.model_manager.load(self.package_model_info(rational=True))
+        else: raise ValueError(f"Invalid load option: {config['loads']}")
+
+        # loaded_model = None if config['loads'] == '' else self.model_manager.load(self.package_model_info())
+        self.model = model_object(obs_shape, n_actions, config,loaded_model=loaded_model)
 
         # Initiate Logger and Managers ----------------
         self.traj_visualizer = TrajectoryVisualizer(self.env)
@@ -83,7 +89,7 @@ class Trainer:
         self.has_checkpointed = False
         self.train_rewards = deque(maxlen=self.checkpoint_mem)
         self.test_rewards = deque(maxlen=self.checkpoint_mem)
-        self.timestamp = config['Date']
+
         # self.fname = f"{self.LAYOUT}_{config['ALGORITHM']}_{config['Date']}.pt"
         self.fname = f"{self.LAYOUT}_{config['Date']}"
 
@@ -399,21 +405,26 @@ class Trainer:
                 self.has_checkpointed = True
                 return True
         return False
+
+
+    def package_model_info(self,rational=False):
+        model_info = {
+            'timestamp': self.timestamp,
+            'layout': self.LAYOUT,
+            'p_slip': self.mdp.p_slip,
+            'b': self.cpt_params['b'] if not rational else 0.0,
+            'lam': self.cpt_params['lam'] if not rational else 1.0,
+            'eta_p': self.cpt_params['eta_p'] if not rational else 1.0,
+            'eta_n': self.cpt_params['eta_n'] if not rational else 1.0,
+            'delta_p': self.cpt_params['delta_p'] if not rational else 1.0,
+            'delta_n': self.cpt_params['delta_n'] if not rational else 1.0,
+        }
+        return model_info
     def save(self,*args):
         print(f'\n\nSaving model to {self.fname}...')
         # self.model.save_checkpoint(f"./models/{self.fname}")
         model = self.model.checkpoint_model
-        model_info = {
-            'timestamp':self.timestamp,
-            'layout': self.LAYOUT,
-            'p_slip':self.mdp.p_slip,
-            'b':self.cpt_params['b'],
-            'lam':self.cpt_params['lam'],
-            'eta_p':self.cpt_params['eta_p'],
-            'eta_n':self.cpt_params['eta_n'],
-            'delta_p':self.cpt_params['delta_p'],
-            'delta_n':self.cpt_params['delta_n']
-        }
+        model_info = self.package_model_info()
         self.model_manager.save(model,model_info,self.fname)
         self.logger.save_fig(f"./models/{self.fname}.png")
         print(f'finished\n\n')

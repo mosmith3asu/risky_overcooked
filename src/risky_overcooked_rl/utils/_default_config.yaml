@@ -6,6 +6,7 @@
   'HORIZON': 200
   'ITERATIONS': 30_000
   "p_slip": 0.1
+  'loads': ''         # loaded model
 
   # Learning Params ----------------
   "rand_start_sched": [0.0, 0.0, 10_000]  # percentage of ITERATIONS with random start states
@@ -13,6 +14,7 @@
   'rshape_sched': [1, 0, 5_000]           # reward shaping decay (start,end, dur)
   'rationality_sched': [10, 10, 10_000]   # rationality level range (start,end, dur) (end=test)
   'lr_sched': [0.0001, 0.0001, 1_000]         # learning rat schedule (start, end, dur)
+
 
   'gamma': 0.95                     # discount factor
   'tau': 0.005                      # soft update weight of target network

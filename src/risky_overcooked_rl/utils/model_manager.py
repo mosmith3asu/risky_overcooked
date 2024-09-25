@@ -41,7 +41,7 @@ class ModelManager:
     # Loading Functions ###########
     def load(self,model_info):
         # Find what fname
-        model_path = self.save_dir + self.find_model_fname(model_info)
+        model_path = self.save_dir + self.find_model_fname(model_info) + self.pt_ext
         return torch.load(model_path, weights_only=True)
 
     def find_model_fname(self, model_info):
@@ -93,7 +93,8 @@ def get_argparser():
         'cpt_params':{'b': 0, 'lam': 1.0, 'eta_p': 1.,
                       'eta_n': 1., 'delta_p': 1., 'delta_n': 1.},
         'LAYOUT':'risky_coordination_ring',
-        'p_slip':0.1
+        'p_slip':0.1,
+        'loads': ''
     }
     parser = argparse.ArgumentParser()
     for key,val in parser_args.items():

@@ -112,7 +112,7 @@ class DQN_vector_feature(nn.Module):
 
 
 class SelfPlay_QRE_OSA(object):
-    def __init__(self, obs_shape, n_actions, config, **kwargs):
+    def __init__(self, obs_shape, n_actions, config,loaded_model=None, **kwargs):
         self.clip_grad = config['clip_grad']
         self.num_hidden_layers = config['num_hidden_layers']
         self.size_hidden_layers = config['size_hidden_layers']
@@ -136,9 +136,14 @@ class SelfPlay_QRE_OSA(object):
         # Define Model
         self.model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
         self.target = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
-        self.target.load_state_dict(self.model.state_dict())
         self.checkpoint_model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
-        self.checkpoint_model.load_state_dict(self.model.state_dict())
+        if loaded_model is not None:
+            self.target.load_state_dict(self.model.state_dict())
+            self.checkpoint_model.load_state_dict(self.model.state_dict())
+        else:
+            self.model.load_state_dict(self.model.state_dict())
+            self.target.load_state_dict(self.model.state_dict())
+            self.checkpoint_model.load_state_dict(self.model.state_dict())
 
         lr_warmup_iter = config['lr_sched'][2]
         lr_factor = config['lr_sched'][0]/config['lr_sched'][1]
@@ -452,8 +457,8 @@ class SelfPlay_QRE_OSA(object):
 
 
 class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
-    def __init__(self, obs_shape, n_actions, config, **kwargs):
-        super().__init__(obs_shape, n_actions, config, **kwargs)
+    def __init__(self, obs_shape, n_actions, config,loaded_model=None, **kwargs):
+        super().__init__(obs_shape, n_actions, config, loaded_model=loaded_model, **kwargs)
         self.CPT = CumulativeProspectTheory(**config['cpt_params'])
 
         # Define Memory

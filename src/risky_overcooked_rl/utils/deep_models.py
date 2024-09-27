@@ -13,10 +13,13 @@ import itertools
 is_ipython = 'inline' in matplotlib.get_backend()
 if is_ipython:
     from IPython import display
-import numpy as np
+
 from risky_overcooked_rl.utils.risk_sensitivity import CumulativeProspectTheory
+from risky_overcooked_rl.utils.model_manager import get_absolute_save_dir
+import numpy as np
 import warnings
 import copy
+import os
 plt.ion()
 
 # if GPU is to be used
@@ -112,6 +115,32 @@ class DQN_vector_feature(nn.Module):
 
 
 class SelfPlay_QRE_OSA(object):
+    @classmethod
+    def from_file(cls,obs_shape, n_actions, config, fname):
+        # instantiate base class -------------
+        model = cls(obs_shape, n_actions, config)
+
+        # find saved models absolute dir -------------
+        dir = get_absolute_save_dir()
+
+        # select file to load ---------------
+        files = os.listdir(dir)
+        files = [f for f in files if (fname in f and '.pt' in f)]
+        if len(files) == 0: raise FileNotFoundError(f'No files found with fname:'+fname)
+        elif len(files) == 1: loads_fname = files[0]
+        elif len(files) > 1:
+            warnings.warn(f'Multiple files found with fname: {fname}. Using first file...')
+            loads_fname = files[-1]
+        else: raise ValueError('Unexpected error occurred')
+        PATH = dir + loads_fname
+
+        # Load file and update base class ---------
+        loaded_model = torch.load(PATH, weights_only=True)
+        model.model.load_state_dict(loaded_model)
+        model.target.load_state_dict(loaded_model)
+        model.checkpoint_model.load_state_dict(loaded_model)
+        return model
+
     def __init__(self, obs_shape, n_actions, config,loaded_model=None, **kwargs):
         self.clip_grad = config['clip_grad']
         self.num_hidden_layers = config['num_hidden_layers']
@@ -137,13 +166,13 @@ class SelfPlay_QRE_OSA(object):
         self.model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
         self.target = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
         self.checkpoint_model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
-        if loaded_model is not None:
-            self.target.load_state_dict(self.model.state_dict())
-            self.checkpoint_model.load_state_dict(self.model.state_dict())
-        else:
-            self.model.load_state_dict(self.model.state_dict())
-            self.target.load_state_dict(self.model.state_dict())
-            self.checkpoint_model.load_state_dict(self.model.state_dict())
+        # if loaded_model is not None:
+        #     self.target.load_state_dict(self.model.state_dict())
+        #     self.checkpoint_model.load_state_dict(self.model.state_dict())
+        # else:
+        #     self.model.load_state_dict(loaded_model.model.state_dict())
+        #     self.target.load_state_dict(loaded_model.model.state_dict())
+        #     self.checkpoint_model.load_state_dict(loaded_model.model.state_dict())
 
         lr_warmup_iter = config['lr_sched'][2]
         lr_factor = config['lr_sched'][0]/config['lr_sched'][1]

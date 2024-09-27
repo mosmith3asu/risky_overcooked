@@ -1,7 +1,7 @@
 import numpy as np
-from risky_overcooked_rl.utils.deep_models import device,SelfPlay_QRE_OSA_CPT
+from risky_overcooked_rl.utils.deep_models import device
 from risky_overcooked_rl.utils.rl_logger import RLLogger,TrajectoryVisualizer, TrajectoryHeatmap
-from risky_overcooked_rl.utils.model_manager import ModelManager
+from risky_overcooked_rl.utils.model_manager import get_absolute_save_dir
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,SoupState, ObjectState
 from risky_overcooked_py.mdp.actions import Action
@@ -9,22 +9,19 @@ from itertools import count
 from risky_overcooked_rl.utils.state_utils import FeasibleActionManager
 import torch
 
+
 import random
 from datetime import datetime
 debug = False
 from collections import deque
 
 class Trainer:
-    def __init__(self,model_object,custom_config):
+    def __init__(self,model_object,config):
         np.random.seed(42)
         torch.manual_seed(42)
         random.seed(42)
 
         # Load default and parse custom config ---
-        # self.config = config
-        self.model_manager = ModelManager()
-        config = self.model_manager.get_default_config()
-        for key, val in custom_config.items(): config[key] = val
         config['obs_shape'] = None # defined later
         config['device'] = device
         config['AGENT'] = model_object.__name__
@@ -55,12 +52,12 @@ class Trainer:
         obs_shape = self.mdp.get_lossless_encoding_vector_shape()
         config['obs_shape'] = obs_shape
         n_actions = 36
-        if config['loads'] == '': loaded_model = None
-        elif config['loads'] == 'rational': loaded_model = self.model_manager.load(self.package_model_info(rational=True))
+        if config['loads'] == '':
+            self.model = model_object(obs_shape, n_actions, config)
+        elif config['loads'] == 'rational':
+            rational_fname = f"{self.LAYOUT}_pslip{str(self.mdp.p_slip).replace('.', '')}__rational__"
+            self.model = model_object.from_file(obs_shape, n_actions, config,rational_fname)
         else: raise ValueError(f"Invalid load option: {config['loads']}")
-
-        # loaded_model = None if config['loads'] == '' else self.model_manager.load(self.package_model_info())
-        self.model = model_object(obs_shape, n_actions, config,loaded_model=loaded_model)
 
         # Initiate Logger and Managers ----------------
         self.traj_visualizer = TrajectoryVisualizer(self.env)
@@ -90,12 +87,32 @@ class Trainer:
         self.train_rewards = deque(maxlen=self.checkpoint_mem)
         self.test_rewards = deque(maxlen=self.checkpoint_mem)
 
-        # self.fname = f"{self.LAYOUT}_{config['ALGORITHM']}_{config['Date']}.pt"
-        self.fname = f"{self.LAYOUT}_{config['Date']}"
-
         # Report ----------------
         self.print_config(config)
 
+    @property
+    def fname(self):
+        if (self.cpt_params['b'] == 0
+            and self.cpt_params['lam'] == 1.0
+            and self.cpt_params['eta_p'] == 1.0
+            and self.cpt_params['eta_n'] == 1.0
+            and self.cpt_params['delta_p'] == 1.0
+            and self.cpt_params['delta_n'] == 1.0):
+            h = f"{self.LAYOUT}" \
+                f"_pslip{str(self.mdp.p_slip).replace('.', '')}" \
+                f"__rational" \
+                f"__{self.config['Date']}"
+        else:
+            h = f"{self.LAYOUT}" \
+                f"_pslip{str(self.mdp.p_slip).replace('.', '')}" \
+                f"__b{str(self.cpt_params['b']).replace('.', '')}" \
+                f"_lam{str(self.cpt_params['lam']).replace('.', '')}" \
+                f"_etap{str(self.cpt_params['eta_p']).replace('.', '')}" \
+                f"_etan{str(self.cpt_params['eta_n']).replace('.', '')}" \
+                f"_deltap{str(self.cpt_params['delta_p']).replace('.', '')}" \
+                f"_deltan{str(self.cpt_params['delta_n']).replace('.', '')}" \
+                f"__{self.config['Date']}"
+        return h
 
     def print_config(self,config):
         for key, val in config.items():
@@ -421,11 +438,13 @@ class Trainer:
         }
         return model_info
     def save(self,*args):
+
+        # find saved models absolute dir -------------
         print(f'\n\nSaving model to {self.fname}...')
-        # self.model.save_checkpoint(f"./models/{self.fname}")
-        model = self.model.checkpoint_model
-        model_info = self.package_model_info()
-        self.model_manager.save(model,model_info,self.fname)
+        dir = get_absolute_save_dir()
+        torch.save(self.model.checkpoint_model.state_dict(), dir + f"{self.fname}.pt")
+        # model_info = self.package_model_info()
+        # self.model_manager.save(model,model_info,self.fname)
         self.logger.save_fig(f"./models/{self.fname}.png")
         print(f'finished\n\n')
 

@@ -5,12 +5,14 @@ print('\\'.join(os.getcwd().split('\\')[:-1]))
 sys.path.append('\\'.join(os.getcwd().split('\\')[:-1]))
 from risky_overcooked_rl.utils.cirriculum import CirriculumTrainer
 from risky_overcooked_rl.utils.deep_models import device, SelfPlay_QRE_OSA_CPT # SelfPlay_QRE_OSA
-from risky_overcooked_rl.utils.model_manager import get_argparser
+from risky_overcooked_rl.utils.model_manager import get_argparser,get_default_config#, ModelManager
 debug = False
 
 # noinspection PyDictCreation
 def main():
-    config = {}
+    config = get_default_config()
+    # for key, val in custom_config.items(): config[key] = val
+    # config = {}
     parser = get_argparser()
     args = parser.parse_args()
     config.update(vars(args))

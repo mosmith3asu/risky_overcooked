@@ -419,6 +419,7 @@ class Trainer:
                 # empty buffer to delay next checkpoint
                 # self.train_rewards = deque(maxlen=self.checkpoint_mem)
                 # self.test_rewards = deque(maxlen=self.checkpoint_mem)
+                self.checkpoint_score = score
                 self.has_checkpointed = True
                 return True
         return False

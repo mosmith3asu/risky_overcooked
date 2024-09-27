@@ -459,7 +459,6 @@ class SoupState(ObjectState):
         self._cook_time = cook_time
         self.player_interacts = [False, False] if player_interacts is None else player_interacts
 
-
     def __eq__(self, other):
         return (
             isinstance(other, SoupState)

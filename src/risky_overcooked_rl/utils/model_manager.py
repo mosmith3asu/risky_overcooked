@@ -21,7 +21,8 @@ def get_argparser():
                       'eta_n': 1., 'delta_p': 1., 'delta_n': 1.},
         'LAYOUT':'risky_coordination_ring',
         'p_slip':0.1,
-        'loads': ''
+        'loads': '',
+        'note': ''
     }
     parser = argparse.ArgumentParser()
     for key,val in parser_args.items():

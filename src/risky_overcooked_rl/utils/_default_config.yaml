@@ -1,5 +1,5 @@
 ---
-  'ALGORITHM': 'Curriculum-DDQN-CPT-OSA'
+  'ALGORITHM': 'DDQN-CPT'
 
   # Env Params ----------------
   'LAYOUT': "risky_coordination_ring"

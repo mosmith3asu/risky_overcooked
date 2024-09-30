@@ -4,6 +4,7 @@ Utilities for managing saving, logging, and loading of models.
 import os
 import yaml
 import argparse
+import json
 
 def get_absolute_save_dir():
     dirs = os.getcwd().split('\\')
@@ -22,14 +23,7 @@ def get_default_config():
     return config
 
 def parse_args(config):
-    # parser_args = { # !!! Redefines default config file. DANGEROUS !!!
-    #     'cpt_params':{'b': 0, 'lam': 1.0, 'eta_p': 1.,
-    #                   'eta_n': 1., 'delta_p': 1., 'delta_n': 1.},
-    #     'LAYOUT':'risky_coordination_ring',
-    #     'p_slip':0.1,
-    #     'loads': '',
-    #     'note': ''
-    # }
+
     parser = argparse.ArgumentParser()
     for key,val in config.items():#parser_args.items():
         if 'cpt_params' == key:
@@ -43,7 +37,9 @@ def parse_args(config):
                                             ))),
                                 default={'b': 0, 'lam': 1.0, 'eta_p': 1., 'eta_n': 1., 'delta_p': 1., 'delta_n': 1.})
         else:
-            parser.add_argument('--' + str(key), dest=str(key), type=type(val), default=val)
+            parser.add_argument('--' + str(key), dest=str(key),
+                                type=json.loads if isinstance(val, list) else type(val), default=val)
+
     # return parser
     args = parser.parse_args()
     config.update(vars(args))

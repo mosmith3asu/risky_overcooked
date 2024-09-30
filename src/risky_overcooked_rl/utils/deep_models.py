@@ -375,7 +375,8 @@ class SelfPlay_QRE_OSA(object):
 
     def update(self):
         if (
-                self.memory_len < self._memory_batch_size
+                self.memory_len < self.mem_size/2
+                # self.memory_len < self._memory_batch_size
                 # or self.memory_len < 0.25*self.mem_size
         ):  return 0
 

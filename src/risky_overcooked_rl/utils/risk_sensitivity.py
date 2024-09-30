@@ -18,14 +18,10 @@ class CumulativeProspectTheory(object):
         if isinstance(b, str):
             assert b in ['m','e'], "b must be either 'm' for mean or 'e' fo expected value"
             if b == 'm': self.mean_value_ref = True
-            elif b=='e': self.exp_value_ref = True
+            elif b == 'e': self.exp_value_ref = True
             else: raise NotImplementedError()
             self.b = None
-        # self.exp_value_ref = isinstance(b, str)
-        # self.mean_value_ref = isinstance(b, str)
-        else:
-            # STATICALLY DEFINED REFERENCE
-            self.b = np.float64(b)
+        else: self.b = np.float64(b) # STATICALLY DEFINED REFERENCE
         self.lam = np.float64(lam)
         self.eta_p = np.float64(eta_p)
         self.eta_n = np.float64(eta_n)
@@ -37,9 +33,19 @@ class CumulativeProspectTheory(object):
         # self.delta_p = delta_p
         # self.delta_n = delta_n
 
-    def expectation_PT(self, values, p_values):
-        if  self.mean_value_ref:    self.b = np.mean(values)
-        elif self.exp_value_ref:    self.b = np.sum(values*p_values)
+    def expectation_PT(self, values, p_values, value_refs=None):
+        """
+        Computes Prospect Theory Expectation (for validation)
+        - 2 values only
+             :param values: list of values of next states
+        :param p_values: probability of each value
+        :param value_refs: list of (rational) values used to compute reference point
+        :return: scalar value (biased) expectation
+        """
+        if self.mean_value_ref:
+            self.b = np.mean(values)
+        elif self.exp_value_ref:
+            self.b = np.sum(values * p_values) if value_refs is None else np.sum(values * p_values)
         # arrange all samples in ascending order
         vp = values[np.where(values > self.b)[0]]
         vn = values[np.where(values <= self.b)[0]]
@@ -56,9 +62,18 @@ class CumulativeProspectTheory(object):
         rho = np.sum(u*w)
         return rho
 
-    def expectation(self, values, p_values):
-        if self.mean_value_ref:     self.b = np.mean(values)
-        elif self.exp_value_ref:    self.b = np.sum(values*p_values)
+    def expectation(self, values, p_values, value_refs=None):
+        """
+        Computes CUMULATIVE Prospect Theory Expectation
+        :param values: list of values of next states
+        :param p_values: probability of each value
+        :param value_refs: list of (rational) values used to compute reference point
+        :return: scalar value (biased) expectation
+        """
+        if self.mean_value_ref:
+            self.b = np.mean(values)
+        elif self.exp_value_ref:
+            self.b = np.sum(values*p_values) if value_refs is None else np.sum(values*p_values)
         # arrange all samples in ascending order
         sorted_idxs = np.argsort(values)
         sorted_v = values[sorted_idxs]

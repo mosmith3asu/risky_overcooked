@@ -24,16 +24,15 @@ class CirriculumTrainer(Trainer):
 
             ##########################################################
             # Training Step ##########################################
-            # Set Iteration parameters
-            self._epsilon = self.epsilon_sched[cit]
-            self._rationality = self.rationality_sched[cit]
-            self._rshape_scale = self.rshape_sched[cit]
-            self._p_rand_start = self.random_start_sched[cit]
-
             # Perform Rollout
             self.logger.start_iteration()
-            # cum_reward, cum_shaped_rewards, rollout_info = self.training_rollout(cit)
-            cum_reward, cum_shaped_rewards, rollout_info = self.curriculum_rollout(cit)
+            cum_reward, cum_shaped_rewards, rollout_info = \
+                self.curriculum_rollout(cit,
+                                        rationality=self.rationality_sched[it],
+                                        epsilon = self.epsilon_sched[it],
+                                        rshape_scale= self.rshape_sched[it],
+                                        p_rand_start=self.random_start_sched[it])
+
             if it > 1: self.model.scheduler.step()  # updates learning rate scheduler
             self.model.update_target()  # performs soft update of target network
             self.logger.end_iteration()
@@ -41,7 +40,6 @@ class CirriculumTrainer(Trainer):
             next_cirriculum = self.curriculum.step_cirriculum(cum_reward)
             if next_cirriculum:
                 self.init_sched(self.config, eps_decay=self.schedule_decay, rshape_decay=self.schedule_decay)
-            slips = rollout_info['onion_slip'] + rollout_info['dish_slip'] + rollout_info['soup_slip']
             risks = rollout_info['onion_risked'] + rollout_info['dish_risked'] + rollout_info['soup_risked']
             handoffs = rollout_info['onion_handoff'] + rollout_info['dish_handoff'] + rollout_info['soup_handoff']
 
@@ -55,19 +53,17 @@ class CirriculumTrainer(Trainer):
                   f" handoffs:{handoffs} ]"
                   f" |"
                   f"| mem:{self.model.memory_len} "
-                  f"| rshape:{round(self._rshape_scale, 3)} "
-                  f"| rat:{round(self._rationality, 3)}"
-                  f"| eps:{round(self._epsilon, 3)} "
+                  f"| rshape:{round(self.rshape_sched[cit], 3)} "
+                  f"| rat:{round(self.rationality_sched[cit], 3)}"
+                  f"| eps:{round(self.epsilon_sched[cit], 3)} "
                   f"| LR={round(self.model.optimizer.param_groups[0]['lr'], 4)}"
-                  f"| rstart={round(self._p_rand_start, 3)}"
+                  f"| rstart={round(self.random_start_sched[cit], 3)}"
                   )
 
             train_rewards.append(cum_reward + cum_shaped_rewards)
             train_losses.append(rollout_info['mean_loss'])
 
             # Testing Step ##########################################
-            # time4test = (it % self.test_interval == 0 and it > 2)
-
             time4test = (it % self.test_interval == 0)
             if time4test:
                 self.curriculum.eval('on')
@@ -75,11 +71,9 @@ class CirriculumTrainer(Trainer):
                 # Rollout test episodes ----------------------
                 test_rewards = []
                 test_shaped_rewards = []
-                self._rationality = self.test_rationality
-                self._epsilon = 0
-                self._rshape_scale = 1
                 for test in range(self.N_tests):
-                    test_reward, test_shaped_reward, state_history, action_history, aprob_history = self.test_rollout()
+                    test_reward, test_shaped_reward, state_history, action_history, aprob_history =\
+                        self.test_rollout(rationality=self.test_rationality)
                     test_rewards.append(test_reward)
                     test_shaped_rewards.append(test_shaped_reward)
                     if not self.has_checkpointed:
@@ -109,8 +103,8 @@ class CirriculumTrainer(Trainer):
                 self.curriculum.eval('off')
         self.logger.wait_for_close(enable=True)
 
-    def curriculum_rollout(self, it):
-        self.model.rationality = self._rationality
+    def curriculum_rollout(self, it, rationality,epsilon,rshape_scale,p_rand_start=0):
+        self.model.rationality = rationality
         self.env.reset()
         self.env.state = self.curriculum.sample_cirriculum_state()
 
@@ -139,9 +133,6 @@ class CirriculumTrainer(Trainer):
             'onion_slip': np.zeros([1, 2]),
             'dish_slip': np.zeros([1, 2]),
 
-
-
-
             'mean_loss': 0
         }
 
@@ -150,12 +141,8 @@ class CirriculumTrainer(Trainer):
             obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=device).unsqueeze(0)
             feasible_JAs = self.feasible_action.get_feasible_joint_actions(self.env.state, as_joint_idx=True)
             joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,
-                                                                                          epsilon=self._epsilon,
+                                                                                          epsilon=epsilon,
                                                                                           feasible_JAs=feasible_JAs)
-            # joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,epsilon=self._epsilon)
-            # next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
-            #                                                    joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
-            #                                                    as_tensor=True, device=device)
             next_state, reward, done, info = self.env.step(joint_action, get_mdp_info=True)
             next_state_prospects = self.mdp.one_step_lookahead(old_state, # must be called after step....
                                                                joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
@@ -167,7 +154,7 @@ class CirriculumTrainer(Trainer):
 
 
             # Track reward traces
-            shaped_rewards = self._rshape_scale * np.array(info["shaped_r_by_agent"])
+            shaped_rewards = rshape_scale * np.array(info["shaped_r_by_agent"])
             if self.shared_rew: shaped_rewards = np.mean(shaped_rewards) * np.ones(2)
             total_rewards = np.array([reward + shaped_rewards]).flatten()
             cum_reward += reward
@@ -187,7 +174,7 @@ class CirriculumTrainer(Trainer):
             if done: break
             elif self.curriculum.is_early_stopping(self.env.state,reward):  # Cirriculum Complete, reset state in this episode
                 self.env.state = self.curriculum.sample_cirriculum_state()
-                print(f"Early Stopping at t={t}")
+                # print(f"Early Stopping at t={t}")
             else: self.env.state = next_state
 
         rollout_info['mean_loss'] = np.mean(losses)

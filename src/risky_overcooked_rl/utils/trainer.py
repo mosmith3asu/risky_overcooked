@@ -52,11 +52,11 @@ class Trainer:
         obs_shape = self.mdp.get_lossless_encoding_vector_shape()
         config['obs_shape'] = obs_shape
         n_actions = 36
-        if config['loads'] == '':
-            self.model = model_object(obs_shape, n_actions, config)
-        elif config['loads'] == 'rational':
+
+        if config['loads'] == 'rational':
             rational_fname = f"{self.LAYOUT}_pslip{str(self.mdp.p_slip).replace('.', '')}__rational__"
             self.model = model_object.from_file(obs_shape, n_actions, config,rational_fname)
+        elif config['loads'] == '': self.model = model_object(obs_shape, n_actions, config)
         else: raise ValueError(f"Invalid load option: {config['loads']}")
 
         # Initiate Logger and Managers ----------------
@@ -160,15 +160,17 @@ class Trainer:
 
             # Training Step ##########################################
             # Set Iteration parameters
-            self._epsilon = self.epsilon_sched[it]
-            self._rationality = self.rationality_sched[it]
-            self._rshape_scale = self.rshape_sched[it]
+
             self._p_rand_start = self.random_start_sched[it]
 
             # Perform Rollout
             self.logger.start_iteration()
 
-            cum_reward, cum_shaped_rewards,rollout_info = self.training_rollout(it)
+            cum_reward, cum_shaped_rewards,rollout_info =\
+                self.training_rollout(it,rationality=self.rationality_sched[it],
+                                      epsilon = self.epsilon_sched[it],
+                                      rshape_scale= self.rshape_sched[it],
+                                      p_rand_start=self.random_start_sched[it])
 
             if it>1: self.model.scheduler.step() # updates learning rate scheduler
             self.model.update_target()  # performs soft update of target network
@@ -187,11 +189,11 @@ class Trainer:
                   f"| handoffs:{handoffs} "
                   f" |"
                   f"| mem:{self.model.memory_len} "
-                  f"| rshape:{round(self._rshape_scale, 3)} "
-                  f"| rat:{round(self._rationality, 3)}"
-                  f"| eps:{round(self._epsilon, 3)} "
+                  f"| rshape:{round(self.rshape_sched[it], 3)} "
+                  f"| rat:{round(self.rationality_sched[it], 3)}"
+                  f"| eps:{round(self.epsilon_sched[it], 3)} "
                   f"| LR={round(self.model.optimizer.param_groups[0]['lr'], 4)}"
-                  f"| rstart={round(self._p_rand_start, 3)}"
+                  f"| rstart={round(self.random_start_sched[it], 3)}"
                   )
 
             train_rewards.append(cum_reward + cum_shaped_rewards)
@@ -205,11 +207,9 @@ class Trainer:
                 # Rollout test episodes ----------------------
                 test_rewards = []
                 test_shaped_rewards = []
-                self._rationality = self.test_rationality
-                self._epsilon = 0
-                self._rshape_scale = 1
                 for test in range(self.N_tests):
-                    test_reward, test_shaped_reward, state_history, action_history, aprob_history = self.test_rollout()
+                    test_reward, test_shaped_reward, state_history, action_history, aprob_history =\
+                        self.test_rollout(rationality=self.test_rationality)
                     test_rewards.append(test_reward)
                     test_shaped_rewards.append(test_shaped_reward)
                     if not self.has_checkpointed:
@@ -241,14 +241,14 @@ class Trainer:
     ################################################################
     # Train/Test Rollouts   ########################################
     ################################################################
-    def training_rollout(self,it):
+    def training_rollout(self,it,rationality,epsilon,rshape_scale,p_rand_start=0):
 
-        self.model.rationality = self._rationality
+        self.model.rationality = rationality
         self.env.reset()
 
         # Random start state if specified
         # if it / self.ITERATIONS < self.perc_random_start:
-        if np.random.sample() < self._p_rand_start:
+        if np.random.sample() < p_rand_start:
             self.env.state = self.random_start_state()
 
         losses = []
@@ -279,7 +279,7 @@ class Trainer:
             obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state,device=device).unsqueeze(0)
             feasible_JAs = self.feasible_action.get_feasible_joint_actions(self.env.state,as_joint_idx=True)
             joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,
-                                                                                          epsilon=self._epsilon,
+                                                                                          epsilon=epsilon,
                                                                                           feasible_JAs = feasible_JAs)
             next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
                                                                joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
@@ -290,19 +290,8 @@ class Trainer:
                 if key not in ['mean_loss']:
                     rollout_info[key] += np.array(info['mdp_info']['event_infos'][key])
 
-            # rollout_info['onion_slips']  += np.array(info['mdp_info']['event_infos']['onion_slip'])
-            # rollout_info['dish_slips']   += np.array(info['mdp_info']['event_infos']['dish_slip'])
-            # rollout_info['soup_slips']   += np.array(info['mdp_info']['event_infos']['soup_slip'])
-            # rollout_info['onion_risked'] += np.array(info['mdp_info']['event_infos']['onion_risked'])
-            # rollout_info['dish_risked']  += np.array(info['mdp_info']['event_infos']['dish_risked'])
-            # rollout_info['soup_risked']  += np.array(info['mdp_info']['event_infos']['soup_risked'])
-            # rollout_info['onion_handoff']+= np.array(info['mdp_info']['event_infos']['onion_handoff'])
-            # rollout_info['dish_handoff'] += np.array(info['mdp_info']['event_infos']['dish_handoff'])
-            # rollout_info['soup_handoff'] += np.array(info['mdp_info']['event_infos']['soup_handoff'])
-
-            # evemts = info['event_infos']
             # Track reward traces
-            shaped_rewards = self._rshape_scale * np.array(info["shaped_r_by_agent"])
+            shaped_rewards = rshape_scale * np.array(info["shaped_r_by_agent"])
             if self.shared_rew: shaped_rewards = np.mean(shaped_rewards)*np.ones(2)
             total_rewards =  np.array([reward + shaped_rewards]).flatten()
             cum_reward += reward
@@ -321,8 +310,10 @@ class Trainer:
             self.env.state = next_state
         rollout_info['mean_loss'] = np.mean(losses)
         return cum_reward, cum_shaped_reward, rollout_info
-    def test_rollout(self):
-        self.model.rationality = self._rationality
+    def test_rollout(self,rationality,epsilon=0,rshape_scale=1):
+        self.model.model.eval()
+        self.model.target.eval()
+        self.model.rationality = rationality
         self.env.reset()
 
         test_reward = 0
@@ -333,12 +324,12 @@ class Trainer:
 
         for t in count():
             obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state,device=device).unsqueeze(0)
-            joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=self._epsilon)
+            joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=epsilon)
             next_state, reward, done, info = self.env.step(joint_action)
 
             # Track reward traces
             test_reward += reward
-            test_shaped_reward += np.mean(info["shaped_r_by_agent"])*np.ones(2)
+            test_shaped_reward += rshape_scale*np.mean(info["shaped_r_by_agent"])*np.ones(2)
 
             # Track state-action history
             action_history.append(joint_action_idx)
@@ -347,6 +338,8 @@ class Trainer:
 
             if done:  break
             self.env.state = next_state
+        self.model.model.train()
+        self.model.target.train()
         return test_reward, test_shaped_reward, state_history, action_history, aprob_history
 
     ################################################################
@@ -397,10 +390,8 @@ class Trainer:
                     state.add_object(ObjectState(obj, counter_loc))
         return state
     def add_held_obj(self,player,obj):
-        if obj == "soup":
-            player.set_object(SoupState.get_soup(player.position, num_onions=3, num_tomatoes=0, finished=True))
-        else:
-            player.set_object(ObjectState(obj, player.position))
+        if obj == "soup": player.set_object(SoupState.get_soup(player.position, num_onions=3, num_tomatoes=0, finished=True))
+        else: player.set_object(ObjectState(obj, player.position))
         return player
 
     ################################################################
@@ -416,9 +407,6 @@ class Trainer:
                 print(f'\nCheckpointing model at iteration {it} with score {score}...\n')
                 self.model.update_checkpoint()
                 self.logger.update_checkpiont_line(it)
-                # empty buffer to delay next checkpoint
-                # self.train_rewards = deque(maxlen=self.checkpoint_mem)
-                # self.test_rewards = deque(maxlen=self.checkpoint_mem)
                 self.checkpoint_score = score
                 self.has_checkpointed = True
                 return True
@@ -439,7 +427,6 @@ class Trainer:
         }
         return model_info
     def save(self,*args):
-
         # find saved models absolute dir -------------
         print(f'\n\nSaving model to {self.fname}...')
         dir = get_absolute_save_dir()

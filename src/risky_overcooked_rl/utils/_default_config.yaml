@@ -14,6 +14,7 @@
   'rshape_sched': [1, 0, 5_000]           # reward shaping decay (start,end, dur)
   'rationality_sched': [10, 10, 10_000]   # rationality level range (start,end, dur) (end=test)
   'lr_sched': [0.0001, 0.0001, 1_000]         # learning rat schedule (start, end, dur)
+#  'lr_sched': [0.00000000000001, 0.00000000000001, 1_000]         # learning rat schedule (start, end, dur)
 
 
   'gamma': 0.95                     # discount factor
@@ -30,4 +31,4 @@
       'eta_n': 1.0  # diminishing loss sensitivity
       'delta_p': 1.0 # s-shaped probability estimation bias for gains
       'delta_n': 1.0 # s-shaped probability estimation bias for losses
-
+  'cpt_rational_ref': False # whether to use rational reference for cpt[b]

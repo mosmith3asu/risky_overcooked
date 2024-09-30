@@ -111,14 +111,15 @@ class DQN_vector_feature(nn.Module):
         # x = self.mlp_activation(self.layer2(x))
         # x = self.layer3(x) # linear output layer (action-values)
         return x
-
+# SelfPlay_QRE_OSA
 
 
 class SelfPlay_QRE_OSA(object):
     @classmethod
     def from_file(cls,obs_shape, n_actions, config, fname):
+
         # instantiate base class -------------
-        model = cls(obs_shape, n_actions, config)
+        agents = cls(obs_shape, n_actions, config)
 
         # find saved models absolute dir -------------
         dir = get_absolute_save_dir()
@@ -129,19 +130,25 @@ class SelfPlay_QRE_OSA(object):
         if len(files) == 0: raise FileNotFoundError(f'No files found with fname:'+fname)
         elif len(files) == 1: loads_fname = files[0]
         elif len(files) > 1:
-            warnings.warn(f'Multiple files found with fname: {fname}. Using first file...')
+            warnings.warn(f'Multiple files found with fname: {fname}. Using latest file...')
             loads_fname = files[-1]
         else: raise ValueError('Unexpected error occurred')
         PATH = dir + loads_fname
 
-        # Load file and update base class ---------
-        loaded_model = torch.load(PATH, weights_only=True)
-        model.model.load_state_dict(loaded_model)
-        model.target.load_state_dict(loaded_model)
-        model.checkpoint_model.load_state_dict(loaded_model)
-        return model
+        print(f'\n#########################################')
+        print(f'Loading model from: {loads_fname}')
+        print(f'#########################################\n')
 
-    def __init__(self, obs_shape, n_actions, config,loaded_model=None, **kwargs):
+        # Load file and update base class ---------
+        loaded_model = torch.load(PATH, weights_only=True, map_location=config['device'])
+        agents.model.load_state_dict(loaded_model)
+        agents.target.load_state_dict(loaded_model)
+        agents.checkpoint_model.load_state_dict(loaded_model)
+        # is_same = np.all([torch.all(agents.model.state_dict()[key] == agents.model.state_dict()[key]) for key in
+        #         agents.model.state_dict().keys()])
+        return agents
+
+    def __init__(self, obs_shape, n_actions, config,**kwargs):
         self.clip_grad = config['clip_grad']
         self.num_hidden_layers = config['num_hidden_layers']
         self.size_hidden_layers = config['size_hidden_layers']
@@ -166,13 +173,9 @@ class SelfPlay_QRE_OSA(object):
         self.model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
         self.target = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
         self.checkpoint_model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
-        # if loaded_model is not None:
-        #     self.target.load_state_dict(self.model.state_dict())
-        #     self.checkpoint_model.load_state_dict(self.model.state_dict())
-        # else:
-        #     self.model.load_state_dict(loaded_model.model.state_dict())
-        #     self.target.load_state_dict(loaded_model.model.state_dict())
-        #     self.checkpoint_model.load_state_dict(loaded_model.model.state_dict())
+        self.target.load_state_dict(self.model.state_dict())
+        self.checkpoint_model.load_state_dict(self.model.state_dict())
+
 
         lr_warmup_iter = config['lr_sched'][2]
         lr_factor = config['lr_sched'][0]/config['lr_sched'][1]
@@ -182,15 +185,11 @@ class SelfPlay_QRE_OSA(object):
                                                start_factor=1,
                                                end_factor=1 / lr_factor,
                                                total_iters=lr_warmup_iter)
-        # self.scheduler = lr_scheduler.ConstantLR(self.optimizer, factor=100, end_factor=1, total_iters=100)
-
         self.optimistic_value_expectation = False
         if self.optimistic_value_expectation: warnings.warn("Optimistic value expectation is set to True.")
 
     def update_checkpoint(self):
         self.checkpoint_model.load_state_dict(self.model.state_dict())
-    # def save_checkpoint(self,PATH):
-    #     torch.save(self.checkpoint_model.state_dict(), PATH)
 
     ###################################################
     ## Memory #########################################
@@ -455,7 +454,6 @@ class SelfPlay_QRE_OSA(object):
         # expected_q_value = rewards + (self.gamma) * expected_next_q_values * (1 - done)  # TD-Target
         # return torch.FloatTensor(expected_q_value).to(self.device)
 
-
     def flatten_next_prospects(self,next_prospects):
         """
         Used for flattening next_state prospects into list of outcomes for batch processing
@@ -495,10 +493,11 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         self._memory = deque([], maxlen=config['replay_memory_size'])
         self._memory_batch_size = config['minibatch_size']
 
-        # Define Model
-        # self.model = DQN_vector_feature(obs_shape, n_actions, self.num_hidden_layers,self.size_hidden_layers).to(self.device)
-        # self.target = DQN_vector_feature(obs_shape, n_actions, self.num_hidden_layers,self.size_hidden_layers).to(self.device)
-        # self.target.load_state_dict(self.model.state_dict())
+        # if config['cpt_rational_ref'] == True:
+        #     assert config['loads'] =='', 'Rational reference needs loaded model'
+        #     self.rational_ref_model = SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config, 'rational_ref')
+        #     self.rational_ref_model = self.model.load_state_dict(loaded_model)        # Define Model
+        # else: self.rational_ref_model = None
 
     def prospect_value_expectations(self,reward,done,prospect_masks,
                                     prospect_next_q_values,prospect_p_next_states,

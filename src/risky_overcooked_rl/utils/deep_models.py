@@ -587,7 +587,7 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
             if  prospect_next_q_values_ref is not None:
                 prospect_values_ref = prospect_next_q_values_ref[prospect_mask, :]
                 prospect_td_targets_ref = rewards[i, :] + (self.gamma) * prospect_values_ref * (1 - done[i, :])
-                prospsect_td_targets_ref = prospsect_td_targets_ref.flatten()
+                prospect_td_targets_ref = prospect_td_targets_ref.flatten()
             else: prospect_td_targets_ref = None
             if debug: assert np.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
 

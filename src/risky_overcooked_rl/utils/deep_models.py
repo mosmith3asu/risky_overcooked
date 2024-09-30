@@ -247,18 +247,26 @@ class SelfPlay_QRE_OSA(object):
     # Nash Utils ######################################
     ###################################################
 
-    def get_normal_form_game(self, obs, use_target=False):
+    def get_normal_form_game(self, obs, with_model=None):
         """ Batch compute the NF games for each observation"""
         batch_size = obs.shape[0]
         all_games = torch.zeros([batch_size, self.num_agents, self.player_action_dim, self.player_action_dim], device=self.device)
         for i in range(self.num_agents):
             if i == 1: obs = self.invert_obs(obs)
-            if use_target: q_values = self.target(obs).detach()
+            if with_model is not None: q_values = with_model(obs).detach()
             else: q_values = self.model(obs).detach()
+            # if use_target: q_values = self.target(obs).detach()
+            # else: q_values = self.model(obs).detach()
             q_values = q_values.reshape(batch_size, self.player_action_dim, self.player_action_dim)
             all_games[:, i, :, :] = q_values if i == 0 else torch.transpose(q_values, -1, -2)
         return all_games
 
+    def get_expected_equilibrium_value(self, nf_games, dists):
+        ego, partner = 0, 1
+        joint_dist_mat = torch.bmm(dists[:,ego].unsqueeze(-1), torch.transpose(dists[:,partner].unsqueeze(-1), -1, -2))
+        value = torch.cat([torch.sum(nf_games[:, ego, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1),
+                           torch.sum(nf_games[:, partner, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1)], dim=1)
+        return value
     def level_k_qunatal(self,nf_games, sophistication=8, belief_trick=True,scaling=False):
         """Implementes a k-bounded QRE computation
         https://en.wikipedia.org/wiki/Quantal_response_equilibrium
@@ -295,7 +303,7 @@ class SelfPlay_QRE_OSA(object):
         else: # recomputes dist2 from scratch
             dist2 = step_QRE(invert_game(nf_games), sophistication)
         dist = torch.cat([dist1.unsqueeze(1), dist2.unsqueeze(1)], dim=1)
-        joint_dist_mat = torch.bmm(dist1.unsqueeze(-1), torch.transpose(dist2.unsqueeze(-1), -1, -2))
+        # joint_dist_mat = torch.bmm(dist1.unsqueeze(-1), torch.transpose(dist2.unsqueeze(-1), -1, -2))
 
         if self.optimistic_value_expectation:
             value = torch.zeros(batch_sz, 2, device=self.device)
@@ -304,9 +312,9 @@ class SelfPlay_QRE_OSA(object):
                 idx = (pval == torch.max(pval)).nonzero().flatten()
                 value[ib, ego] += nf_games[ib, ego, idx[0], idx[1]]
                 value[ib, partner] += nf_games[ib, partner, idx[0], idx[1]]
-        else:
-            value = torch.cat([torch.sum(nf_games[:, ego, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1),
-                     torch.sum(nf_games[:, partner, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1)],dim=1)
+        else: value = self.get_expected_equilibrium_value(nf_games, dist)
+            # value = torch.cat([torch.sum(nf_games[:, ego, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1),
+            #          torch.sum(nf_games[:, partner, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1)],dim=1)
         return dist, value
 
     def compute_EQ(self, NF_Games, update=False):
@@ -387,20 +395,22 @@ class SelfPlay_QRE_OSA(object):
         action = torch.cat(batch.action)
         reward = torch.cat(batch.reward)
         done = torch.cat(batch.done)
-
-        # Q-Learning with target network
+        #
+        # # Q-Learning with target network
         q_value = self.model(state).gather(1, action)
 
         # Batch calculate Q(s'|pi) and form mask for later condensation to expectation
         all_next_states,all_p_next_states,prospect_idxs = self.flatten_next_prospects(batch.next_prospects)
 
         # Compute equalib value for each outcome ---------------
-        NF_games = self.get_normal_form_game(torch.cat(all_next_states), use_target=True)
-        _, all_next_q_value = self.compute_EQ(NF_games, update=True)
+        # NF_games = self.get_normal_form_game(torch.cat(all_next_states), use_target=True)
+        NF_games = self.get_normal_form_game(torch.cat(all_next_states), with_model=self.target)
+        all_next_a_dists, all_next_q_value = self.compute_EQ(NF_games, update=True)
 
         # Convert to numpy then back ----------------------------
         all_next_q_value = all_next_q_value[:, 0].reshape(-1, 1).detach().cpu().numpy()
         all_p_next_states = np.array(all_p_next_states).reshape(-1, 1)
+
         expected_q_value = self.prospect_value_expectations(reward = reward,
                                                             done = done,
                                                             prospect_masks=prospect_idxs,
@@ -485,8 +495,8 @@ class SelfPlay_QRE_OSA(object):
 
 
 class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
-    def __init__(self, obs_shape, n_actions, config,loaded_model=None, **kwargs):
-        super().__init__(obs_shape, n_actions, config, loaded_model=loaded_model, **kwargs)
+    def __init__(self, obs_shape, n_actions, config, **kwargs):
+        super().__init__(obs_shape, n_actions, config, **kwargs)
         self.CPT = CumulativeProspectTheory(**config['cpt_params'])
 
         # Define Memory
@@ -494,15 +504,73 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         self._memory = deque([], maxlen=config['replay_memory_size'])
         self._memory_batch_size = config['minibatch_size']
 
-        # if config['cpt_rational_ref'] == True:
-        #     assert config['loads'] =='', 'Rational reference needs loaded model'
-        #     self.rational_ref_model = SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config, 'rational_ref')
-        #     self.rational_ref_model = self.model.load_state_dict(loaded_model)        # Define Model
-        # else: self.rational_ref_model = None
+        if self.CPT.exp_rational_value_ref == True:
+            assert 'rational' in config['loads'], 'Rational reference needs loaded model'
+            self.rational_ref_model = DQN_vector_feature(obs_shape, n_actions, self.num_hidden_layers, self.size_hidden_layers).to(self.device)
+            # self.rational_ref_model = SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config).model
+            self.rational_ref_model.load_state_dict(self.model.state_dict())        # Define Model
+            self.rational_ref_model.eval() # permanently set to eval mode
 
+        else: self.rational_ref_model = None
+
+    def update(self):
+        if (
+                self.memory_len < self.mem_size / 2
+                # self.memory_len < self._memory_batch_size
+                # or self.memory_len < 0.25*self.mem_size
+        ):  return 0
+
+        transitions = self.memory_sample()
+        batch = self._transition(*zip(*transitions))
+        BATCH_SIZE = len(transitions)
+        state = torch.cat(batch.state)
+        action = torch.cat(batch.action)
+        reward = torch.cat(batch.reward)
+        done = torch.cat(batch.done)
+        #
+        # # Q-Learning with target network
+        q_value = self.model(state).gather(1, action)
+
+        # Batch calculate Q(s'|pi) and form mask for later condensation to expectation
+        all_next_states, all_p_next_states, prospect_idxs = self.flatten_next_prospects(batch.next_prospects)
+
+        # Compute equalib value for each outcome ---------------
+        NF_games = self.get_normal_form_game(torch.cat(all_next_states), with_model=self.target)
+        all_next_a_dists, all_next_q_value = self.compute_EQ(NF_games, update=True)
+
+        # Convert to numpy then back ----------------------------
+        all_next_q_value = all_next_q_value[:, 0].reshape(-1, 1).detach().cpu().numpy() # grab only ego values
+        all_p_next_states = np.array(all_p_next_states).reshape(-1, 1)
+
+        # IF using rational reference, get the rational expectations of following equalib solution
+        if self.CPT.exp_rational_value_ref:
+            with torch.no_grad():
+                NF_games_ref = self.get_normal_form_game(torch.cat(all_next_states), with_model=self.rational_ref_model)
+                all_next_value_ref = self.get_expected_equilibrium_value(NF_games_ref, all_next_a_dists)
+                all_next_value_ref = all_next_value_ref[:, 0].reshape(-1, 1).detach().cpu().numpy()
+        else: all_next_value_ref = None
+
+
+        expected_q_value = self.prospect_value_expectations(reward=reward,
+                                                            done=done,
+                                                            prospect_masks=prospect_idxs,
+                                                            prospect_next_q_values=all_next_q_value,
+                                                            prospect_p_next_states=all_p_next_states,
+                                                            prospect_next_q_values_ref = all_next_value_ref)
+
+        # Optimize ----------------
+        loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
+        loss = loss.mean()
+        self.optimizer.zero_grad()
+        loss.backward()
+
+        # In-place gradient clipping
+        if self.clip_grad is not None:  torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
+        self.optimizer.step()
+        return loss.item()
     def prospect_value_expectations(self,reward,done,prospect_masks,
                                     prospect_next_q_values,prospect_p_next_states,
-                                    debug=True):
+                                    prospect_next_q_values_ref = None,  debug=True):
         """CPT expectation used for modification when class inherited by CPT version
         - condenses prospects back into expecations of |batch_size|
         """
@@ -514,11 +582,15 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         for i in range(BATCH_SIZE):
             prospect_mask = prospect_masks[i]
             prospect_values = prospect_next_q_values[prospect_mask, :]
+            prospect_values_ref = prospect_next_q_values_ref[prospect_mask, :]
             prospect_probs = prospect_p_next_states[prospect_mask, :]
             prospect_td_targets = rewards[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])
+            prospect_td_targets_ref = rewards[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])
             if debug: assert np.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
 
-            expected_td_targets[i] = self.CPT.expectation(prospect_td_targets.flatten(), prospect_probs.flatten())
+            expected_td_targets[i] = self.CPT.expectation(prospect_td_targets.flatten(),
+                                                          prospect_probs.flatten(),
+                                                          value_refs = prospect_td_targets_ref.flatten())
             if debug and self.CPT.is_rational:
                 rat_expected_td_target = np.sum(prospect_td_targets * prospect_probs)
                 # assert np.all(rat_expected_td_target == expected_td_targets[i]), \

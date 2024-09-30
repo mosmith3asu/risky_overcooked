@@ -12,7 +12,9 @@ debug = False
 def main():
     config = get_default_config()
     config = parse_args(config)
-    config["ALGORITHM"] = 'Curriculum-' + config['ALGORITHM']
+    # config['loads'] = 'rational'
+    # config['cpt_params']['b'] = 'erat'
+    # config["ALGORITHM"] = 'Curriculum-' + config['ALGORITHM']
 
     # Run Curriculum learning
     for key, val in config['cpt_params'].items():

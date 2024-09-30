@@ -15,10 +15,12 @@ class CumulativeProspectTheory(object):
         """
         self.mean_value_ref = False
         self.exp_value_ref = False
+        self.exp_rational_value_ref = False
         if isinstance(b, str):
-            assert b in ['m','e'], "b must be either 'm' for mean or 'e' fo expected value"
+            assert b in ['m','e','erat'], "b must be either ['m':mean,'e':expected,'erat':expected rational]"
             if b == 'm': self.mean_value_ref = True
             elif b == 'e': self.exp_value_ref = True
+            elif b == 'erat': self.exp_rational_value_ref = True
             else: raise NotImplementedError()
             self.b = None
         else: self.b = np.float64(b) # STATICALLY DEFINED REFERENCE
@@ -42,10 +44,10 @@ class CumulativeProspectTheory(object):
         :param value_refs: list of (rational) values used to compute reference point
         :return: scalar value (biased) expectation
         """
-        if self.mean_value_ref:
-            self.b = np.mean(values)
-        elif self.exp_value_ref:
-            self.b = np.sum(values * p_values) if value_refs is None else np.sum(values * p_values)
+        if self.mean_value_ref: self.b = np.mean(values)
+        elif self.exp_value_ref:  self.b = np.sum(values * p_values)
+        elif self.exp_rational_value_ref:  self.b = np.sum(value_refs * p_values)
+
         # arrange all samples in ascending order
         vp = values[np.where(values > self.b)[0]]
         vn = values[np.where(values <= self.b)[0]]
@@ -70,10 +72,9 @@ class CumulativeProspectTheory(object):
         :param value_refs: list of (rational) values used to compute reference point
         :return: scalar value (biased) expectation
         """
-        if self.mean_value_ref:
-            self.b = np.mean(values)
-        elif self.exp_value_ref:
-            self.b = np.sum(values*p_values) if value_refs is None else np.sum(values*p_values)
+        if self.mean_value_ref: self.b = np.mean(values)
+        elif self.exp_value_ref: self.b = np.sum(values*p_values)
+        elif self.exp_rational_value_ref: self.b = np.sum(value_refs*p_values)
         # arrange all samples in ascending order
         sorted_idxs = np.argsort(values)
         sorted_v = values[sorted_idxs]

@@ -7,7 +7,7 @@ from src.risky_overcooked_rl.utils.deep_models import SelfPlay_QRE_OSA_CPT
 if __name__ == "__main__":
     config = get_default_config()
     config = parse_args(config)
-    config['p_slip'] = 0.6
+    config['p_slip'] = 0.4
     config['loads'] = 'rational'
     config['epsilon_sched'] =  [0.01, 0.01, 2000]
     config['lr_sched'] = [1e-14, 1e-14, 1_000]

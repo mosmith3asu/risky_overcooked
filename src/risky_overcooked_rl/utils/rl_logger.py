@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import time
 import matplotlib.pyplot as plt
@@ -707,8 +709,11 @@ class RLLogger(object):
             return data
 
     def update_checkpiont_line(self,iteration):
-        for key, data in self.checkpoint_lines.items():
-            self.checkpoint_lines[key].set_xdata(iteration)
+        try:
+            for key, data in self.checkpoint_lines.items():
+                self.checkpoint_lines[key].set_xdata(iteration)
+        except:
+            print(f'\n\nRLLogger.update_checkpoint_line() exception...')
     def draw(self):
         for key, data in self.logs.items():
             x = data[:, 0]

@@ -11,6 +11,9 @@ The primary motivation for this modification is to investigate risk-sensitive re
 ## Installation
 The current `setup.py` file references standard Overcooked library. Needs to be updated.
 ```bash
+pip install numpy v-1.24.1
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
 # tbd... ask mason for help if needed
 ```
 ---

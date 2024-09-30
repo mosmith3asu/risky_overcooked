@@ -582,15 +582,18 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         for i in range(BATCH_SIZE):
             prospect_mask = prospect_masks[i]
             prospect_values = prospect_next_q_values[prospect_mask, :]
-            prospect_values_ref = prospect_next_q_values_ref[prospect_mask, :]
             prospect_probs = prospect_p_next_states[prospect_mask, :]
             prospect_td_targets = rewards[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])
-            prospect_td_targets_ref = rewards[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])
+            if  prospect_next_q_values_ref is not None:
+                prospect_values_ref = prospect_next_q_values_ref[prospect_mask, :]
+                prospect_td_targets_ref = rewards[i, :] + (self.gamma) * prospect_values_ref * (1 - done[i, :])
+                prospsect_td_targets_ref = prospsect_td_targets_ref.flatten()
+            else: prospect_td_targets_ref = None
             if debug: assert np.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
 
             expected_td_targets[i] = self.CPT.expectation(prospect_td_targets.flatten(),
                                                           prospect_probs.flatten(),
-                                                          value_refs = prospect_td_targets_ref.flatten())
+                                                          value_refs = prospect_td_targets_ref)
             if debug and self.CPT.is_rational:
                 rat_expected_td_target = np.sum(prospect_td_targets * prospect_probs)
                 # assert np.all(rat_expected_td_target == expected_td_targets[i]), \

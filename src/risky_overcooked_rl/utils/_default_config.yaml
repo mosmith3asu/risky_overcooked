@@ -18,7 +18,7 @@
 #  'lr_sched': [0.00000000000001, 0.00000000000001, 1_000]         # learning rat schedule (start, end, dur)
 
 
-  'gamma': 0.95                     # discount factor
+  'gamma': 0.97                     # discount factor
   'tau': 0.005                      # soft update weight of target network
   "num_hidden_layers": 5            # MLP params
   "size_hidden_layers": 256         # MLP params

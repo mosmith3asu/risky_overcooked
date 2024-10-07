@@ -321,11 +321,15 @@ class Trainer:
         state_history = [self.env.state.deepcopy()]
         action_history = []
         aprob_history = []
+        q_vals = []
 
         for t in count():
             obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state,device=device).unsqueeze(0)
             joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=epsilon)
             next_state, reward, done, info = self.env.step(joint_action)
+
+            q_val = float(self.model.model(obs)[0,joint_action_idx].detach().cpu().numpy())
+            q_vals.append(q_val)
 
             # Track reward traces
             test_reward += reward
@@ -340,6 +344,7 @@ class Trainer:
             self.env.state = next_state
         self.model.model.train()
         self.model.target.train()
+        print(f"Q-vals: {[np.mean(q_vals),np.min(q_vals),np.max(q_vals)]} | all>0: {np.all(np.array(q_vals) > 0)}")
         return test_reward, test_shaped_reward, state_history, action_history, aprob_history
 
     ################################################################

@@ -1278,7 +1278,11 @@ class OvercookedGridworld(object):
         self.p_slip = 0.25
         self.old_reward_shaping = False # False uses shaped reward that keeps track of handoffs between agents
         self.shared_reward_split = False # when both agents contribute to shaped reward {True: each receive half| False: each receive full}
-
+        self.dropped_object_rewards = {
+            'onion': -1,
+            'dish': -2,
+            'soup': -5
+        }
     @staticmethod
     def from_layout_name(layout_name, **params_to_overwrite):
         """
@@ -1542,7 +1546,7 @@ class OvercookedGridworld(object):
         self.resolve_movement(new_state, joint_action)
 
         # Resolve slipping in water
-        self.resolve_enter_water(state, new_state, events_infos)
+        dropped_reward_by_agent = self.resolve_enter_water(state, new_state, events_infos)
 
         # Finally, environment effects
         self.step_environment_effects(new_state)
@@ -1553,6 +1557,7 @@ class OvercookedGridworld(object):
             "event_infos": events_infos,
             "sparse_reward_by_agent": sparse_reward_by_agent,
             "shaped_reward_by_agent": shaped_reward_by_agent,
+            "dropped_reward_by_agent": dropped_reward_by_agent,
         }
         if display_phi:
             assert (
@@ -1773,15 +1778,12 @@ class OvercookedGridworld(object):
         If a player enters a puddle, they have a p_slip chance to drop their held item
         and experince slight delay in action.
         """
+        dropped_reward_by_player = [0,0]
         p_slip = self.p_slip
 
 
         # all_objects = list(new_state.objects.values())
         for player_idx,new_player in enumerate(new_state.players):
-            # old_player_state = state.players[player_idx]
-            # is_same_position = np.all(player.position == old_player_state.position)
-            # is_entered_water = player.position in self.terrain_pos_dict["W"]
-            # if not is_same_position and is_entered_water:
             old_player = state.players[player_idx]
 
             if self.check_can_slip(old_player,new_player):
@@ -1790,18 +1792,11 @@ class OvercookedGridworld(object):
 
                 if is_dropped:
                     obj = new_player.remove_object() # remove item from players hand and the environment
+                    dropped_reward_by_player[player_idx] = self.dropped_object_rewards[obj.name]
                     self.log_object_slip(events_infos, obj.name, player_idx) # add event flag for later animation update
 
-                # if player.held_object is not None: # if player is holding object
-                #     is_dropped = np.random.choice([True, False], p=[p_slip, 1-p_slip])
-                #     if is_dropped:
-                #         # remove item from players hand and the environment
-                #         obj = player.remove_object()
-                #         # add event flag for later animation update
-                #         self.log_object_slip(events_infos, obj.name, player_idx)
-                # else:
-                #     # still add event flag for animation update when no held object
-                #     self.log_object_slip(events_infos, 'empty', player_idx)
+        return dropped_reward_by_player
+
 
     def get_recipe_value(
         self,

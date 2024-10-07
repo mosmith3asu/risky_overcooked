@@ -82,7 +82,7 @@ class Trainer:
         # Checkpointing/Saving utils ----------------
         self.checkpoint_score = 0
         self.min_checkpoint_score = 20
-        self.checkpoint_mem = 10
+        self.checkpoint_mem = 5
         self.has_checkpointed = False
         self.train_rewards = deque(maxlen=self.checkpoint_mem)
         self.test_rewards = deque(maxlen=self.checkpoint_mem)

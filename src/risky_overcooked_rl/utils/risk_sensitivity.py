@@ -3,6 +3,10 @@ import matplotlib.pyplot as plt
 from collections import deque
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import imageio
+import random
+
+
+
 class CumulativeProspectTheory(object):
     def __init__(self,b,lam,eta_p,eta_n,delta_p,delta_n):
         """
@@ -113,6 +117,93 @@ class CumulativeProspectTheory(object):
             rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
             rho = rho_p - rho_n
             return rho
+
+    def expectation2(self,values,p_values,N_max =100):
+        # sorted_idxs = np.argsort(values)
+        # X = [ np.random.choice(values,p=p_values) + random.gauss(0, 1) for i in range(N_max)] # generate empirical samples
+        # X_sort = np.sort(X)
+        sorted_idxs = np.argsort(values)
+        X_sort = values[sorted_idxs]
+        P_sort = p_values[sorted_idxs]
+        K = len(X_sort)-1  # number of samples
+        l = np.where(X_sort <= self.b)[0][-1]  # idx of highest loss
+
+        F = np.nan*np.ones(X_sort.shape)
+        for k in range(K+1):
+            if k<=l: F[k] = np.sum(P_sort[0:k+1])
+            else: F[k] = np.sum(P_sort[k:K+1])
+        assert np.all(np.isfinite(F)), "F is not finite"
+
+        rho_plus = 0
+        for i in range(l+1, K):
+            rho_plus += self.u_plus(X_sort[i]) * (self.w_plus(F[i]) - self.w_plus(F[i+1]))
+        rho_plus += self.u_plus(X_sort[K]) * self.w_plus(P_sort[K])
+
+        rho_minus = self.u_neg(X_sort[0]) * self.w_neg(P_sort[0])
+        for i in range(1, l+1):
+            rho_minus += self.u_neg(X_sort[i]) * (self.w_neg(F[i]) - self.w_neg(F[i-1]))
+
+        rho = rho_plus - rho_minus
+        return rho
+    def expectation_estimation(self,values,p_values,N_max =100, value_refs=None):
+        if self.mean_value_ref: self.b = np.mean(values)
+        elif self.exp_value_ref: self.b = np.sum(values*p_values)
+        elif self.exp_rational_value_ref: self.b = np.sum(value_refs*p_values)
+
+
+        X = [ np.random.choice(values,p=p_values) + random.gauss(0, 1) for i in range(N_max)] # generate empirical samples
+        X_sort = np.sort(X)
+
+        rho_plus, rho_minus = 0, 0
+        for i in range(1, N_max + 1):
+            if X_sort[i - 1] >= 0:
+                rho_plus += self.u_plus(X_sort[i - 1]) * (
+                        self.w_plus((N_max + 1 - i) / N_max)
+                        - self.w_plus((N_max - i) / N_max))
+            else:
+                rho_minus += self.u_neg(X_sort[i - 1]) * (
+                        self.w_neg(i / N_max)
+                        - self.w_neg((i - 1) / N_max))
+
+        # # sorted_idxs = np.argsort(values)
+        # X = [ np.random.choice(values,p=p_values) + random.gauss(0, 1) for i in range(N_max)] # generate empirical samples
+        # X_sort = np.sort(X)
+        # eta_1 = self.delta_p
+        # eta_2 = self.delta_n
+        # sigma_cpt_1 = self.eta_p
+        # sigma_cpt_2 = self.eta_n
+        # lam = self.lam
+        # b = self.b
+        #
+        # rho_plus, rho_minus = 0,0
+        # # for i in range(0, N_max):
+        # for i in range(1, N_max+1):
+        #     z_1 = (N_max + i - 1) / N_max + 0j
+        #     z_2 = (N_max - i) / N_max + 0j
+        #     z_3 = i / N_max + 0j
+        #     z_4 = (i - 1) / N_max + 0j
+        #     # rho_plus = rho_plus + abs(max(0, X_sort[i]-b)) ** sigma_cpt_1 * (
+        #     #             z_1 ** eta_1 / (z_1 ** eta_1 + (1 - z_1) ** eta_1) ** (1 / eta_1) - z_2 ** eta_1 / (
+        #     #                 z_2 ** eta_1 + (1 - z_2) ** eta_1) ** (1 / eta_1))
+        #     # rho_minus = rho_minus + lam*abs(min(0, X_sort[i]-b)) ** sigma_cpt_2 * (
+        #     #             z_3 ** eta_2 / (z_3 ** eta_2 + (1 - z_3) ** eta_2) ** (1 / eta_2) - z_4 ** eta_2 / (
+        #     #                 z_4 ** eta_2 + (1 - z_4) ** eta_2) ** (1 / eta_2))
+        #     rho_plus = rho_plus + abs(max(0, X_sort[i-1]-b)) ** sigma_cpt_1 * (
+        #                 z_1 ** eta_1 / (z_1 ** eta_1 + (1 - z_1) ** eta_1) ** (1 / eta_1) - z_2 ** eta_1 / (
+        #                     z_2 ** eta_1 + (1 - z_2) ** eta_1) ** (1 / eta_1))
+        #     rho_minus = rho_minus + lam*abs(min(0, X_sort[i-1]-b)) ** sigma_cpt_2 * (
+        #                 z_3 ** eta_2 / (z_3 ** eta_2 + (1 - z_3) ** eta_2) ** (1 / eta_2) - z_4 ** eta_2 / (
+        #                     z_4 ** eta_2 + (1 - z_4) ** eta_2) ** (1 / eta_2))
+        #
+        #     # rho_plus = rho_plus + abs(max(0, X_sort[i]-b)) ** sigma_cpt_1  * (self.w_plus(z_1) - self.w_plus(z_2))
+        #     #         # * ( z_1 ** eta_1 / (z_1 ** eta_1 + (1 - z_1) ** eta_1) ** (1 / eta_1)
+        #     #         # -   z_2 ** eta_1 / (z_2 ** eta_1 + (1 - z_2) ** eta_1) ** (1 / eta_1))
+        #     # rho_minus = rho_minus + lam * abs(min(0, X_sort[i]-b)) ** sigma_cpt_2 * (self.w_neg(z_3) - self.w_neg(z_4))
+        #     #         # z_3 ** eta_2 / (z_3 ** eta_2 + (1 - z_3) ** eta_2) ** (1 / eta_2) - z_4 ** eta_2 / (
+        #     #         # z_4 ** eta_2 + (1 - z_4) ** eta_2) ** (1 / eta_2))
+        #     # print(rho_plus,rho_minus)
+        rho = rho_plus - rho_minus
+        return rho
 
     def rho_plus(self,sorted_v,sorted_p,Fk,l,K):
         rho_p = 0
@@ -377,12 +468,30 @@ def main():
     # print(np.sum(values*p_values))
     # CPT.plot_curves()
 
-    values = np.array([0.01073038, 0.01114906])
-    p_values = np.array([0.1,0.9])
-    cpt_params = {'b': np.sum(values*p_values), 'lam': 1,
-                  'eta_p':1,'eta_n':1,
-                  'delta_p':1,'delta_n':1}
+    # values = np.array([0.01073038, 0.01114906])
+    values = np.array([-15,-10,-5.0, 5.0, 10, 15])
+    p_values = np.array([0.1,0.2,0.2, 0.2,0.2, 0.1])
+
+    # FROM Stochastic systems with cumulative prospect theory
+    # Example 2:
+    # values = np.array([-5, -3, -1, 2, 4, 6])
+    # p_values = np.array([1/6,1/6,1/6,1/6,1/6,1/6])#np.ones_like(values)/len(values)
+
+    # cpt_params = {'b': 0, 'lam': 1,
+    #               'eta_p':0.88,'eta_n':0.88,
+    #               'delta_p':0.61,'delta_n':0.69}
+    # cpt_params = {'b': 'e', 'lam': 1,
+    #               'eta_p':1,'eta_n':1,
+    #               'delta_p':0.61,'delta_n':0.69}
+    cpt_params = {'b': 0, 'lam': 2.25,
+                  'eta_p':0.88,'eta_n':0.88,
+                  'delta_p':0.61,'delta_n':0.69}
+    # cpt_params = {'b': 0, 'lam': 1,
+    #               'eta_p':1,'eta_n':1,
+    #               'delta_p':1,'delta_n':1}
     CPT = CumulativeProspectTheory(**cpt_params)
+    print(CPT.expectation_estimation(values, p_values))
+    print(CPT.expectation2(values, p_values))
     print(CPT.expectation(values, p_values))
     print(CPT.expectation_PT(values, p_values))
     print(np.sum(values * p_values))

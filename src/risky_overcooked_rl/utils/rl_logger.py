@@ -158,31 +158,20 @@ class TrajectoryHeatmap(object):
         masks = self.calc_masks()
         for key,mask in masks.items():
             self.draw_heatmap(self.ax_dict[key],mask)
-
-
-        # # masks = self.calc_masks()
-        # # cum_mask = self.calc_cumulative_mask(masks)
-        # # self.draw_heatmap(cum_mask, img_shape = np.shape(self.img)[:2])
-        # self.draw_heatmap()
-        # # ADD CHECKBOXES
-        # plt.subplots_adjust(right=0.7)
-        # # self.fig.close()
+        # self.draw_heatmap(self.ax_dict['soup'],masks['soup'])
 
         if self.blocking:
-            # while plt.fignum_exists(self.fig_number):
-            #     self.fig.canvas.flush_events()
-            #     time.sleep(0.1)
             while plt.fignum_exists(self.fig_number):
                 self.fig.canvas.flush_events()
                 time.sleep(0.1)
     def calc_masks(self):
         masks = {
-            'all_locs': np.zeros(self.grid_sz),
-            'p1_locs': np.zeros(self.grid_sz),
-            'p2_locs': np.zeros(self.grid_sz),
-            'onion': np.zeros(self.grid_sz),
-            'dish': np.zeros(self.grid_sz),
-            'soup': np.zeros(self.grid_sz),
+            'all_locs': np.zeros(np.flip(self.grid_sz)),
+            'p1_locs': np.zeros(np.flip(self.grid_sz)),
+            'p2_locs': np.zeros(np.flip(self.grid_sz)),
+            'onion': np.zeros(np.flip(self.grid_sz)),
+            'dish': np.zeros(np.flip(self.grid_sz)),
+            'soup': np.zeros(np.flip(self.grid_sz)),
         }
 
         for t, state in enumerate(self.qued_trajectory):
@@ -212,7 +201,6 @@ class TrajectoryHeatmap(object):
 
         return masks
 
-
     def draw_heatmap(self,ax,mask):
 
         """
@@ -222,7 +210,6 @@ class TrajectoryHeatmap(object):
         :return:
         """
         mask = np.flip(mask.T,axis=0)
-        img_shape = np.shape(self.img)[:2]
 
         # draw the heatmap ontop of overcooked map
         from matplotlib.colors import ListedColormap
@@ -235,7 +222,8 @@ class TrajectoryHeatmap(object):
         my_cmap[:, -1] = np.linspace(0, max_alpha, cmap.N)
         my_cmap = ListedColormap(my_cmap)
 
-        ny,nx = np.array(self.env.mdp.terrain_mtx).shape
+        ny,nx = self.grid_sz
+        img_shape = np.shape(self.img)[:2]
         szy,szx = int(img_shape[0]/ny), int(img_shape[1]/nx)
         # center = [0.5 * (szy - 1), 0.5 * (szx - 1)]
         center = [0.5 * (szy), 0.5 * (szx)]
@@ -244,237 +232,15 @@ class TrajectoryHeatmap(object):
             for ix in range(szx):
                 scale_mask[iy, ix] = multivariate_normal.pdf([ix, iy], mean=center, cov=3*szx)
 
-        for iy in range(self.grid_sz[0]):
-            for ix in range(self.grid_sz[1]):
-                x = np.linspace(ix, ix + 1, szx)*szx
-                y = szy-np.linspace(iy, iy + 1, szy)*szy
-                # val = mask[iy, ix]
+        for iy in range(ny):
+            for ix in range(nx):
+                x = np.linspace(ix, ix + 1, szx) * szx
+                y = szy - np.linspace(iy, iy + 1, szy) * szy
                 val = scale_mask * mask[iy, ix]
                 X, Y = np.meshgrid(x, y)
-                # self.ax.contourf(X, Y+szy*(ny-1), val, cmap='viridis', alpha=0.5)
-                # self.ax.contourf(X, Y + szy * (ny - 1), val, cmap=my_cmap)
-                # ax.pcolor(X, Y + szy * (ny - 1), val,
-                #                norm=colors.Normalize(vmin=0, vmax=np.max(scale_mask)*np.max(mask)),
-                #                cmap=my_cmap)
                 ax.pcolor(X, Y + szy * (ny - 1), val,
                           norm=colors.Normalize(vmin=0, vmax=np.max(scale_mask) * np.max(mask)),
                           cmap=my_cmap)
-
-        # sz = self.visualizer.tile_size #10
-        # center = [0.5 * (sz-1), 0.5 * (sz-1)]
-        # scale_mask = np.zeros([sz, sz])
-        # for iy in range(sz):
-        #     for ix in range(sz):
-        #         scale_mask[iy, ix] = multivariate_normal.pdf([ix, iy], mean=center, cov=sz/2)
-        #
-        # for iy in range(self.grid_sz[0]):
-        #     for ix in range(self.grid_sz[1]):
-        #
-        #         x = np.linspace(ix, ix + 1, sz)
-        #         y = np.linspace(iy, iy + 1, sz)
-        #         # val = mask[iy, ix]
-        #         val = scale_mask * mask[iy, ix]
-        #         X, Y = np.meshgrid(x, y)
-        #         self.ax.contourf(X, Y, val, cmap='viridis',alpha=1)
-
-#
-# class TrajectoryHeatmap(object):
-#     def __init__(self,env,blocking=True):
-#         self.env = env
-#         self.blocking = blocking
-#         self.qued_trajector = []
-#         self.visualizer = StateVisualizer()
-#         self.grid_sz = np.shape(self.env.mdp.terrain_mtx)
-#
-#         self.checkboxes = {
-#             'Player 1': True,
-#             'Player 2': True,
-#             'Unowned': True,
-#             'locations': True,
-#             'onion': False,
-#             'dish': False,
-#             'soup': False,
-#         }
-#     def render_image(self,state):
-#         image = self.visualizer.render_state(state=state, grid=self.env.mdp.terrain_mtx)
-#         buffer = pygame.surfarray.array3d(image)
-#         image = copy.deepcopy(buffer)
-#         image = np.flip(np.rot90(image, 3), 1)
-#         image = cv2.resize(image, (2 * 528, 2 * 464))
-#         self.xpad = 0.2
-#         return image
-#     def spawn_figure(self):
-#         self.fig, self.ax = plt.subplots()
-#         # plt.subplots_adjust(right=0.7)
-#         # # self.fig.close()
-#         # self.ax.set_xticks([])
-#         # self.ax.set_yticks([])
-#         #
-#         # ax_cb = self.fig.add_axes([0.75, 0.1, 0.2, 0.8]) # (left, bottom, width, height)
-#         # check = CheckButtons(
-#         #     ax=ax_cb,
-#         #     labels= [key for key in self.checkboxes.keys()],#self.checkboxes.keys(),
-#         #     actives=[v for v in self.checkboxes.values()],
-#         #     # label_props={'color': line_colors},
-#         #     # frame_props={'edgecolor': line_colors},
-#         #     # check_props={'facecolor': line_colors},
-#         # )
-#         # check.on_clicked(self.cb_callback)
-#
-#         self.fig_number = self.fig.number
-#     def cb_callback(self,label):
-#         print(f'{label} clicked')
-#         self.checkboxes[label] = not self.checkboxes[label]
-#
-#     def que_trajectory(self, state_history):
-#         self.qued_trajectory = state_history
-#
-#     def preview(self,*args):
-#         self.spawn_figure()
-#         self.img = self.render_image(self.qued_trajectory[0])
-#         self.ax.imshow(self.img)
-#
-#         # masks = self.calc_masks()
-#         # cum_mask = self.calc_cumulative_mask(masks)
-#         # self.draw_heatmap(cum_mask, img_shape = np.shape(self.img)[:2])
-#         self.draw_heatmap()
-#         # ADD CHECKBOXES
-#         plt.subplots_adjust(right=0.7)
-#         # self.fig.close()
-#         self.ax.set_xticks([])
-#         self.ax.set_yticks([])
-#
-#         ax_cb = self.fig.add_axes([0.75, 0.2, 0.2, 0.8])  # (left, bottom, width, height)
-#         check = CheckButtons(
-#             ax=ax_cb,
-#             labels=[key for key in self.checkboxes.keys()],  # self.checkboxes.keys(),
-#             actives=[v for v in self.checkboxes.values()],
-#             # label_props={'color': line_colors},
-#             # frame_props={'edgecolor': line_colors},
-#             # check_props={'facecolor': line_colors},
-#         )
-#         check.on_clicked(self.cb_callback)
-#
-#         ax_draw_button = self.fig.add_axes([0.75, 0.1, 0.2, 0.1])  # (left, bottom, width, height)
-#         draw_button = Button(ax_draw_button, 'Draw')
-#         draw_button.on_clicked(self.draw_heatmap)
-#
-#         if self.blocking:
-#             # while plt.fignum_exists(self.fig_number):
-#             #     self.fig.canvas.flush_events()
-#             #     time.sleep(0.1)
-#             while plt.fignum_exists(self.fig_number):
-#                 self.fig.canvas.flush_events()
-#                 time.sleep(0.1)
-#     def calc_masks(self):
-#         masks = {
-#             'Player 1_locations': np.zeros(self.grid_sz),
-#             'Player 1_onion': np.zeros(self.grid_sz),
-#             'Player 1_dish': np.zeros(self.grid_sz),
-#             'Player 1_soup': np.zeros(self.grid_sz),
-#             'Player 2_locations': np.zeros(self.grid_sz),
-#             'Player 2_onion': np.zeros(self.grid_sz),
-#             'Player 2_dish': np.zeros(self.grid_sz),
-#             'Player 2_soup': np.zeros(self.grid_sz),
-#             'Unowned_onion': np.zeros(self.grid_sz),
-#             'Unowned_dish': np.zeros(self.grid_sz),
-#             'Unowned_soup': np.zeros(self.grid_sz),
-#         }
-#         for t, state in enumerate(self.qued_trajectory):
-#             # Increment player location and held objects #################
-#             for ip in range(2):
-#                 player = state.players[ip]
-#                 masks[f'Player {ip + 1}_locations'][player.position] += 1
-#                 if player.has_object():
-#                     masks[f'Player {ip + 1}_{player.held_object.name}'][player.position] += 1
-#
-#             # Increment unowned objects ##################################
-#             for obj_name,obj_lst in state.unowned_objects_by_type.items():
-#                 if t > 0:
-#                     prev_locs = [pobj.position for pobj in
-#                                  self.qued_trajectory[t - 1].unowned_objects_by_type[obj_name]]
-#
-#                 for obj in obj_lst:
-#                     if t>0: # If the object was not their last turn
-#                         if not (obj.position in prev_locs):
-#                             masks[f'Unowned_{obj_name}'][obj.position] += 1
-#                     else: masks[f'Unowned_{obj_name}'][obj.position] += 1
-#         return masks
-#
-#     def calc_cumulative_mask(self, masks):
-#         cum_mask = np.zeros(self.grid_sz)
-#         for owner in ['Player 1', 'Player 2', 'Unowned']:
-#             for target in ['locations','onion', 'dish', 'soup']:
-#                 key = f'{owner}_{target}'
-#                 if not key == 'Unowned_locations':
-#                     cum_mask += masks[key]
-#         return cum_mask
-#
-#
-#     def draw_heatmap(self,*args):
-#
-#         """
-#         https://python-graph-gallery.com/2d-density-plot/
-#         https://python-graph-gallery.com/bubble-plot/
-#         :param mask:
-#         :return:
-#         """
-#         img_shape = np.shape(self.img)[:2]
-#         all_masks = self.calc_masks()
-#         mask = self.calc_cumulative_mask(all_masks)
-#
-#         # fig, ax = plt.subplots(1, 1, figsize=(15, 15))
-#         # draw the overcooked grid
-#
-#         # draw the heatmap ontop of overcooked map
-#         from matplotlib.colors import ListedColormap
-#         import matplotlib.colors as colors
-#
-#         max_alpha = 0.75
-#         # cmap = plt.cm.plasma
-#         cmap = plt.cm.jet
-#         my_cmap = cmap(np.arange(cmap.N))
-#         my_cmap[:, -1] = np.linspace(0, max_alpha, cmap.N)
-#         my_cmap = ListedColormap(my_cmap)
-#
-#         ny,nx = np.array(self.env.mdp.terrain_mtx).shape
-#         szy,szx = int(img_shape[0]/ny), int(img_shape[1]/nx)
-#         # center = [0.5 * (szy - 1), 0.5 * (szx - 1)]
-#         center = [0.5 * (szy), 0.5 * (szx)]
-#         scale_mask = np.zeros([szy, szx])
-#         for iy in range(szy):
-#             for ix in range(szx):
-#                 scale_mask[iy, ix] = multivariate_normal.pdf([ix, iy], mean=center, cov=3*szx)
-#
-#         for iy in range(self.grid_sz[0]):
-#             for ix in range(self.grid_sz[1]):
-#                 x = np.linspace(ix, ix + 1, szx)*szx
-#                 y = szy-np.linspace(iy, iy + 1, szy)*szy
-#                 # val = mask[iy, ix]
-#                 val = scale_mask * mask[iy, ix]
-#                 X, Y = np.meshgrid(x, y)
-#                 # self.ax.contourf(X, Y+szy*(ny-1), val, cmap='viridis', alpha=0.5)
-#                 # self.ax.contourf(X, Y + szy * (ny - 1), val, cmap=my_cmap)
-#                 self.ax.pcolor(X, Y + szy * (ny - 1), val,
-#                                norm=colors.Normalize(vmin=0, vmax=np.max(scale_mask)*np.max(mask)),
-#                                cmap=my_cmap)
-#
-#         # sz = self.visualizer.tile_size #10
-#         # center = [0.5 * (sz-1), 0.5 * (sz-1)]
-#         # scale_mask = np.zeros([sz, sz])
-#         # for iy in range(sz):
-#         #     for ix in range(sz):
-#         #         scale_mask[iy, ix] = multivariate_normal.pdf([ix, iy], mean=center, cov=sz/2)
-#         #
-#         # for iy in range(self.grid_sz[0]):
-#         #     for ix in range(self.grid_sz[1]):
-#         #
-#         #         x = np.linspace(ix, ix + 1, sz)
-#         #         y = np.linspace(iy, iy + 1, sz)
-#         #         # val = mask[iy, ix]
-#         #         val = scale_mask * mask[iy, ix]
-#         #         X, Y = np.meshgrid(x, y)
-#         #         self.ax.contourf(X, Y, val, cmap='viridis',alpha=1)
 
 
 

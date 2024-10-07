@@ -12,10 +12,12 @@ if __name__ == "__main__":
     config = get_default_config()
     config['epsilon_sched'] = [0.5,0.1, 5_000] # start at lower epsilon
     config['rshape_sched'] = [0.0, 0.0, 5_000]  # start at lower epsilon
-    config['lr_sched'] = [1e-5, 1e-5, 10_000] # turn down learning rate at start
+    # config['lr_sched'] = [1e-5, 1e-5, 10_000] # turn down learning rate at start
+    # config['lr_sched'] = [1e-25, 1e-25, 10_000] # turn down learning rate at start
     config['loads'] = 'rational'
+    # config['p_slip'] = 0.4
     config = parse_args(config)
     config["ALGORITHM"] = 'Retrain-' + config['ALGORITHM']
     trainer = Trainer(SelfPlay_QRE_OSA_CPT, config)
-    trainer.N_tests = 2
+    trainer.N_tests = 1
     trainer.run()

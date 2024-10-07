@@ -29,6 +29,7 @@ class Trainer:
         self.config = config
         self.cpt_params = config['cpt_params']
         self.timestamp = config['Date']
+        self.time_cost = config['time_cost']
 
         # Generate MDP and environment----------------
         self.LAYOUT = config['LAYOUT']
@@ -40,7 +41,7 @@ class Trainer:
         self.ITERATIONS = config['ITERATIONS']
         self.mdp = OvercookedGridworld.from_layout_name(self.LAYOUT)
         self.mdp.p_slip = config['p_slip']
-        self.env = OvercookedEnv.from_mdp(self.mdp, horizon=self.HORIZON)
+        self.env = OvercookedEnv.from_mdp(self.mdp, horizon=self.HORIZON,time_cost=self.time_cost)
         self.N_tests = 1
         self.test_interval = 10  # test every n iterations
         self.feasible_action = FeasibleActionManager(self.env)

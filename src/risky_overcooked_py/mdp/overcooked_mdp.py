@@ -1279,9 +1279,8 @@ class OvercookedGridworld(object):
         self.old_reward_shaping = False # False uses shaped reward that keeps track of handoffs between agents
         self.shared_reward_split = False # when both agents contribute to shaped reward {True: each receive half| False: each receive full}
         self.dropped_object_rewards = {
-            'onion': -1,
-            'dish': -2,
-            'soup': -5
+            # 'onion': -1, 'dish': -2, 'soup': -5
+            'onion': 0, 'dish': 0, 'soup': 0
         }
     @staticmethod
     def from_layout_name(layout_name, **params_to_overwrite):

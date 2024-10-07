@@ -56,6 +56,7 @@ class OvercookedEnv(object):
         info_level=0,
         num_mdp=1,
         initial_info={},
+        time_cost=0
     ):
         """
         mdp_generator_fn (callable):    A no-argument function that returns a OvercookedGridworld instance
@@ -89,6 +90,7 @@ class OvercookedEnv(object):
                 "Environment has (near-)infinite horizon and no terminal states. \
                 Reduce info level of OvercookedEnv to not see this message."
             )
+        self.time_cost = time_cost
 
     @property
     def mlam(self):
@@ -123,6 +125,7 @@ class OvercookedEnv(object):
         mlam_params=NO_COUNTERS_PARAMS,
         info_level=1,
         num_mdp=None,
+        time_cost=0
     ):
         """
         Create an OvercookedEnv directly from a OvercookedGridworld mdp
@@ -139,6 +142,7 @@ class OvercookedEnv(object):
             mlam_params=mlam_params,
             info_level=info_level,
             num_mdp=1,
+            time_cost=time_cost
         )
 
     #####################
@@ -277,7 +281,8 @@ class OvercookedEnv(object):
             self._add_episode_info(env_info)
 
         timestep_sparse_reward = sum(mdp_infos["sparse_reward_by_agent"]) \
-                                 + sum(mdp_infos["dropped_reward_by_agent"])
+                                 + sum(mdp_infos["dropped_reward_by_agent"]) \
+                                    + self.time_cost
         return (next_state, timestep_sparse_reward, done, env_info)
 
     def lossless_state_encoding_mdp(self, state):

@@ -10,7 +10,7 @@ debug = False
 class CirriculumTrainer(Trainer):
     def __init__(self,model_object,custom_config):
         super().__init__(model_object,custom_config)
-        self.curriculum = Curriculum(self.env)
+        self.curriculum = Curriculum(self.env,timecost=custom_config['time_cost'])
         self.schedule_decay = 0.7
 
     def run(self):
@@ -202,7 +202,7 @@ class CirriculumTrainer(Trainer):
 
 
 class Curriculum:
-    def __init__(self, env):
+    def __init__(self, env, timecost=0):
         self.env = env
         self.mdp = env.mdp
         self.layout = self.mdp.layout_name
@@ -226,15 +226,15 @@ class Curriculum:
         #     'full_task': 40
         # }
         self.cirriculum_step_threshs = {
-            'deliver_soup': 80,
-            'pick_up_soup': 80,
-            'pick_up_dish': 70,
-            'wait_to_cook': 50,
-            'deliver_onion3': 50,
-            'pick_up_onion3': 50,
-            'deliver_onion2': 40,
-            'pick_up_onion2': 40,
-            'deliver_onion1': 40,
+            'deliver_soup': 80 - self.env.horizon*timecost,
+            'pick_up_soup': 80 - self.env.horizon*timecost,
+            'pick_up_dish': 70 - self.env.horizon*timecost,
+            'wait_to_cook': 50 - self.env.horizon*timecost,
+            'deliver_onion3': 50 - self.env.horizon*timecost,
+            'pick_up_onion3': 50 - self.env.horizon*timecost,
+            'deliver_onion2': 40 - self.env.horizon*timecost,
+            'pick_up_onion2': 40 - self.env.horizon*timecost,
+            'deliver_onion1': 40 - self.env.horizon*timecost,
             'full_task': 999
         }
 

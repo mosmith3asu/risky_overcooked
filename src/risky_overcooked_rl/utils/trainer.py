@@ -311,7 +311,28 @@ class Trainer:
             self.env.state = next_state
         rollout_info['mean_loss'] = np.mean(losses)
         return cum_reward, cum_shaped_reward, rollout_info
-    def test_rollout(self,rationality,epsilon=0,rshape_scale=1):
+    def test_rollout(self,rationality,epsilon=0,rshape_scale=1,get_info = False):
+
+        if get_info:
+            rollout_info = {
+                'onion_risked': np.zeros([1, 2]),
+                'onion_pickup': np.zeros([1, 2]),
+                'onion_drop': np.zeros([1, 2]),
+                'dish_risked': np.zeros([1, 2]),
+                'dish_pickup': np.zeros([1, 2]),
+                'dish_drop': np.zeros([1, 2]),
+                'soup_pickup': np.zeros([1, 2]),
+                'soup_delivery': np.zeros([1, 2]),
+
+                'soup_risked': np.zeros([1, 2]),
+                'onion_slip': np.zeros([1, 2]),
+                'dish_slip': np.zeros([1, 2]),
+                'soup_slip': np.zeros([1, 2]),
+                'onion_handoff': np.zeros([1, 2]),
+                'dish_handoff': np.zeros([1, 2]),
+                'soup_handoff': np.zeros([1, 2]),
+
+            }
         self.model.model.eval()
         self.model.target.eval()
         self.model.rationality = rationality
@@ -329,8 +350,9 @@ class Trainer:
             joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs, epsilon=epsilon)
             next_state, reward, done, info = self.env.step(joint_action)
 
-            q_val = float(self.model.model(obs)[0,joint_action_idx].detach().cpu().numpy())
-            q_vals.append(q_val)
+            NF_Game = self.model.get_normal_form_game(obs)
+            _, _, val = self.model.compute_EQ(NF_Game)
+            q_vals.append(float(val[0,0].detach().cpu().numpy()))
 
             # Track reward traces
             test_reward += reward
@@ -341,12 +363,18 @@ class Trainer:
             aprob_history.append(action_probs)
             state_history.append(next_state.deepcopy())
 
+            if get_info:
+                for key in rollout_info.keys():
+                    if key not in ['mean_loss']:
+                        rollout_info[key] += np.array(info['mdp_info']['event_infos'][key])
+
             if done:  break
             self.env.state = next_state
         self.model.model.train()
         self.model.target.train()
         print(f"Q-vals: {[np.mean(q_vals),np.min(q_vals),np.max(q_vals)]} | all>0: {np.all(np.array(q_vals) > 0)}")
-        return test_reward, test_shaped_reward, state_history, action_history, aprob_history
+        if get_info: return test_reward, test_shaped_reward, state_history, action_history, aprob_history, rollout_info
+        else: return test_reward, test_shaped_reward, state_history, action_history, aprob_history
 
     ################################################################
     # State Randomizer #############################################

@@ -32,5 +32,4 @@
       'eta_n': 1.0  # diminishing loss sensitivity
       'delta_p': 1.0 # s-shaped probability estimation bias for gains
       'delta_n': 1.0 # s-shaped probability estimation bias for losses
-  'cpt_rational_ref': False # whether to use rational reference for cpt[b]
   'note': ''  # additional notes'

@@ -12,7 +12,7 @@ if __name__ == "__main__":
     config = get_default_config()
     config = parse_args(config)
     config["ALGORITHM"] = 'Standard-' + config['ALGORITHM']
-    # trainer = Trainer(SelfPlay_QRE_OSA_CPT, config)
-    trainer = Trainer(SelfPlay_QRE_OSA, config)
+    trainer = Trainer(SelfPlay_QRE_OSA_CPT, config)
+    # trainer = Trainer(SelfPlay_QRE_OSA, config)
     # trainer.N_tests = 2
     trainer.run()

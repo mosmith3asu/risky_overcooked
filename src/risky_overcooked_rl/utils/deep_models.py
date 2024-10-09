@@ -83,24 +83,21 @@ class DQN_vector_feature(nn.Module):
     def __init__(self, obs_shape, n_actions,num_hidden_layers,size_hidden_layers,**kwargs):
         self.num_hidden_layers = num_hidden_layers
         self.size_hidden_layers = size_hidden_layers
-        # self.mlp_activation = F.leaky_relu
         self.mlp_activation = nn.LeakyReLU
 
         super(DQN_vector_feature, self).__init__()
-        # self.layer1 = nn.Linear(obs_shape[0], self.size_hidden_layers)
-        # self.layer2 = nn.Linear(self.size_hidden_layers, self.size_hidden_layers)
-        # self.layer3 = nn.Linear(self.size_hidden_layers, n_actions)
+        self.layer1 = nn.Linear(obs_shape[0], self.size_hidden_layers)
+        self.layer2 = nn.Linear(self.size_hidden_layers, self.size_hidden_layers)
+        self.layer3 = nn.Linear(self.size_hidden_layers, n_actions)
 
         layer_buffer = [ nn.Linear(obs_shape[0], self.size_hidden_layers),self.mlp_activation()]
         for i in range(1,self.num_hidden_layers-1):
             layer_buffer.extend([nn.Linear(self.size_hidden_layers, self.size_hidden_layers),self.mlp_activation()])
         layer_buffer.extend([nn.Linear(self.size_hidden_layers, n_actions)])
+
         self.layers = nn.Sequential(*layer_buffer)
 
-        # self.mlp_activation = F.relu
-        self.mlp_activation = F.leaky_relu
-        # self.mlp_activation = F.sigmoid
-        # self.optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
+
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
@@ -267,7 +264,7 @@ class SelfPlay_QRE_OSA(object):
         value = torch.cat([torch.sum(nf_games[:, ego, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1),
                            torch.sum(nf_games[:, partner, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1)], dim=1)
         return value
-    def level_k_qunatal(self,nf_games, sophistication=8, belief_trick=True,scaling=False):
+    def level_k_qunatal(self,nf_games, sophistication=4, belief_trick=True):
         """Implementes a k-bounded QRE computation
         https://en.wikipedia.org/wiki/Quantal_response_equilibrium
         as reationality -> infty, QRE -> Nash Equilibrium
@@ -284,16 +281,14 @@ class SelfPlay_QRE_OSA(object):
                               torch.transpose(g[:, ego, :, :], -1, -2).unsqueeze(1)], dim=1)
 
         def softmax(x):
-            ex = torch.exp(x - torch.max(x, dim=1).values.reshape(-1, 1).repeat(1, player_action_dim))
-            return ex / torch.sum(ex, dim=1).reshape(-1, 1).repeat(1, player_action_dim)
+            return torch.softmax(x,dim=1)
 
         def step_QRE(game, k):
             if k == 0:  partner_dist = uniform_dist
             else:  partner_dist = step_QRE(invert_game(game), k - 1)
 
             Exp_qAi = torch.bmm(game[:, ego, :, :], partner_dist.unsqueeze(-1)).squeeze(-1)
-            _rat = rationality * ((k+1) / (sophistication+1)) if scaling else rationality
-            return softmax(_rat * Exp_qAi)
+            return softmax(rationality * Exp_qAi)
 
         dist1 = step_QRE(nf_games, sophistication)
         if belief_trick:
@@ -543,12 +538,13 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         all_p_next_states = np.array(all_p_next_states).reshape(-1, 1)
 
         # IF using rational reference, get the rational expectations of following equalib solution
-        if self.CPT.exp_rational_value_ref:
-            with torch.no_grad():
-                NF_games_ref = self.get_normal_form_game(torch.cat(all_next_states), with_model=self.rational_ref_model)
-                all_next_value_ref = self.get_expected_equilibrium_value(NF_games_ref, all_next_a_dists)
-                all_next_value_ref = all_next_value_ref[:, 0].reshape(-1, 1).detach().cpu().numpy()
-        else: all_next_value_ref = None
+        # if self.CPT.exp_rational_value_ref:
+        #     with torch.no_grad():
+        #         NF_games_ref = self.get_normal_form_game(torch.cat(all_next_states), with_model=self.rational_ref_model)
+        #         all_next_value_ref = self.get_expected_equilibrium_value(NF_games_ref, all_next_a_dists)
+        #         all_next_value_ref = all_next_value_ref[:, 0].reshape(-1, 1).detach().cpu().numpy()
+        # else: all_next_value_ref = None
+        all_next_value_ref = None
 
 
         expected_q_value = self.prospect_value_expectations(reward=reward,
@@ -570,7 +566,7 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         return loss.item()
     def prospect_value_expectations(self,reward,done,prospect_masks,
                                     prospect_next_q_values,prospect_p_next_states,
-                                    prospect_next_q_values_ref = None,  debug=True):
+                                    prospect_next_q_values_ref = None,  debug=False):
         """CPT expectation used for modification when class inherited by CPT version
         - condenses prospects back into expecations of |batch_size|
         """

@@ -10,7 +10,7 @@ debug = False
 class CirriculumTrainer(Trainer):
     def __init__(self,model_object,custom_config):
         super().__init__(model_object,custom_config)
-        self.curriculum = Curriculum(self.env,timecost=custom_config['time_cost'])
+        self.curriculum = Curriculum(self.env,time_cost=custom_config['time_cost'])
         self.schedule_decay = 0.7
 
     def run(self):
@@ -28,10 +28,15 @@ class CirriculumTrainer(Trainer):
             self.logger.start_iteration()
             cum_reward, cum_shaped_rewards, rollout_info = \
                 self.curriculum_rollout(cit,
-                                        rationality=self.rationality_sched[it],
-                                        epsilon = self.epsilon_sched[it],
-                                        rshape_scale= self.rshape_sched[it],
-                                        p_rand_start=self.random_start_sched[it])
+                                        rationality=self.rationality_sched[cit],
+                                        epsilon=self.epsilon_sched[cit],
+                                        rshape_scale=self.rshape_sched[cit],
+                                        p_rand_start=self.random_start_sched[cit])
+                # self.curriculum_rollout(cit,
+                #                         rationality=self.rationality_sched[it],
+                #                         epsilon = self.epsilon_sched[it],
+                #                         rshape_scale= self.rshape_sched[it],
+                #                         p_rand_start=self.random_start_sched[it])
 
             if it > 1: self.model.scheduler.step()  # updates learning rate scheduler
             self.model.update_target()  # performs soft update of target network
@@ -172,7 +177,8 @@ class CirriculumTrainer(Trainer):
 
             # Terminate episode
             if done: break
-            elif self.curriculum.is_early_stopping(self.env.state,reward):  # Cirriculum Complete, reset state in this episode
+            elif self.curriculum.is_early_stopping(self.env.state,reward,info):  # Cirriculum Complete, reset state in this episode
+            # elif info['mdp_info']['soup_delivery']:  # Cirriculum Complete, reset state in this episode
                 self.env.state = self.curriculum.sample_cirriculum_state()
                 # print(f"Early Stopping at t={t}")
             else: self.env.state = next_state
@@ -202,7 +208,7 @@ class CirriculumTrainer(Trainer):
 
 
 class Curriculum:
-    def __init__(self, env, timecost=0):
+    def __init__(self, env, time_cost=0):
         self.env = env
         self.mdp = env.mdp
         self.layout = self.mdp.layout_name
@@ -226,15 +232,15 @@ class Curriculum:
         #     'full_task': 40
         # }
         self.cirriculum_step_threshs = {
-            'deliver_soup': 80 - self.env.horizon*timecost,
-            'pick_up_soup': 80 - self.env.horizon*timecost,
-            'pick_up_dish': 70 - self.env.horizon*timecost,
-            'wait_to_cook': 50 - self.env.horizon*timecost,
-            'deliver_onion3': 50 - self.env.horizon*timecost,
-            'pick_up_onion3': 50 - self.env.horizon*timecost,
-            'deliver_onion2': 40 - self.env.horizon*timecost,
-            'pick_up_onion2': 40 - self.env.horizon*timecost,
-            'deliver_onion1': 40 - self.env.horizon*timecost,
+            'deliver_soup': 80 - self.env.horizon*time_cost,
+            'pick_up_soup': 80 - self.env.horizon*time_cost,
+            'pick_up_dish': 70 - self.env.horizon*time_cost,
+            'wait_to_cook': 50 - self.env.horizon*time_cost,
+            'deliver_onion3': 50 - self.env.horizon*time_cost,
+            'pick_up_onion3': 50 - self.env.horizon*time_cost,
+            'deliver_onion2': 40 - self.env.horizon*time_cost,
+            'pick_up_onion2': 40 - self.env.horizon*time_cost,
+            'deliver_onion1': 40 - self.env.horizon*time_cost,
             'full_task': 999
         }
 
@@ -258,7 +264,7 @@ class Curriculum:
         self.iteration += 1
         return False
 
-    def is_early_stopping(self,state,reward):
+    def is_early_stopping(self,state,reward,info):
         """
         Goal of each cirriculum is to deliver 1 soup except for full_task
         """
@@ -267,8 +273,9 @@ class Curriculum:
 
         i = self.current_cirriculum
         if not self.cirriculums[i] == 'full_task' :
-            if reward == 20: return True # reward for delivering soup
-            # elif len(state.all_objects_list) ==0: return True # lost all objects
+            # if reward == 20: return True # reward for delivering soup
+            # # elif len(state.all_objects_list) ==0: return True # lost all objects
+            if np.any(info['mdp_info']['event_infos']['soup_delivery']):  return True # delivering soup
         return False
 
 

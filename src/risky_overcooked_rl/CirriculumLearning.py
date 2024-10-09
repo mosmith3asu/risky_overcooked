@@ -12,6 +12,8 @@ debug = False
 # noinspection PyDictCreation
 def main():
     config = get_default_config()
+
+    # config['epsilon_sched']= [1.0, 0.15, 4000]
     config = parse_args(config)
     config["ALGORITHM"] = 'Curriculum-' + config['ALGORITHM']
 

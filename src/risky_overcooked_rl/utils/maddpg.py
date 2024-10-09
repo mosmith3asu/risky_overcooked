@@ -731,7 +731,7 @@ class Trainer():
             next_state, rewards, done, info = self.env.step(joint_action)
             next_obs = self.mdp.get_lossless_encoding_vector(self.env.state)
             next_obs = np.vstack([next_obs, self.invert_obs(next_obs)])
-            rewards = np.array(info['shaped_r_by_agent']).reshape(-1, 1)
+            rewards += np.array(info['shaped_r_by_agent']).reshape(-1, 1)
 
             if episode_step + 1 == self.env.horizon:#== self.env.episode_length:
                 done = True

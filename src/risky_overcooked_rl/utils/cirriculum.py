@@ -5,6 +5,8 @@ from risky_overcooked_rl.utils.deep_models import device,SelfPlay_QRE_OSA,SelfPl
 from datetime import datetime
 from risky_overcooked_py.mdp.actions import Action
 from collections import deque
+import math
+import scipy.stats as stats
 debug = False
 
 class CirriculumTrainer(Trainer):
@@ -274,11 +276,26 @@ class Curriculum:
             if np.any(info['mdp_info']['event_infos']['soup_delivery']):  return True # delivering soup
         return False
 
+    def pdf_curriculum_sample(self,curriculum_step):
+        n_curr = len(self.cirriculums) - 1
+        mu = curriculum_step
+        variance = 0.5
+        max_deviation = 3
+        sigma = math.sqrt(variance)
+        # x = np.linspace(mu - max_deviation*sigma, mu + max_deviation*sigma, 100)
+        x = np.linspace(min(0, mu - max_deviation * sigma), min(n_curr, mu + max_deviation * sigma), 100)
+        p_samples = stats.norm.pdf(x, mu, sigma)
+        p_samples = p_samples / np.sum(p_samples)
+        xi = np.random.choice(x, p=p_samples)
+        return xi
 
-    def sample_cirriculum_state(self, rand_start_chance = 0.9, sample_decay =0.5):
+    def sample_cirriculum_state(self, rand_start_chance = 0.9, sample_decay =0.5, pdf_sample=False):
         # i = self.current_cirriculum
-        pi = [sample_decay**(self.current_cirriculum-i) for i in range(self.current_cirriculum+1)]
-        i = np.random.choice(np.arange(self.current_cirriculum+1), p=np.array(pi)/np.sum(pi))
+        if pdf_sample:
+            self.pdf_curriculum_sample(self.current_cirriculum)
+        else:
+            pi = [sample_decay**(self.current_cirriculum-i) for i in range(self.current_cirriculum+1)]
+            i = np.random.choice(np.arange(self.current_cirriculum+1), p=np.array(pi)/np.sum(pi))
 
         state = self.add_random_start_loc()
 

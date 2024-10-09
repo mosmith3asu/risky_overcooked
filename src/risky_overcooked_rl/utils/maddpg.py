@@ -583,10 +583,8 @@ class Trainer():
         # OU Noise settings
         self.num_seed_steps = 10000#cfg.num_seed_steps
         self.ou_exploration_steps = cfg.num_train_steps
-        self.ou_init_scale = 0.3#cfg.ou_init_scale
-        self.ou_final_scale = 0#cfg.ou_final_scale
-
-        self.explore_rate = 0.0
+        self.ou_init_scale = 0.3 #cfg.ou_init_scale
+        self.ou_final_scale = 0  #cfg.ou_final_scale
 
         # if self.discrete_action:
         #     cfg.agent.params.obs_dim = self.mdp.get_lossless_encoding_vector_shape()
@@ -715,7 +713,7 @@ class Trainer():
                 # self.logger.log('train/episode', episode, self.step)
                 # print('train/episode_reward', episode_reward, self.step)
             # Warmup ----------------
-            if self.step < self.num_seed_steps or self.explore_rate > np.random.rand():
+            if self.step < self.num_seed_steps:
                 # action = np.array([self.env.action_space.sample() for _ in self.env_agent_types])
                 action = np.array([np.random.choice(np.arange(len(Action.ALL_ACTIONS))) for _ in range(self.n_agents)])
                 if self.discrete_action: action = action.reshape(-1, 1)
@@ -778,8 +776,8 @@ class Config():
             action_dim= None  # to be specified later
             action_range= None  # to be specified later
             agent_index= None  # Different by environments
-            hidden_dim= 256
-            device= 'cuda'
+            hidden_dim= 128
+            device= 'cuda' if torch.cuda.is_available() else 'cpu'
             discrete_action_space= True
             batch_size= 256
             lr= 0.001
@@ -808,7 +806,7 @@ class Config():
 
     common_reward= False#True
 
-    device = "cuda"
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     # Logging Settings
     log_frequency= 1000

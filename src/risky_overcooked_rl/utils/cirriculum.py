@@ -19,28 +19,23 @@ class CirriculumTrainer(Trainer):
         # Main training Loop
         for it in range(self.ITERATIONS):
             cit = self.curriculum.iteration
-
+            self.logger.start_iteration()
             self.logger.spin()
 
             ##########################################################
             # Training Step ##########################################
             # Perform Rollout
-            self.logger.start_iteration()
+
             cum_reward, cum_shaped_rewards, rollout_info = \
                 self.curriculum_rollout(cit,
                                         rationality=self.rationality_sched[cit],
                                         epsilon=self.epsilon_sched[cit],
                                         rshape_scale=self.rshape_sched[cit],
                                         p_rand_start=self.random_start_sched[cit])
-                # self.curriculum_rollout(cit,
-                #                         rationality=self.rationality_sched[it],
-                #                         epsilon = self.epsilon_sched[it],
-                #                         rshape_scale= self.rshape_sched[it],
-                #                         p_rand_start=self.random_start_sched[it])
 
             if it > 1: self.model.scheduler.step()  # updates learning rate scheduler
             self.model.update_target()  # performs soft update of target network
-            self.logger.end_iteration()
+
 
             next_cirriculum = self.curriculum.step_cirriculum(cum_reward)
             if next_cirriculum:
@@ -106,6 +101,7 @@ class CirriculumTrainer(Trainer):
                 train_rewards = []
                 train_losses = []
                 self.curriculum.eval('off')
+            self.logger.end_iteration()
         self.logger.wait_for_close(enable=True)
 
     def curriculum_rollout(self, it, rationality,epsilon,rshape_scale,p_rand_start=0):
@@ -232,15 +228,15 @@ class Curriculum:
         #     'full_task': 40
         # }
         self.cirriculum_step_threshs = {
-            'deliver_soup': 80 - self.env.horizon*time_cost,
-            'pick_up_soup': 80 - self.env.horizon*time_cost,
-            'pick_up_dish': 70 - self.env.horizon*time_cost,
-            'wait_to_cook': 50 - self.env.horizon*time_cost,
-            'deliver_onion3': 50 - self.env.horizon*time_cost,
-            'pick_up_onion3': 50 - self.env.horizon*time_cost,
-            'deliver_onion2': 40 - self.env.horizon*time_cost,
-            'pick_up_onion2': 40 - self.env.horizon*time_cost,
-            'deliver_onion1': 40 - self.env.horizon*time_cost,
+            'deliver_soup': 80 + self.env.horizon*time_cost,
+            'pick_up_soup': 80 + self.env.horizon*time_cost,
+            'pick_up_dish': 70 + self.env.horizon*time_cost,
+            'wait_to_cook': 50 + self.env.horizon*time_cost,
+            'deliver_onion3': 50 + self.env.horizon*time_cost,
+            'pick_up_onion3': 50 + self.env.horizon*time_cost,
+            'deliver_onion2': 40 + self.env.horizon*time_cost,
+            'pick_up_onion2': 40 + self.env.horizon*time_cost,
+            'deliver_onion1': 40 + self.env.horizon*time_cost,
             'full_task': 999
         }
 

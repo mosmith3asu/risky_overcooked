@@ -154,6 +154,7 @@ class SelfPlay_QRE_OSA(object):
         self.gamma = config['gamma']
         self.tau = config['tau']
         self.eq_sol = 'QRE'
+        # self.eq_sol = 'Pareto'
         self.rationality = 10
         self.num_agents = 2
         self.mem_size = config['replay_memory_size']
@@ -264,6 +265,20 @@ class SelfPlay_QRE_OSA(object):
         value = torch.cat([torch.sum(nf_games[:, ego, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1),
                            torch.sum(nf_games[:, partner, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1)], dim=1)
         return value
+    def pareto(self, nf_games):
+        batch_sz = nf_games.shape[0]
+        all_dists = torch.zeros([batch_sz, self.num_agents, self.player_action_dim])
+        all_values = torch.zeros(batch_sz, self.num_agents, device=self.device)
+        # eye = torch.eye(self.player_action_dim, device=self.device)
+        for i, g in enumerate(nf_games):
+            sum_game = g.sum(dim=0)
+            sum_max_val = torch.max(sum_game)
+            action_idxs = (sum_game == sum_max_val).nonzero().squeeze(0)
+            all_dists[i, 0, action_idxs[0]] = 1
+            all_dists[i, 1, action_idxs[1]] = 1
+            all_values[i, :] = g[:, action_idxs[0],action_idxs[1]]
+        return all_dists,all_values
+
     def level_k_qunatal(self,nf_games, sophistication=4, belief_trick=True):
         """Implementes a k-bounded QRE computation
         https://en.wikipedia.org/wiki/Quantal_response_equilibrium
@@ -318,8 +333,8 @@ class SelfPlay_QRE_OSA(object):
 
         # Compute equilibrium for each game
         if self.eq_sol == 'QRE': all_dists,all_ne_values = self.level_k_qunatal(NF_Games)
-        elif self.eq_sol == 'scaling_QRE': all_dists,all_ne_values = self.level_k_qunatal(NF_Games,scaling=True)
-        elif self.eq_sol == 'Pareto': raise NotImplementedError
+        # elif self.eq_sol == 'scaling_QRE': all_dists,all_ne_values = self.level_k_qunatal(NF_Games,scaling=True)
+        elif self.eq_sol == 'Pareto': all_dists,all_ne_values = self.pareto(NF_Games)
         elif self.eq_sol == 'Nash': raise NotImplementedError # not feasible for gen. sum. game
         else: raise ValueError(f"Invalid EQ solution:{self.eq_sol}")
 

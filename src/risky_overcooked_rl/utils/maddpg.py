@@ -586,8 +586,9 @@ class Trainer():
         self.num_warmup_steps =  cfg.num_warmup_episodes * self.env.horizon# 10_000#cfg.num_warmup_steps
         self.num_episodes = cfg.num_episodes
         self.ou_exploration_steps = cfg.num_episodes * cfg.episode_length #cfg.num_train_steps
-        self.ou_init_scale = 0.3 #cfg.ou_init_scale
-        self.ou_final_scale = 0  #cfg.ou_final_scale
+        self.ou_init_scale = cfg.ou_init_scale
+        self.ou_final_scale = cfg.ou_final_scale
+        self.ou_exp_decay = cfg.ou_exponent_decay
 
         cfg.agent.params.obs_dim = self.mdp.get_lossless_encoding_vector_shape()[0]
         cfg.agent.params.action_dim = Action.NUM_ACTIONS
@@ -669,124 +670,128 @@ class Trainer():
         return average_episode_reward
 
 
-    # def warmup(self):
-    #     train_sparse_rewards = deque(maxlen=self.env.horizon)
-    #     train_shaped_rewards = deque(maxlen=self.env.horizon)
-    #     # train_loss = deque(maxlen=self.env.horizon)
-    #
-    #
-    #
-    #     for _ in range(self.num_warmup_steps):
-    #
-    #         episode_sparse_reward = 0
-    #         episode_shaped_reward = 0
-    #         self.env.reset()
-    #         obs = self.mdp.get_lossless_encoding_vector(self.env.state)
-    #         obs = np.vstack([obs, self.invert_obs(obs)])
-    #         for t in range(self.env.horizon):
-    #             # Act
-    #             action = np.array([np.random.choice(np.arange(len(Action.ALL_ACTIONS))) for _ in range(self.n_agents)])
-    #             joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(tuple(action))
-    #             joint_action = self.joint_action_space[joint_action_idx]
-    #
-    #             # Step state-action
-    #             next_state, sparse_rewards, done, info = self.env.step(joint_action)
-    #             next_obs = self.mdp.get_lossless_encoding_vector(self.env.state)
-    #             next_obs = np.vstack([next_obs, self.invert_obs(next_obs)])
-    #             shaped_rewards = info['shaped_r_by_agent']
-    #
-    #             # Log and store in memory and update
-    #             episode_sparse_reward += sparse_rewards
-    #             episode_shaped_reward += np.mean(shaped_rewards)
-    #             rewards = np.mean(sparse_rewards) + np.array(shaped_rewards).reshape(-1, 1)
-    #             if self.discrete_action: action = action.reshape(-1, 1)
-    #             dones = np.array([done for _ in range(self.n_agents)]).reshape(-1, 1)
-    #             self.replay_buffer.add(obs, action, rewards, next_obs, dones)
-    #             self.agent.update(self.replay_buffer, self.logger, self.step)
-    #
-    #             # Close step
-    #             obs = next_obs
-    #             self.step += 1
-    #             if done:
-    #                 print('warmup/episode_reward', [episode_sparse_reward, episode_shaped_reward], self.step)
-    #                 break
-    #
-    # def run(self):
-    #     sparse_rewards_buffer = deque(maxlen = self.cfg.episode_length)
-    #     shaped_rewards_buffer = deque(maxlen=self.cfg.episode_length)
-    #     loss_buffer = deque(maxlen=self.cfg.episode_length)
-    #     self.warmup()
-    #     for epi in range(self.num_warmup_steps):
-    #
-    #         # Exploration noise
-    #         self.ou_percentage = max(0, self.ou_exploration_steps - (self.step - self.num_warmup_steps)) / self.ou_exploration_steps
-    #         self.agent.scale_noise(self.ou_final_scale + (self.ou_init_scale - self.ou_final_scale) * self.ou_percentage)
-    #         self.agent.reset_noise()
-    #
-    #         # TRAINING ROLLOUT ##################################
-    #         episode_sparse_reward = 0
-    #         episode_shaped_reward = 0
-    #         self.env.reset()
-    #         obs = self.mdp.get_lossless_encoding_vector(self.env.state)
-    #         obs = np.vstack([obs, self.invert_obs(obs)])
-    #
-    #         for t in range(self.env.horizon):
-    #             self.logger.spin() # prevents plot from freezing
-    #
-    #             # Act
-    #             agent_observation = obs[self.agent_indexes]
-    #             agent_actions = self.agent.act(agent_observation, sample=True)
-    #             action = agent_actions
-    #             joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(tuple(action))
-    #             joint_action = self.joint_action_space[joint_action_idx]
-    #
-    #             # Step state-action
-    #             next_state, sparse_rewards, done, info = self.env.step(joint_action)
-    #             next_obs = self.mdp.get_lossless_encoding_vector(self.env.state)
-    #             next_obs = np.vstack([next_obs, self.invert_obs(next_obs)])
-    #             shaped_rewards = info['shaped_r_by_agent']
-    #
-    #             # Log and store in memory and update
-    #             episode_sparse_reward += sparse_rewards
-    #             episode_shaped_reward += np.mean(shaped_rewards)
-    #             rewards = np.mean(sparse_rewards) + np.array(shaped_rewards).reshape(-1, 1)
-    #             if self.discrete_action: action = action.reshape(-1, 1)
-    #             dones = np.array([done for _ in range(self.n_agents)]).reshape(-1, 1)
-    #             self.replay_buffer.add(obs, action, rewards, next_obs, dones)
-    #             self.agent.update(self.replay_buffer, self.logger, self.step)
-    #
-    #             # Close step
-    #             self.step += 1
-    #             obs = next_obs
-    #             if done:
-    #                 print('train/episode_reward', [episode_sparse_reward, episode_shaped_reward], self.step)
-    #                 break
-    #
-    #
-    #         # Log episode stats
-    #         sparse_rewards_buffer.append(episode_sparse_reward)
-    #         shaped_rewards_buffer.append(episode_shaped_reward)
-    #
-    #         # EVALUATION ROLLOUT ##################################
-    #         if self.step % self.cfg.eval_frequency == 0:
-    #             ave_eval_reward = self.evaluate()
-    #             self.logger.log(
-    #                 test_reward=[epi, np.mean(ave_eval_reward)],
-    #                 train_reward=[epi, np.mean(sparse_rewards_buffer)+np.mean(shaped_rewards_buffer)],
-    #             )
-    #             self.logger.draw()
+    def warmup(self):
+        # train_sparse_rewards = deque(maxlen=self.env.horizon)
+        # train_shaped_rewards = deque(maxlen=self.env.horizon)
+        # train_loss = deque(maxlen=self.env.horizon)
 
+        for _ in range(self.num_warmup_episodes):
+            episode_sparse_reward = 0
+            episode_shaped_reward = 0
+            self.env.reset()
+            obs = self.mdp.get_lossless_encoding_vector(self.env.state)
+            obs = np.vstack([obs, self.invert_obs(obs)])
+            for t in range(self.env.horizon):
+                # Act
+                action = np.array([np.random.choice(np.arange(len(Action.ALL_ACTIONS))) for _ in range(self.n_agents)])
+                joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(tuple(action))
+                joint_action = self.joint_action_space[joint_action_idx]
 
+                # Step state-action
+                next_state, sparse_rewards, done, info = self.env.step(joint_action)
+                next_obs = self.mdp.get_lossless_encoding_vector(self.env.state)
+                next_obs = np.vstack([next_obs, self.invert_obs(next_obs)])
+                shaped_rewards = info['shaped_r_by_agent']
+
+                # Log and store in memory and update
+                episode_sparse_reward += sparse_rewards
+                episode_shaped_reward += np.mean(shaped_rewards)
+                rewards = np.mean(sparse_rewards) + np.array(shaped_rewards).reshape(-1, 1)
+                if self.discrete_action: action = action.reshape(-1, 1)
+                dones = np.array([done for _ in range(self.n_agents)]).reshape(-1, 1)
+                self.replay_buffer.add(obs, action, rewards, next_obs, dones)
+                # self.agent.update(self.replay_buffer, self.logger, self.step)
+
+                # Close step
+                obs = next_obs
+                self.step += 1
+                if done:
+                    print('warmup/episode_reward', [episode_sparse_reward, episode_shaped_reward], self.step)
+                    break
 
     def run(self):
+        sparse_rewards_buffer = deque(maxlen = self.cfg.episode_length)
+        shaped_rewards_buffer = deque(maxlen=self.cfg.episode_length)
+        loss_buffer = deque(maxlen=self.cfg.episode_length)
+        self.warmup()
+        for epi in range(self.num_warmup_steps):
+            self.logger.start_iteration()
+
+            # Exploration noise
+            self.ou_percentage = max(0, self.ou_exploration_steps - (self.step - self.num_warmup_steps)) / self.ou_exploration_steps
+            self.ou_percentage = self.ou_percentage ** self.ou_exp_decay
+            self.agent.scale_noise(self.ou_final_scale + (self.ou_init_scale - self.ou_final_scale) * self.ou_percentage)
+            self.agent.reset_noise()
+
+            # TRAINING ROLLOUT ##################################
+            episode_sparse_reward = 0
+            episode_shaped_reward = 0
+            self.env.reset()
+            obs = self.mdp.get_lossless_encoding_vector(self.env.state)
+            obs = np.vstack([obs, self.invert_obs(obs)])
+
+            for t in range(self.env.horizon):
+                self.logger.spin() # prevents plot from freezing
+
+                # Act
+                agent_observation = obs[self.agent_indexes]
+                agent_actions = self.agent.act(agent_observation, sample=True)
+                action = agent_actions
+                joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(tuple(action))
+                joint_action = self.joint_action_space[joint_action_idx]
+
+                # Step state-action
+                next_state, sparse_rewards, done, info = self.env.step(joint_action)
+                next_obs = self.mdp.get_lossless_encoding_vector(self.env.state)
+                next_obs = np.vstack([next_obs, self.invert_obs(next_obs)])
+                shaped_rewards = info['shaped_r_by_agent']
+
+                # Log and store in memory and update
+                episode_sparse_reward += sparse_rewards
+                episode_shaped_reward += np.mean(shaped_rewards)
+                rewards = np.mean(sparse_rewards) + np.array(shaped_rewards).reshape(-1, 1)
+                if self.discrete_action: action = action.reshape(-1, 1)
+                dones = np.array([done for _ in range(self.n_agents)]).reshape(-1, 1)
+                self.replay_buffer.add(obs, action, rewards, next_obs, dones)
+                self.agent.update(self.replay_buffer, self.logger, self.step)
+
+                # Close step
+                self.step += 1
+                obs = next_obs
+                if done:
+                    print('train/episode_reward', [episode_sparse_reward, episode_shaped_reward], self.step)
+                    break
+
+
+            # Log episode stats
+            sparse_rewards_buffer.append(episode_sparse_reward)
+            shaped_rewards_buffer.append(episode_shaped_reward)
+
+            # EVALUATION ROLLOUT ##################################
+            if self.step % self.cfg.eval_frequency == 0:
+                ave_eval_reward = self.evaluate()
+                self.logger.log(
+                    test_reward=[epi, np.mean(ave_eval_reward)],
+                    train_reward=[epi, np.mean(sparse_rewards_buffer)+np.mean(shaped_rewards_buffer)],
+                )
+                self.logger.draw()
+            self.logger.end_iteration()
+
+
+
+    def run_OG(self):
         episode, episode_reward, done = 0, 0, True
         sparse_episode_reward = 0
         start_time = time.time()
         train_reward_buffer = []
+        self.logger.start_iteration()
         while self.step < self.cfg.num_train_steps + 1:
             self.logger.spin()
-            train_reward_buffer.append(episode_reward)
 
+            train_reward_buffer.append(episode_reward)
+            if done:
+                self.logger.end_iteration()
+                self.logger.start_iteration()
 
 
             if done or self.step % self.cfg.eval_frequency == 0:
@@ -806,11 +811,12 @@ class Trainer():
                 obs = self.mdp.get_lossless_encoding_vector(self.env.state)
                 obs = np.vstack([obs, self.invert_obs(obs)])
 
-                self.ou_percentage = max(0, self.ou_exploration_steps - (
-                            self.step - self.num_warmup_steps)) / self.ou_exploration_steps
-                self.agent.scale_noise(
-                    self.ou_final_scale + (self.ou_init_scale - self.ou_final_scale) * self.ou_percentage)
+                self.ou_percentage = max(0, self.ou_exploration_steps - (self.step - self.num_warmup_steps)) / self.ou_exploration_steps
+                self.ou_percentage = self.ou_percentage ** self.ou_exp_decay
+                self.agent.scale_noise(self.ou_final_scale + (self.ou_init_scale - self.ou_final_scale) * self.ou_percentage)
                 self.agent.reset_noise()
+
+                reward_scale = self.ou_percentage
 
                 sparse_episode_reward = 0
                 episode_reward = 0
@@ -840,7 +846,7 @@ class Trainer():
             next_obs = np.vstack([next_obs, self.invert_obs(next_obs)])
 
             sparse_episode_reward += rewards
-            rewards += np.array(info['shaped_r_by_agent']).reshape(-1, 1)
+            rewards += np.array(info['shaped_r_by_agent']).reshape(-1, 1)#*reward_scale
 
             if episode_step + 1 == self.env.horizon:#== self.env.episode_length:
                 done = True
@@ -890,7 +896,7 @@ class Config():
             discrete_action_space= True
             batch_size= 256
             lr= 0.0001 #lr= 0.001
-            tau=0.001 #tau=0.01
+            tau=0.0005 #tau=0.01
             gamma= 0.95
             class critic:
                 input_dim = None
@@ -911,6 +917,13 @@ class Config():
 
     experiment= 'vanilla'
     seed= 0
+    # exploration
+    # ou_init_scale =  0.3    # max exploration
+    # ou_exponent_decay = 2   # 1=linear decay
+    # ou_final_scale = 0.0    # min exploration
+    ou_init_scale =  0.75    # max exploration
+    ou_exponent_decay = 4   # 1=linear decay
+    ou_final_scale = 0.0    # min exploration
 
 
 

@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import deque
@@ -69,32 +71,30 @@ class CumulativeProspectTheory(object):
         rho = np.sum(u*w)
         return rho
 
-    def expectation(self, values, p_values, value_refs=None):
+    def expectation(self, values, p_values, value_refs=None, pass_single_choice=True):
         """
         Computes CUMULATIVE Prospect Theory Expectation
         :param values: list of values of next states
         :param p_values: probability of each value
         :param value_refs: list of (rational) values used to compute reference point
+        :param pass_single_choice: if True, return the rational value of the single prospect
         :return: scalar value (biased) expectation
         """
-        if self.mean_value_ref: self.b = np.mean(values)
-        elif self.exp_value_ref: self.b = np.sum(values*p_values)
-        elif self.exp_rational_value_ref: self.b = np.sum(value_refs*p_values)
         # arrange all samples in ascending order
         sorted_idxs = np.argsort(values)
         sorted_v = values[sorted_idxs]
         sorted_p = p_values[sorted_idxs]
         K = len(sorted_v)  # number of samples
 
-        # If there is only one value, return the utility of that value
-        if K==1:
-            # if sorted_v[0]>self.b: return self.u_plus(sorted_v[0])
-            # else: return -1*self.u_neg(sorted_v[0])
-            return sorted_v[0]
+        if K == 1:
+            # If there is only one value, return the utility of that value
+            if pass_single_choice: return sorted_v[0]
+            elif sorted_v[0] > self.b:return self.u_plus(sorted_v[0])
+            else: return -1 * self.u_neg(sorted_v[0])
 
-        elif np.all(sorted_v<=self.b):
+        elif np.all(sorted_v <= self.b):
             Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]
-            l=K-1
+            l = K - 1
             rho_p = 0
             rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
             rho = rho_p - rho_n
@@ -108,41 +108,133 @@ class CumulativeProspectTheory(object):
             return rho
         else:
             l = np.where(sorted_v <= self.b)[0][-1]  # idx of highest loss
-            # Fk = [np.sum(sorted_p[0:i + 1]) for i in range(l + 1)] + \
-            #      [np.sum(sorted_p[i:K]) for i in range(l + 1, K)]  # cumulative probability
-            # Fk = [np.sum(sorted_p[0:i + 1]) for i in range(l)] + \
-            #      [np.sum(sorted_p[i:K]) for i in range(l, K)]  # cumulative probability
-            Fk = [np.sum(sorted_p[0:i + 1],dtype=np.float64) for i in range(l+1)] + \
-                 [np.sum(sorted_p[i:K],dtype=np.float64) for i in range(l+1, K)]  # cumulative probability
+            Fk = [np.sum(sorted_p[0:i + 1], dtype=np.float64) for i in range(l + 1)] + \
+                 [np.sum(sorted_p[i:K], dtype=np.float64) for i in range(l + 1, K)]  # cumulative probability
             rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K)
             rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
             rho = rho_p - rho_n
             return rho
+    # def expectation(self, values, p_values, value_refs=None):
+    #     """
+    #     Computes CUMULATIVE Prospect Theory Expectation
+    #     :param values: list of values of next states
+    #     :param p_values: probability of each value
+    #     :param value_refs: list of (rational) values used to compute reference point
+    #     :return: scalar value (biased) expectation
+    #     """
+    #     if self.mean_value_ref: self.b = np.mean(values)
+    #     elif self.exp_value_ref: self.b = np.sum(values*p_values)
+    #     elif self.exp_rational_value_ref: self.b = np.sum(value_refs*p_values)
+    #     # arrange all samples in ascending order
+    #     sorted_idxs = np.argsort(values)
+    #     sorted_v = values[sorted_idxs]
+    #     sorted_p = p_values[sorted_idxs]
+    #     K = len(sorted_v)  # number of samples
+    #
+    #     # If there is only one value, return the utility of that value
+    #     if K==1:
+    #         # if sorted_v[0]>self.b: return self.u_plus(sorted_v[0])
+    #         # else: return -1*self.u_neg(sorted_v[0])
+    #         return sorted_v[0]
+    #
+    #     elif np.all(sorted_v<=self.b):
+    #         Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]
+    #         l=K-1
+    #         rho_p = 0
+    #         rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
+    #         rho = rho_p - rho_n
+    #         return rho
+    #     elif np.all(sorted_v > self.b):
+    #         Fk = [np.sum(sorted_p[i:K]) for i in range(K)]
+    #         l = -1
+    #         rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K)
+    #         rho_n = 0
+    #         rho = rho_p - rho_n
+    #         return rho
+    #     else:
+    #         l = np.where(sorted_v <= self.b)[0][-1]  # idx of highest loss
+    #         Fk = [np.sum(sorted_p[0:i + 1],dtype=np.float64) for i in range(l+1)] + \
+    #              [np.sum(sorted_p[i:K],dtype=np.float64) for i in range(l+1, K)]  # cumulative probability
+    #         rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K)
+    #         rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
+    #         rho = rho_p - rho_n
+    #         return rho
 
-    def expectation2(self,values,p_values,N_max =100):
-        # sorted_idxs = np.argsort(values)
-        # X = [ np.random.choice(values,p=p_values) + random.gauss(0, 1) for i in range(N_max)] # generate empirical samples
-        # X_sort = np.sort(X)
+    def expectation3(self,values,p_values):
         sorted_idxs = np.argsort(values)
         X_sort = values[sorted_idxs]
         P_sort = p_values[sorted_idxs]
-        K = len(X_sort)-1  # number of samples
-        l = np.where(X_sort <= self.b)[0][-1]  # idx of highest loss
+        K = len(X_sort)
 
-        F = np.nan*np.ones(X_sort.shape)
-        for k in range(K+1):
-            if k<=l: F[k] = np.sum(P_sort[0:k+1])
-            else: F[k] = np.sum(P_sort[k:K+1])
+        # number of losses
+        l = np.where(X_sort <= self.b)[0]  # idx of highest loss
+        if len(l) == 0: l = -1  # no losses
+        else: l = l[-1]
+
+        F = np.nan * np.ones(X_sort.shape)
+        for k in range(K):
+            if k <= l: F[k] = np.sum(P_sort[0:k + 1])
+            else:  F[k] = np.sum(P_sort[k:K + 1])
+        assert np.all(np.isfinite(F)), "F is not finite"
+
+        rho_plus = self.util_plus(X_sort[K-1],self.eta_p) * self.weight(P_sort[K-1],self.delta_p)
+        rho_minus = self.util_minus(X_sort[0], self.lam, self.eta_n) * self.weight(P_sort[0], self.delta_n)
+        for i in range(1,K-1):
+            rho_plus += self.util_plus(X_sort[i],self.eta_p) * (self.weight(F[i],self.delta_p) - self.weight(F[i + 1],self.delta_p))
+            rho_minus += self.util_minus(X_sort[i], self.lam, self.eta_n) * (self.weight(F[i], self.delta_n) - self.weight(F[i -1], self.delta_n))
+        rho = rho_plus - rho_minus
+        return rho
+
+    def expectation2(self,values,p_values,pass_single_choice=False):
+        # sorted_idxs = np.argsort(values)
+        # X_sort = values[sorted_idxs]
+        # P_sort = p_values[sorted_idxs]
+        # K = len(X_sort)-1  # number of samples
+        # l = np.where(X_sort <= self.b)[0][-1]  # idx of highest loss
+        #
+        # F = np.nan*np.ones(X_sort.shape)
+        # for k in range(K+1):
+        #     if k<=l: F[k] = np.sum(P_sort[0:k+1])
+        #     else: F[k] = np.sum(P_sort[k:K+1])
+        # assert np.all(np.isfinite(F)), "F is not finite"
+        #
+        # rho_plus = 0
+        # for i in range(l+1, K):
+        #     rho_plus += self.u_plus(X_sort[i]) * (self.w_plus(F[i]) - self.w_plus(F[i+1]))
+        # rho_plus += self.u_plus(X_sort[K]) * self.w_plus(P_sort[K])
+        #
+        # rho_minus = self.u_neg(X_sort[0]) * self.w_neg(P_sort[0])
+        # for i in range(1, l+1):
+        #     rho_minus += self.u_neg(X_sort[i]) * (self.w_neg(F[i]) - self.w_neg(F[i-1]))
+        #
+        # rho = rho_plus - rho_minus
+        # return rho
+        sorted_idxs = np.argsort(values)
+        X_sort = values[sorted_idxs]
+        P_sort = p_values[sorted_idxs]
+        K = len(X_sort)
+
+        # number of losses
+        l = np.where(X_sort <= self.b)[0]  # idx of highest loss
+        if len(l)==0: l=-1 # no losses
+        else: l = l[-1] +1
+
+        F = np.nan * np.ones(X_sort.shape)
+        for k in range(K):
+            if k <= l: F[k] = np.sum(P_sort[0:k + 1])
+            else: F[k] = np.sum(P_sort[k:K + 1])
         assert np.all(np.isfinite(F)), "F is not finite"
 
         rho_plus = 0
-        for i in range(l+1, K):
-            rho_plus += self.u_plus(X_sort[i]) * (self.w_plus(F[i]) - self.w_plus(F[i+1]))
-        rho_plus += self.u_plus(X_sort[K]) * self.w_plus(P_sort[K])
+        if l<K:
+            for i in range(l + 1, K-1):
+                rho_plus += self.u_plus(X_sort[i]) * (self.w_plus(F[i]) - self.w_plus(F[i + 1]))
+            rho_plus += self.u_plus(X_sort[K]) * self.w_plus(P_sort[K])
+
 
         rho_minus = self.u_neg(X_sort[0]) * self.w_neg(P_sort[0])
-        for i in range(1, l+1):
-            rho_minus += self.u_neg(X_sort[i]) * (self.w_neg(F[i]) - self.w_neg(F[i-1]))
+        for i in range(1, l + 1):
+            rho_minus += self.u_neg(X_sort[i]) * (self.w_neg(F[i]) - self.w_neg(F[i - 1]))
 
         rho = rho_plus - rho_minus
         return rho
@@ -445,8 +537,12 @@ def main():
     # CPT.plot_curves()
 
     # values = np.array([0.01073038, 0.01114906])
-    values = np.array([-15,-10,-5.0, 5.0, 10, 15])
-    p_values = np.array([0.1,0.2,0.2, 0.2,0.2, 0.1])
+    # values = np.array([-15,-10,-5.0, 5.0, 10, 15])
+    # p_values = np.array([0.1,0.2,0.2, 0.2,0.2, 0.1])
+    # values = np.array([-15,-10,-5.0])*-1
+    # p_values = np.array([0.2,0.3,0.5])
+    values = np.array([-15])
+    p_values = np.array([1])
 
     # FROM Stochastic systems with cumulative prospect theory
     # Example 2:
@@ -459,17 +555,34 @@ def main():
     # cpt_params = {'b': 'e', 'lam': 1,
     #               'eta_p':1,'eta_n':1,
     #               'delta_p':0.61,'delta_n':0.69}
-    cpt_params = {'b': 0, 'lam': 1,
-                  'eta_p':0.88,'eta_n':0.88,
-                  'delta_p':0.61,'delta_n':0.69}
     # cpt_params = {'b': 0, 'lam': 1,
-    #               'eta_p':1,'eta_n':1,
-    #               'delta_p':1,'delta_n':1}
+    #               'eta_p':0.88,'eta_n':0.88,
+    #               'delta_p':0.61,'delta_n':0.69}
+    cpt_params = {'b': 0, 'lam': 1,
+                  'eta_p':1,'eta_n':0.88,
+                  'delta_p':1,'delta_n':1}
     CPT = CumulativeProspectTheory(**cpt_params)
-    print(CPT.expectation_from_samples(values, p_values))
-    print(CPT.expectation2(values, p_values))
-    print(CPT.expectation(values, p_values))
-    print(CPT.expectation_PT(values, p_values))
+    # print(CPT.expectation_from_samples(values, p_values))
+
+    # print(CPT.expectation(values, p_values))
+    # print(CPT.expectation_PT(values, p_values))
+
+    # tstart = time.time()
+    # for _ in range(10000):
+    #     v_exp = CPT.expectation3(values, p_values)
+    # print(f'Exp1: {v_exp} {time.time()-tstart} ')
+
+    tstart = time.time()
+    for _ in range(10000):
+        v_exp = CPT.expectation(values, p_values)
+    print(f'Exp1: {v_exp} {time.time()-tstart} ')
+
+    # tstart = time.time()
+    # for _ in range(10000):
+    #     v_exp = CPT.expectation2(values, p_values)
+    # print(f'Exp2: {v_exp} {time.time() - tstart} ')
+
+
     print(np.sum(values * p_values))
 if __name__ == "__main__":
     main()

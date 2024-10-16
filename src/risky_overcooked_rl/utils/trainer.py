@@ -57,8 +57,11 @@ class Trainer:
         if config['loads'] == 'rational':
             rational_fname = f"{self.LAYOUT}_pslip{str(self.mdp.p_slip).replace('.', '')}__rational__"
             self.model = model_object.from_file(obs_shape, n_actions, config,rational_fname)
-        elif config['loads'] == '': self.model = model_object(obs_shape, n_actions, config)
-        else: raise ValueError(f"Invalid load option: {config['loads']}")
+        elif config['loads'] == '':
+            self.model = model_object(obs_shape, n_actions, config)
+        else:
+            self.model = model_object.from_file(obs_shape, n_actions, config, config['loads'])
+            # raise ValueError(f"Invalid load option: {config['loads']}")
 
         # Initiate Logger and Managers ----------------
         self.traj_visualizer = TrajectoryVisualizer(self.env)

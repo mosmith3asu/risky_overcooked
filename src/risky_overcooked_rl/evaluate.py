@@ -12,15 +12,18 @@ from risky_overcooked_rl.utils.deep_models import SelfPlay_QRE_OSA_CPT
 
 if __name__ == "__main__":
     config = get_default_config()
-    config['loads'] = 'rational'
-    config['time_cost'] = 0.0
-    config['p_slip'] = 0.1
+    config['loads'] = 'risky_coordination_ring_pslip025__b00_lam225_etap10_etan10_deltap088_deltan10__10_11_2024-12_46'
+    config['cpt_params'] = {'b': 0, 'lam': 2.25,
+                  'eta_p':1,'eta_n':0.88,
+                  'delta_p':1,'delta_n':1}
+    # config['time_cost'] = 0.0
+    config['p_slip'] = 0.25
     config = parse_args(config)
     config["ALGORITHM"] = 'Evaluate-' + config['ALGORITHM']
     trainer = Trainer(SelfPlay_QRE_OSA_CPT, config)
 
 
-    N_tests = 10
+    N_tests = 1
     stats = {
         'test_rewards': [],
         'test_shaped_rewards': [],

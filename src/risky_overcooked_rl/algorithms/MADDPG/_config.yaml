@@ -1,0 +1,50 @@
+device: None
+
+env:
+  layout: 'risky_coordination_ring'
+  p_slip: 0.0
+  horizon: 400
+
+  seed: 42
+  num_episodes: 5000
+#  num_episodes: 2000
+  num_warmup_episodes: 25
+  eval_episode_freq: 20
+  num_eval_episodes: 3
+  replay_buffer_capacity: 1e6 # right
+#  replay_buffer_capacity: 1e5 # left
+
+  exploration_noise:
+#    init_scale: 0.3
+#    exp_decay: 1
+#    final_scale: 0.0
+    init_scale: 0.75 # right
+#    init_scale: 0.5 # left
+    exp_decay: 4
+    final_scale: 0.0
+
+  reward_shaping:
+    init_scale: 1.0
+    exp_decay: 4
+    final_scale: 0.0
+
+
+
+agent:
+  name: 'MADDPG Self-Play'
+  num_agents: 2
+  discrete_action_space: True
+  batch_size: 256
+  gamma: 0.95
+  lr: 1e-4
+#  tau: 0.0005 # right
+  tau: 0.0001 # left
+  hidden_dim: 256
+
+  device: None # to be specified later
+  obs_dim: None  # to be specified later
+  action_dim: None  # to be specified later
+  critic:
+    input_dim: None  # to be specified later
+
+

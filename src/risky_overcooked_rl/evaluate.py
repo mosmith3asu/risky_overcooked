@@ -16,7 +16,7 @@ if __name__ == "__main__":
     config['time_cost'] = 0.0
     config['p_slip'] = 0.1
     config = parse_args(config)
-    config["ALGORITHM"] = 'Retrain-' + config['ALGORITHM']
+    config["ALGORITHM"] = 'Evaluate-' + config['ALGORITHM']
     trainer = Trainer(SelfPlay_QRE_OSA_CPT, config)
 
 

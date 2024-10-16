@@ -895,8 +895,10 @@ class Config():
             device= 'cuda' if torch.cuda.is_available() else 'cpu'
             discrete_action_space= True
             batch_size= 256
-            lr= 0.0001 #lr= 0.001
-            tau=0.0005 #tau=0.01
+            # lr= 0.001
+            # tau=0.01
+            lr= 0.0001
+            tau=0.0005
             gamma= 0.95
             class critic:
                 input_dim = None
@@ -918,12 +920,12 @@ class Config():
     experiment= 'vanilla'
     seed= 0
     # exploration
-    # ou_init_scale =  0.3    # max exploration
-    # ou_exponent_decay = 2   # 1=linear decay
-    # ou_final_scale = 0.0    # min exploration
-    ou_init_scale =  0.75    # max exploration
-    ou_exponent_decay = 4   # 1=linear decay
+    ou_init_scale =  0.3    # max exploration
+    ou_exponent_decay = 2   # 1=linear decay
     ou_final_scale = 0.0    # min exploration
+    # ou_init_scale =  0.75    # max exploration
+    # ou_exponent_decay = 4   # 1=linear decay
+    # ou_final_scale = 0.0    # min exploration
 
 
 

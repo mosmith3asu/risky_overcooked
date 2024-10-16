@@ -78,16 +78,17 @@ class CirriculumTrainer(Trainer):
                         self.test_rollout(rationality=self.test_rationality)
                     test_rewards.append(test_reward)
                     test_shaped_rewards.append(test_shaped_reward)
-                    if not self.has_checkpointed:
-                        self.traj_visualizer.que_trajectory(state_history)
-                        self.traj_heatmap.que_trajectory(state_history)
+                    # if not self.has_checkpointed:
+                    #     self.traj_visualizer.que_trajectory(state_history)
+                    #     self.traj_heatmap.que_trajectory(state_history)
 
                 # Checkpointing ----------------------
                 self.test_rewards.append(np.mean(test_rewards))  # for checkpointing
                 self.train_rewards.append(np.mean(train_rewards))  # for checkpointing
-                if self.checkpoint(it):  # check if should checkpoint
-                    self.traj_visualizer.que_trajectory(state_history)  # load preview of checkpointed trajectory
-                    self.traj_heatmap.que_trajectory(state_history)
+                self.checkpoint(it,state_history)
+                # if self.checkpoint(it):  # check if should checkpoint
+                #     self.traj_visualizer.que_trajectory(state_history)  # load preview of checkpointed trajectory
+                #     self.traj_heatmap.que_trajectory(state_history)
 
                 # Logging ----------------------
                 self.logger.log(test_reward=[it, np.mean(test_rewards)],
@@ -276,12 +277,19 @@ class Curriculum:
             if np.any(info['mdp_info']['event_infos']['soup_delivery']):  return True # delivering soup
         return False
 
-    def pdf_curriculum_sample(self,curriculum_step):
+    def pdf_curriculum_sample(self,curriculum_step,interpolate=False):
         n_curr = len(self.cirriculums) - 1
         mu = curriculum_step
         variance = 0.5
         max_deviation = 3
         sigma = math.sqrt(variance)
+
+        if interpolate and self.cirriculums[curriculum_step] != 'full_task':
+            reward_thresh = self.cirriculum_step_threshs[self.cirriculums[self.current_cirriculum]]
+            prog = np.mean(self.reward_buffer)/reward_thresh
+            mu += prog
+
+
         # x = np.linspace(mu - max_deviation*sigma, mu + max_deviation*sigma, 100)
         x = np.linspace(min(0, mu - max_deviation * sigma), min(n_curr, mu + max_deviation * sigma), 100)
         p_samples = stats.norm.pdf(x, mu, sigma)

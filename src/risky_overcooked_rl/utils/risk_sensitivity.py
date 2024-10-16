@@ -1,3 +1,4 @@
+import itertools
 import time
 
 import numpy as np
@@ -318,8 +319,8 @@ class CumulativeProspectTheory(object):
         axs[0].plot(np.hstack([vn,vp[0]]),np.hstack([u_neg,u_plus[0]]),color=c_loss,label='$u^-(r)$')
         # axs[0].plot(v, u, color='g',label='Rational')
         axs[0].plot(v, v, color='gray',linestyle='--',label='Rational')
-        axs[0].set_xlabel('Reward')
-        axs[0].set_ylabel('Perceived Reward')
+        axs[0].set_xlabel('Value $\\tau_i$')
+        axs[0].set_ylabel('Perceived Value $u(\\tau_i)$')
         axs[0].set_ylim([min(v),max(v)])
         axs[0].plot([v[0], v[-1]], [0, 0], c="lightgrey", zorder=1, lw=1)
         axs[0].plot([0, 0], [v[0], v[-1]], c="lightgrey", zorder=1, lw=1)
@@ -335,8 +336,8 @@ class CumulativeProspectTheory(object):
         axs[1].plot(p, pp,color=c_gain,label='$w^+(p)$')
         axs[1].plot(p, pn,color=c_loss,label='$w^-(p)$')
         axs[1].plot(p, p, color='gray', label='Rational',linestyle='--')
-        axs[1].set_xlabel('Probability')
-        axs[1].set_ylabel('Decision Weight')
+        axs[1].set_xlabel('Probability $p_i$')
+        axs[1].set_ylabel('Decision Weight $w(p_i)$')
         axs[1].legend(frameon=False,ncol=1)
         axs[1].set_aspect('equal', adjustable='box')
         axs[1].set_ylim([0, 1])
@@ -535,7 +536,13 @@ def main():
     #
     # print(np.sum(values*p_values))
     # CPT.plot_curves()
-
+    cpt_params = {'b': 0, 'lam': 2.25,
+                  'eta_p': 0.88, 'eta_n': 0.88,
+                  'delta_p': 0.61, 'delta_n': 0.69}
+    CPT = CumulativeProspectTheory(**cpt_params)
+    CPT.plot_curves()
+#########################################################################################
+#########################################################################################
     # values = np.array([0.01073038, 0.01114906])
     # values = np.array([-15,-10,-5.0, 5.0, 10, 15])
     # p_values = np.array([0.1,0.2,0.2, 0.2,0.2, 0.1])
@@ -549,19 +556,22 @@ def main():
     # values = np.array([-5, -3, -1, 2, 4, 6])
     # p_values = np.array([1/6,1/6,1/6,1/6,1/6,1/6])#np.ones_like(values)/len(values)
 
+
     # cpt_params = {'b': 0, 'lam': 1,
     #               'eta_p':0.88,'eta_n':0.88,
     #               'delta_p':0.61,'delta_n':0.69}
     # cpt_params = {'b': 'e', 'lam': 1,
     #               'eta_p':1,'eta_n':1,
     #               'delta_p':0.61,'delta_n':0.69}
-    # cpt_params = {'b': 0, 'lam': 1,
-    #               'eta_p':0.88,'eta_n':0.88,
-    #               'delta_p':0.61,'delta_n':0.69}
     cpt_params = {'b': 0, 'lam': 1,
-                  'eta_p':1,'eta_n':0.88,
-                  'delta_p':1,'delta_n':1}
+                  'eta_p':0.88,'eta_n':0.88,
+                  'delta_p':0.61,'delta_n':0.69}
+    # cpt_params = {'b': 0, 'lam': 1,
+    #               'eta_p':1,'eta_n':0.88,
+    #               'delta_p':1,'delta_n':1}
     CPT = CumulativeProspectTheory(**cpt_params)
+    for p_slip in [0.1,0.25,0.5,0.75,0.9]:
+        print(f'p_slip = {p_slip}: w^-= {round(CPT.w_plus(1-p_slip),3)} | w^-= {round(CPT.w_neg(p_slip),3)}')
     # print(CPT.expectation_from_samples(values, p_values))
 
     # print(CPT.expectation(values, p_values))
@@ -586,3 +596,11 @@ def main():
     print(np.sum(values * p_values))
 if __name__ == "__main__":
     main()
+
+    b = 0
+    eta_p = [0,1,2]
+    eta_n = [0, 1, 2]
+    delta_p = [0, 1, 2]
+    delta_n = [0, 1, 2]
+    params = itertools.product(*[eta_p,eta_n,delta_p,delta_n])
+    print(len(list(params)))

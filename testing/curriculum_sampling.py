@@ -18,7 +18,7 @@ cirriculum_step_threshs = {
 cirriculums = list(cirriculum_step_threshs.keys())
 
 
-def sample_curriculum_step(curriculum_step ):
+def sample_curriculum_step(curriculum_step,progress):
     n_curr = len(cirriculums)-1
     mu = curriculum_step
     variance = 0.5

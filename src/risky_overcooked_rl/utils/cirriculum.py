@@ -186,23 +186,23 @@ class CirriculumTrainer(Trainer):
 
         return cum_reward, cum_shaped_reward, rollout_info
 
-    def checkpoint(self,it):
-        if len(self.train_rewards) == self.checkpoint_mem:
-            # ave_train = np.mean(self.train_rewards)
-            ave_test = np.mean(self.test_rewards)
-            # score = (ave_train + ave_test)/2
-            score = ave_test
-            if score > self.min_checkpoint_score and score >= self.checkpoint_score:
-                print(f'\nCheckpointing model at iteration {it} with score {score}...\n')
-                self.model.update_checkpoint()
-                self.logger.update_checkpiont_line(it)
-                # empty buffer to delay next checkpoint
-                self.train_rewards = deque(maxlen=self.checkpoint_mem)
-                self.test_rewards = deque(maxlen=self.checkpoint_mem)
-                self.has_checkpointed = True
-                self.checkpoint_score = score
-                return True
-        return False
+    # def checkpoint(self,it):
+    #     if len(self.train_rewards) == self.checkpoint_mem:
+    #         # ave_train = np.mean(self.train_rewards)
+    #         ave_test = np.mean(self.test_rewards)
+    #         # score = (ave_train + ave_test)/2
+    #         score = ave_test
+    #         if score > self.min_checkpoint_score and score >= self.checkpoint_score:
+    #             print(f'\nCheckpointing model at iteration {it} with score {score}...\n')
+    #             self.model.update_checkpoint()
+    #             self.logger.update_checkpiont_line(it)
+    #             # empty buffer to delay next checkpoint
+    #             self.train_rewards = deque(maxlen=self.checkpoint_mem)
+    #             self.test_rewards = deque(maxlen=self.checkpoint_mem)
+    #             self.has_checkpointed = True
+    #             self.checkpoint_score = score
+    #             return True
+    #     return False
 
 
 

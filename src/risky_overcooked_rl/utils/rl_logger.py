@@ -515,9 +515,13 @@ class RLLogger(object):
 
     def wait_for_close(self,enable=True):
         """Stops the program to wait for user input (i.e. save model, save plot, close, ect..)"""
-        if enable:
-            plt.ioff()
-            plt.show()
+        while plt.fignum_exists(self.fig_number):
+            self.spin()
+            time.sleep(0.1)
+
+        # if enable:
+        #     plt.ioff()
+        #     plt.show()
 
     def save_fig(self,PATH):
         self.root_fig.savefig(PATH)
@@ -556,7 +560,7 @@ def test_logger():
         print(i)
     logger.wait_for_close(enable=True)
 
-    s
+
 class FunctionTimer(object):
     """ Used for timing functions to see how long they take to run."""
     def __init__(self):

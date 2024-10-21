@@ -1,5 +1,5 @@
 import numpy as np
-from risky_overcooked_rl.utils.deep_models import device
+from risky_overcooked_rl.algorithms.DDQN.agents import device
 from risky_overcooked_rl.utils.rl_logger import RLLogger,TrajectoryVisualizer, TrajectoryHeatmap
 from risky_overcooked_rl.utils.model_manager import get_absolute_save_dir
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
@@ -57,8 +57,11 @@ class Trainer:
         if config['loads'] == 'rational':
             rational_fname = f"{self.LAYOUT}_pslip{str(self.mdp.p_slip).replace('.', '')}__rational__"
             self.model = model_object.from_file(obs_shape, n_actions, config,rational_fname)
-        elif config['loads'] == '': self.model = model_object(obs_shape, n_actions, config)
-        else: raise ValueError(f"Invalid load option: {config['loads']}")
+        elif config['loads'] == '':
+            self.model = model_object(obs_shape, n_actions, config)
+        else:
+            self.model = model_object.from_file(obs_shape, n_actions, config, config['loads'])
+            # raise ValueError(f"Invalid load option: {config['loads']}")
 
         # Initiate Logger and Managers ----------------
         self.traj_visualizer = TrajectoryVisualizer(self.env)
@@ -82,9 +85,9 @@ class Trainer:
 
         # Checkpointing/Saving utils ----------------
         self.checkpoint_score = 0
-        self.min_checkpoint_score = 20
-        self.checkpoint_mem = 5
-        self.has_checkpointed = False
+        self.min_checkpoint_score = 20 - 0.5 * self.time_cost*self.env.horizon
+        self.checkpoint_mem = 3
+        # self.has_checkpointed = False
         self.train_rewards = deque(maxlen=self.checkpoint_mem)
         self.test_rewards = deque(maxlen=self.checkpoint_mem)
 
@@ -213,16 +216,17 @@ class Trainer:
                         self.test_rollout(rationality=self.test_rationality)
                     test_rewards.append(test_reward)
                     test_shaped_rewards.append(test_shaped_reward)
-                    if not self.has_checkpointed:
-                        self.traj_visualizer.que_trajectory(state_history)
-                        self.traj_heatmap.que_trajectory(state_history)
+                    # if not self.has_checkpointed:
+                    #     self.traj_visualizer.que_trajectory(state_history)
+                    #     self.traj_heatmap.que_trajectory(state_history)
 
                 # Checkpointing ----------------------
                 self.test_rewards.append(np.mean(test_rewards))  # for checkpointing
                 self.train_rewards.append(np.mean(train_rewards))  # for checkpointing
-                if self.checkpoint(it):  # check if should checkpoint
-                    self.traj_visualizer.que_trajectory(state_history) # load preview of checkpointed trajectory
-                    self.traj_heatmap.que_trajectory(state_history)
+                self.checkpoint(it,state_history)
+                # if self.checkpoint(it):  # check if should checkpoint
+                #     self.traj_visualizer.que_trajectory(state_history) # load preview of checkpointed trajectory
+                #     self.traj_heatmap.que_trajectory(state_history)
                 # Logging ----------------------
                 self.logger.log(test_reward=[it, np.mean(test_rewards)],
                            train_reward=[it, np.mean(train_rewards)],
@@ -425,20 +429,32 @@ class Trainer:
     ################################################################
     # Save Utils       #############################################
     ################################################################
-    def checkpoint(self,it):
-        if len(self.train_rewards) == self.checkpoint_mem:
-            ave_train = np.mean(self.train_rewards)
-            ave_test = np.mean(self.test_rewards)
-            # score = (ave_train + ave_test)/2
-            score = ave_test
-            if score > self.min_checkpoint_score and score > self.checkpoint_score:
-                print(f'\nCheckpointing model at iteration {it} with score {score}...\n')
-                self.model.update_checkpoint()
-                self.logger.update_checkpiont_line(it)
-                self.checkpoint_score = score
-                self.has_checkpointed = True
-                return True
-        return False
+    def checkpoint(self,it, state_history):
+
+        score = np.mean(self.test_rewards)
+        if score > self.checkpoint_score:
+            print(f'\nCheckpointing model at iteration {it} with score {score}...\n')
+            self.model.update_checkpoint()
+            self.logger.update_checkpiont_line(it)
+            self.checkpoint_score = score
+            self.has_checkpointed = True
+
+            self.traj_visualizer.que_trajectory(state_history)
+            self.traj_heatmap.que_trajectory(state_history)
+            return True
+        # if len(self.train_rewards) == self.checkpoint_mem:
+        #     ave_train = np.mean(self.train_rewards)
+        #     ave_test = np.mean(self.test_rewards)
+        #     # score = (ave_train + ave_test)/2
+        #     score = ave_test
+        #     if score > self.min_checkpoint_score and score > self.checkpoint_score:
+        #         print(f'\nCheckpointing model at iteration {it} with score {score}...\n')
+        #         self.model.update_checkpoint()
+        #         self.logger.update_checkpiont_line(it)
+        #         self.checkpoint_score = score
+        #         self.has_checkpointed = True
+        #         return True
+        # return False
 
 
     def package_model_info(self,rational=False):

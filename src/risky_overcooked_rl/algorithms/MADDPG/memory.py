@@ -4,20 +4,20 @@ import json, os
 from collections import namedtuple, deque
 import random
 from src.risky_overcooked_rl.algorithms.MADDPG.utils import *
-
-Transition = namedtuple('Transition', ('obs', 'action', 'reward', 'next_obs', 'done'))
+from risky_overcooked_rl.utils.state_utils import invert_obs, invert_joint_action, invert_prospect
+# Transition = namedtuple('Transition', ('obs', 'action', 'reward', 'next_obs', 'done'))
 
 class ReplayMemory(object):
 
     def __init__(self, capacity,device):
         self.memory = deque([], maxlen=capacity)
-        self.transition = Transition
+        self.transition = namedtuple('Transition', ('obs', 'action', 'reward', 'next_obs', 'done'))
         self.device = device
 
     def push(self, *args):
         """Save a transition"""
         # assert isinstance(args[1],torch.Tensor)
-        self.memory.append(Transition(*args))
+        self.memory.append(self.transition(*args))
 
     def double_push(self, obs, joint_action_idx, rewards, next_obs, done):
         """ Push both agent's experience into memory from ego perspective"""
@@ -32,8 +32,6 @@ class ReplayMemory(object):
                 joint_action_idx = invert_joint_action(joint_action_idx)
                 obs = invert_obs(obs)
                 next_obs = invert_obs(next_obs)
-
-
             self.push(obs, joint_action_idx, rewards[i], next_obs, done)
 
     def sample(self, batch_size):
@@ -43,6 +41,37 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
+class ReplayMemory_Prospect(object):
+
+    def __init__(self, capacity,device):
+        self.memory = deque([], maxlen=capacity)
+        self.transition = namedtuple('Transition',('obs', 'action', 'p_next_obss','next_obss', 'reward'))
+        self.device = device
+
+    def push(self, *args):
+        """Save a transition"""
+        self.memory.append(self.transition(*args))
+
+    def double_push(self, obs, joint_action_idx, rewards, p_next_obss,next_obss, done):
+        """ Push both agent's experience into memory from ego perspective"""
+        n_agents = 2
+        rewards = rewards.flatten()
+        joint_action_idx = torch.tensor(joint_action_idx, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32, device=self.device).reshape(2, 1).to(self.device)
+        done = torch.tensor(done, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
+
+        for i in range(n_agents):
+            if i==1: # invert the perspective
+                joint_action_idx = invert_joint_action(joint_action_idx)
+                obs = invert_obs(obs)
+                next_obss = invert_obs(next_obss)
+            self.push(obs, joint_action_idx, rewards[i], p_next_obss, next_obss, done)
+
+    def sample(self, batch_size):
+        return random.sample(self.memory, batch_size)
+
+    def __len__(self):
+        return len(self.memory)
 
 
 # class ReplayBuffer(object):

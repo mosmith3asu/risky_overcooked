@@ -13,9 +13,10 @@ import itertools
 is_ipython = 'inline' in matplotlib.get_backend()
 if is_ipython:
     from IPython import display
-
+from risky_overcooked_rl.algorithms.DDQN.memory import ReplayMemory_Prospect
 from risky_overcooked_rl.utils.risk_sensitivity import CumulativeProspectTheory
 from risky_overcooked_rl.utils.model_manager import get_absolute_save_dir
+from risky_overcooked_rl.utils.state_utils import invert_obs, invert_joint_action, invert_prospect
 import numpy as np
 import warnings
 import copy
@@ -113,9 +114,11 @@ class SelfPlay_QRE_OSA(object):
         self.player_action_dim = int(np.sqrt(n_actions))
 
         # Define Memory
-        self._transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_prospects', 'done'))
-        self._memory = deque([], maxlen=self.mem_size)
+        self._memory = ReplayMemory_Prospect(self.mem_size,self.device)
         self._memory_batch_size = config['minibatch_size']
+        # self._transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_prospects', 'done'))
+        # self._memory = deque([], maxlen=self.mem_size)
+        # self._memory_batch_size = config['minibatch_size']
 
         # Define Model
         self.model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
@@ -142,54 +145,54 @@ class SelfPlay_QRE_OSA(object):
     ###################################################
     ## Memory #########################################
     ###################################################
-    def memory_double_push(self, state, action, rewards, next_prospects, done):
-        """ Push both agent's experience into memory from ego perspective"""
-        if not isinstance(action, torch.Tensor): action = torch.tensor(action, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
-        if not isinstance(done, torch.Tensor): done = torch.tensor(done, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
-        rewards = rewards.flatten()
+    # def memory_double_push(self, state, action, rewards, next_prospects, done):
+    #     """ Push both agent's experience into memory from ego perspective"""
+    #     if not isinstance(action, torch.Tensor): action = torch.tensor(action, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
+    #     if not isinstance(done, torch.Tensor): done = torch.tensor(done, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
+    #     rewards = rewards.flatten()
+    #
+    #     # Append Agent 1 experiences
+    #     reward = torch.tensor([rewards[0]], dtype=torch.float32, device=self.device).reshape(1, 1).to(self.device)
+    #
+    #     # assert len(reward.shape)==2,f'reward shape should be 2D:{reward.shape}'
+    #     self._memory.append(self._transition(state, action, reward, next_prospects, done))
+    #
+    #     # # Append Agent 2 experience
+    #     s_prime = self.invert_obs(state)
+    #     a_prime = self.invert_joint_action(action).to(self.device)
+    #     r_prime = torch.tensor([rewards[1]], dtype=torch.float32, device=self.device).reshape(1, 1).to(self.device)
+    #     np_prime = self.invert_prospect(next_prospects)
+    #     # assert len(r_prime.shape) == 2, f'reward shape should be 2D:{r_prime.shape}'
+    #     self._memory.append(self._transition(s_prime, a_prime, r_prime, np_prime, done))
 
-        # Append Agent 1 experiences
-        reward = torch.tensor([rewards[0]], dtype=torch.float32, device=self.device).reshape(1, 1).to(self.device)
+    # def memory_sample(self):
+    #     return random.sample(self._memory, self._memory_batch_size)
 
-        # assert len(reward.shape)==2,f'reward shape should be 2D:{reward.shape}'
-        self._memory.append(self._transition(state, action, reward, next_prospects, done))
-
-        # # Append Agent 2 experience
-        s_prime = self.invert_obs(state)
-        a_prime = self.invert_joint_action(action).to(self.device)
-        r_prime = torch.tensor([rewards[1]], dtype=torch.float32, device=self.device).reshape(1, 1).to(self.device)
-        np_prime = self.invert_prospect(next_prospects)
-        # assert len(r_prime.shape) == 2, f'reward shape should be 2D:{r_prime.shape}'
-        self._memory.append(self._transition(s_prime, a_prime, r_prime, np_prime, done))
-
-    def memory_sample(self):
-        return random.sample(self._memory, self._memory_batch_size)
-
-    @property
-    def memory_len(self):
-        return len(self._memory)
+    # @property
+    # def memory_len(self):
+    #     return len(self._memory)
 
     ###################################################
     # Self-Play Utils ######################################
     ###################################################
 
-    def invert_prospect(self, prospects):
-        _prospects = copy.deepcopy(prospects)
-        for i,prospect in enumerate(_prospects):
-            _prospects[i][1] = self.invert_obs(prospect[1])
-        return _prospects
-    def invert_obs(self, obs_batch):
-        N_PLAYER_FEAT = 9
-        obs_batch = torch.cat([obs_batch[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
-                               obs_batch[:, :N_PLAYER_FEAT],
-                               obs_batch[:, 2 * N_PLAYER_FEAT:]], dim=1)
-        return obs_batch
-
-    def invert_joint_action(self, action_batch):
-        BATCH_SIZE = action_batch.shape[0]
-        action_batch = torch.tensor(
-            [Action.reverse_joint_action_index(action_batch[i]) for i in range(BATCH_SIZE)]).unsqueeze(1)
-        return action_batch
+    # def invert_prospect(self, prospects):
+    #     _prospects = copy.deepcopy(prospects)
+    #     for i,prospect in enumerate(_prospects):
+    #         _prospects[i][1] = self.invert_obs(prospect[1])
+    #     return _prospects
+    # def invert_obs(self, obs_batch):
+    #     N_PLAYER_FEAT = 9
+    #     obs_batch = torch.cat([obs_batch[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+    #                            obs_batch[:, :N_PLAYER_FEAT],
+    #                            obs_batch[:, 2 * N_PLAYER_FEAT:]], dim=1)
+    #     return obs_batch
+    #
+    # def invert_joint_action(self, action_batch):
+    #     BATCH_SIZE = action_batch.shape[0]
+    #     action_batch = torch.tensor(
+    #         [Action.reverse_joint_action_index(action_batch[i]) for i in range(BATCH_SIZE)]).unsqueeze(1)
+    #     return action_batch
 
     ###################################################
     # Nash Utils ######################################
@@ -200,7 +203,7 @@ class SelfPlay_QRE_OSA(object):
         batch_size = obs.shape[0]
         all_games = torch.zeros([batch_size, self.num_agents, self.player_action_dim, self.player_action_dim], device=self.device)
         for i in range(self.num_agents):
-            if i == 1: obs = self.invert_obs(obs)
+            if i == 1: obs = invert_obs(obs)
             if with_model is not None: q_values = with_model(obs).detach()
             else: q_values = self.model(obs).detach()
             # if use_target: q_values = self.target(obs).detach()
@@ -343,13 +346,14 @@ class SelfPlay_QRE_OSA(object):
 
     def update(self):
         if (
-                self.memory_len < self.mem_size/2
-                # self.memory_len < self._memory_batch_size
-                # or self.memory_len < 0.25*self.mem_size
+                # self.memory_len < self.mem_size/2
+                len(self._memory) < self._memory_batch_size
         ):  return 0
 
-        transitions = self.memory_sample()
-        batch = self._transition(*zip(*transitions))
+        # transitions = self.memory_sample()
+        transitions = self._memory.sample(self._memory_batch_size)
+
+        batch = self._memory.transition(*zip(*transitions))
         BATCH_SIZE = len(transitions)
         state = torch.cat(batch.state)
         action = torch.cat(batch.action)
@@ -460,9 +464,10 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         self.CPT = CumulativeProspectTheory(**config['cpt_params'])
 
         # Define Memory
-        self._transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_prospects', 'done'))
-        self._memory = deque([], maxlen=config['replay_memory_size'])
-        self._memory_batch_size = config['minibatch_size']
+        # self._memory = ReplayMemory_Prospect(self.mem_size)
+        # # self._transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_prospects', 'done'))
+        # # self._memory = deque([], maxlen=config['replay_memory_size'])
+        # self._memory_batch_size = config['minibatch_size']
 
         if self.CPT.exp_rational_value_ref == True:
             assert 'rational' in config['loads'], 'Rational reference needs loaded model'
@@ -475,13 +480,14 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
 
     def update(self):
         if (
-                self.memory_len < self.mem_size / 2
+                len(self._memory) < self.mem_size / 2
+                # self.memory_len < self.mem_size / 2
                 # self.memory_len < self._memory_batch_size
                 # or self.memory_len < 0.25*self.mem_size
         ):  return 0
 
-        transitions = self.memory_sample()
-        batch = self._transition(*zip(*transitions))
+        transitions = self._memory.sample(self._memory_batch_size)
+        batch = self._memory.transition(*zip(*transitions))
         BATCH_SIZE = len(transitions)
         state = torch.cat(batch.state)
         action = torch.cat(batch.action)

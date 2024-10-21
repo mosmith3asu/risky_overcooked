@@ -78,7 +78,9 @@ class DDPGAgent(nn.Module):
             num_in_critic (int): number of dimensions for critic input
         """
 
-        self.lr = float(params.lr)
+        # self.lr = float(params.lr)
+        self.actor_lr = float(params.actor.lr)
+        self.critic_lr = float(params.critic.lr)
         self.gamma = params.gamma
 
         self.obs_dim = params.obs_dim
@@ -104,8 +106,10 @@ class DDPGAgent(nn.Module):
 
         hard_update(self.target_policy, self.policy)
         hard_update(self.target_critic, self.critic)
-        self.policy_optimizer = Adam(self.policy.parameters(), lr=self.lr * 0.1)
-        self.critic_optimizer = Adam(self.critic.parameters(), lr=self.lr)
+        # self.policy_optimizer = Adam(self.policy.parameters(), lr=self.lr * 0.1)
+        # self.critic_optimizer = Adam(self.critic.parameters(), lr=self.lr)
+        self.policy_optimizer = Adam(self.policy.parameters(), lr=self.actor_lr)
+        self.critic_optimizer = Adam(self.critic.parameters(), lr=self.critic_lr)
 
         self.exploration = OUNoise(self.action_dim)
 
@@ -147,7 +151,9 @@ class MADDPG(object):
     def __init__(self, name, params):
 
         self.name = name
-        self.lr = params.lr
+        # self.lr = params.lr
+        self.actor_lr = float(params.actor.lr)
+        self.critic_lr = float(params.critic.lr)
         self.gamma = params.gamma
         self.tau = params.tau
 

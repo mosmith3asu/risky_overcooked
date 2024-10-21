@@ -1,4 +1,3 @@
-######## RIGHT ######
 device: None
 
 env:
@@ -11,18 +10,17 @@ env:
   num_warmup_episodes: 25
   eval_episode_freq: 10
   num_eval_episodes: 1
-  replay_buffer_capacity: 1e6
+  replay_buffer_capacity: 1e6 # right
 
   exploration_noise:
-    init_scale: 1.0 # change
-    exp_decay: 1 # change
+    init_scale: 0.75 # right
+    exp_decay: 4
     final_scale: 0.05
 
   reward_shaping:
     init_scale: 1.0
     exp_decay: 4
     final_scale: 0.0
-    perc_delay: 0.0 # percentage of total episodes to delay reward shaping decay
 
 
 
@@ -53,7 +51,6 @@ agent:
 
 
 
-####### LEFT #######
 #device: None
 #
 #env:
@@ -64,14 +61,14 @@ agent:
 #  seed: 42
 #  num_episodes: 5000
 #  num_warmup_episodes: 25
-#  eval_episode_freq: 10
-#  num_eval_episodes: 1
-#  replay_buffer_capacity: 1e6 # right
+#  eval_episode_freq: 20
+#  num_eval_episodes: 3
+#  replay_buffer_capacity: 1e6
 #
 #  exploration_noise:
 #    init_scale: 0.75 # right
 #    exp_decay: 4
-#    final_scale: 0.05
+#    final_scale: 0.0
 #
 #  reward_shaping:
 #    init_scale: 1.0
@@ -86,22 +83,14 @@ agent:
 #  discrete_action_space: True
 #  batch_size: 256
 #  gamma: 0.95
-##  lr: 5e-5
+#  lr: 1e-4
 #  tau: 0.0005
 #  hidden_dim: 256
 #
 #  device: None # to be specified later
 #  obs_dim: None  # to be specified later
 #  action_dim: None  # to be specified later
-##  critic:
-##    input_dim: None  # to be specified later
-#
 #  critic:
-#    lr: 5e-5
 #    input_dim: None  # to be specified later
-#  actor:
-#    lr: 5e-6       # typically ~ critic.lr * 0.1
-#    input_dim: None  # to be specified later
-#
 #
 #

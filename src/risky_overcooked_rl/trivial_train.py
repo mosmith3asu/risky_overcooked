@@ -10,11 +10,13 @@ from risky_overcooked_rl.utils.deep_models import SelfPlay_QRE_OSA_CPT
 
 if __name__ == "__main__":
     config = get_default_config()
-    config['loads'] = 'risky_coordination_ring_pslip025__b00_lam225_etap10_etan10_deltap088_deltan10__10_11_2024-12_46'
+    config['LAYOUT'] = 'risky_multipath'
+    config['loads'] = 'risky_multipath_pslip01__b00_lam05_etap10_etan088_deltap10_deltan10__10_11_2024-12_20'##'risky_multipath_pslip01__b00_lam225_etap088_etan10_deltap10_deltan10__10_12_2024-19_52'
     config['cpt_params'] = {'b': 0, 'lam': 2.25,
                   'eta_p':1,'eta_n':0.88,
                   'delta_p':1,'delta_n':1}
     # config['time_cost'] = 0.0
+
     config['p_slip'] = 0.25
 
     config['epsilon_sched'] = [1e-5,1e-5, 5_000] # start at lower epsilon

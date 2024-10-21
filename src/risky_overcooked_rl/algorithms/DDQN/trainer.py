@@ -512,7 +512,7 @@ class ResponseTrainer():
 
         self.cpt_agent = partner_model_object.from_file(obs_shape, n_actions, config, self.partner_fname)
         self.cpt_agent.model.eval() # turn eval mode on as we wont be updating this policy
-        self.ego_agent = ResponseAgent(obs_shape, n_actions, config, self.cpt_agent.model)
+        self.ego_agent = ResponseAgent(obs_shape, n_actions, config, self.cpt_agent)
 
         # Initiate Logger and Managers ----------------
         self.traj_visualizer = TrajectoryVisualizer(self.env)
@@ -648,7 +648,7 @@ class ResponseTrainer():
                   f"| rstart={round(self.random_start_sched[it], 3)}"
                   )
 
-            train_rewards.append(cum_reward + cum_shaped_rewards)
+            train_rewards.append(cum_reward + cum_shaped_rewards[0]) # only ego shaped rewards
             train_losses.append(rollout_info['mean_loss'])
 
             # Testing Step ##########################################

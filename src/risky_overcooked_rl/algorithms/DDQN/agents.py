@@ -462,11 +462,7 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         super().__init__(obs_shape, n_actions, config, **kwargs)
         self.CPT = CumulativeProspectTheory(**config['cpt_params'])
 
-        # Define Memory
-        # self._memory = ReplayMemory_Prospect(self.mem_size)
-        # # self._transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_prospects', 'done'))
-        # # self._memory = deque([], maxlen=config['replay_memory_size'])
-        # self._memory_batch_size = config['minibatch_size']
+        self.frozen = False
 
         if self.CPT.exp_rational_value_ref == True:
             assert 'rational' in config['loads'], 'Rational reference needs loaded model'
@@ -478,6 +474,8 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         else: self.rational_ref_model = None
 
     def update(self):
+        if self.frozen: raise ValueError('Model is frozen, cannot update')
+
         if (
                 len(self._memory) < self.mem_size / 2
                 # self.memory_len < self.mem_size / 2
@@ -755,7 +753,7 @@ class ResponseAgent(object):
         for i in range(self.num_agents):
             if i == 1:
                 obs = invert_obs(obs)
-                q_values = self.cpt_agent(obs).detach()
+                q_values = self.cpt_agent.model(obs).detach()
                 q_values = torch.transpose(q_values, -1, -2)
             elif with_model is not None: q_values = with_model(obs).detach()
             else:  q_values = self.model(obs).detach()
@@ -845,12 +843,19 @@ class ResponseAgent(object):
 
         # Explore -------------------------------------
         if sample < epsilon:
-            action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
-            if feasible_JAs is not None:
-                action_probs = feasible_JAs*action_probs
-                action_probs = action_probs/np.sum(action_probs)
-            joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
-            joint_action = self.joint_action_space[joint_action_idx]
+            # action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
+            # if feasible_JAs is not None:
+            #     action_probs = feasible_JAs*action_probs
+                # action_probs = action_probs/np.sum(action_probs)
+            # joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
+            # joint_action = self.joint_action_space[joint_action_idx]
+            action_probs = np.ones(len(Action.ALL_ACTIONS)) / len(Action.ALL_ACTIONS)
+            ego_action_idx = np.random.choice(np.arange(len(Action.ALL_ACTIONS)), p=action_probs)
+            ego_action = Action.ALL_ACTIONS[ego_action_idx]
+            partner_action = self.cpt_agent.choose_joint_action(obs, epsilon=0)[0][1]
+            joint_action = (ego_action, partner_action)
+            joint_action_idx = Action.ALL_JOINT_ACTIONS.index(joint_action)
+            action_probs = None
 
         # Exploit -------------------------------------
         else:

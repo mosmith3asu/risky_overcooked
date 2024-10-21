@@ -13,7 +13,7 @@ import itertools
 is_ipython = 'inline' in matplotlib.get_backend()
 if is_ipython:
     from IPython import display
-from risky_overcooked_rl.algorithms.DDQN.memory import ReplayMemory_Prospect
+from risky_overcooked_rl.algorithms.DDQN.memory import ReplayMemory_Prospect,ReplayMemory_Simple
 from risky_overcooked_rl.utils.risk_sensitivity import CumulativeProspectTheory
 from risky_overcooked_rl.utils.model_manager import get_absolute_save_dir
 from risky_overcooked_rl.utils.state_utils import invert_obs, invert_joint_action, invert_prospect
@@ -457,7 +457,6 @@ class SelfPlay_QRE_OSA(object):
         self.target.load_state_dict(target_net_state_dict)
         return self.target
 
-
 class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
     def __init__(self, obs_shape, n_actions, config, **kwargs):
         super().__init__(obs_shape, n_actions, config, **kwargs)
@@ -698,4 +697,243 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
     #     if self.clip_grad is not None: torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
     #     self.optimizer.step()
     #     return loss.item()
+
+class ResponseAgent(object):
+
+    def __init__(self, obs_shape, n_actions, config,cpt_agent,**kwargs):
+        self.clip_grad = config['clip_grad']
+        self.num_hidden_layers = config['num_hidden_layers']
+        self.size_hidden_layers = config['size_hidden_layers']
+        self.learning_rate = config['lr_sched'][1]
+        self.device = config['device']
+        self.gamma = config['gamma']
+        self.tau = config['tau']
+        self.eq_sol = 'QRE'
+        # self.eq_sol = 'Pareto'
+        self.rationality = 10
+        self.num_agents = 2
+        self.mem_size = config['replay_memory_size']
+        self.joint_action_space = list(itertools.product(Action.ALL_ACTIONS, repeat=2))
+        self.joint_action_dim = n_actions
+        self.player_action_dim = int(np.sqrt(n_actions))
+        self.cpt_agent = cpt_agent
+
+        # Define Memory
+        self._memory = ReplayMemory_Simple(self.mem_size,self.device)
+        self._memory_batch_size = config['minibatch_size']
+
+        # Define Model
+        self.model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
+        self.target = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
+        self.checkpoint_model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
+        self.target.load_state_dict(self.model.state_dict())
+        self.checkpoint_model.load_state_dict(self.model.state_dict())
+
+
+        lr_warmup_iter = config['lr_sched'][2]
+        lr_factor = config['lr_sched'][0]/config['lr_sched'][1]
+        # lr_factor = self.lr_warmup_scale
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=lr_factor * self.learning_rate, amsgrad=True)
+        self.scheduler = lr_scheduler.LinearLR(self.optimizer,
+                                               start_factor=1,
+                                               end_factor=1 / lr_factor,
+                                               total_iters=lr_warmup_iter)
+        self.optimistic_value_expectation = False
+        if self.optimistic_value_expectation: warnings.warn("Optimistic value expectation is set to True.")
+
+    def update_checkpoint(self):
+        self.checkpoint_model.load_state_dict(self.model.state_dict())
+
+    ###################################################
+    # Nash Utils ######################################
+    ###################################################
+
+    def get_normal_form_game(self, obs, with_model=None):
+        """ Batch compute the NF games for each observation"""
+        batch_size = obs.shape[0]
+        all_games = torch.zeros([batch_size, self.num_agents, self.player_action_dim, self.player_action_dim], device=self.device)
+        for i in range(self.num_agents):
+            if i == 1:
+                obs = invert_obs(obs)
+                q_values = self.cpt_agent(obs).detach()
+                q_values = torch.transpose(q_values, -1, -2)
+            elif with_model is not None: q_values = with_model(obs).detach()
+            else:  q_values = self.model(obs).detach()
+            q_values = q_values.reshape(batch_size, self.player_action_dim, self.player_action_dim)
+            all_games[:, i, :, :] = q_values
+        return all_games
+
+    def get_expected_equilibrium_value(self, nf_games, dists):
+        ego, partner = 0, 1
+        joint_dist_mat = torch.bmm(dists[:,ego].unsqueeze(-1), torch.transpose(dists[:,partner].unsqueeze(-1), -1, -2))
+        value = torch.cat([torch.sum(nf_games[:, ego, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1),
+                           torch.sum(nf_games[:, partner, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1)], dim=1)
+        return value
+
+    def level_k_qunatal(self,nf_games, sophistication=4, belief_trick=True):
+        """Implementes a k-bounded QRE computation
+        https://en.wikipedia.org/wiki/Quantal_response_equilibrium
+        as reationality -> infty, QRE -> Nash Equilibrium
+        """
+        rationality = self.rationality
+        batch_sz = nf_games.shape[0]
+        player_action_dim = nf_games.shape[2]
+        uniform_dist = (torch.ones(batch_sz, player_action_dim,device=self.device)) / player_action_dim
+        ego, partner = 0, 1
+
+        def invert_game(g):
+            "inverts perspective of the game"
+            return torch.cat([torch.transpose(g[:, partner, :, :], -1, -2).unsqueeze(1),
+                              torch.transpose(g[:, ego, :, :], -1, -2).unsqueeze(1)], dim=1)
+
+        def softmax(x):
+            return torch.softmax(x,dim=1)
+
+        def step_QRE(game, k):
+            if k == 0:  partner_dist = uniform_dist
+            else:  partner_dist = step_QRE(invert_game(game), k - 1)
+
+            Exp_qAi = torch.bmm(game[:, ego, :, :], partner_dist.unsqueeze(-1)).squeeze(-1)
+            return softmax(rationality * Exp_qAi)
+
+        dist1 = step_QRE(nf_games, sophistication)
+        if belief_trick:
+            # uses dist1 as partner belief prior for +1 sophistication
+            Exp_qAi = torch.bmm(invert_game(nf_games)[:, ego, :, :],dist1.unsqueeze(-1)).squeeze(-1)
+            dist2 = softmax(rationality * Exp_qAi)
+        else: # recomputes dist2 from scratch
+            dist2 = step_QRE(invert_game(nf_games), sophistication)
+        dist = torch.cat([dist1.unsqueeze(1), dist2.unsqueeze(1)], dim=1)
+        # joint_dist_mat = torch.bmm(dist1.unsqueeze(-1), torch.transpose(dist2.unsqueeze(-1), -1, -2))
+
+        if self.optimistic_value_expectation:
+            value = torch.zeros(batch_sz, 2, device=self.device)
+            pareto_vals = nf_games[:, partner, :] + nf_games[:, ego, :]
+            for ib, pval in enumerate(pareto_vals):
+                idx = (pval == torch.max(pval)).nonzero().flatten()
+                value[ib, ego] += nf_games[ib, ego, idx[0], idx[1]]
+                value[ib, partner] += nf_games[ib, partner, idx[0], idx[1]]
+        else: value = self.get_expected_equilibrium_value(nf_games, dist)
+            # value = torch.cat([torch.sum(nf_games[:, ego, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1),
+            #          torch.sum(nf_games[:, partner, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1)],dim=1)
+        return dist, value
+
+    def compute_EQ(self, NF_Games, update=False):
+        NF_Games = NF_Games.reshape(-1, self.num_agents, self.player_action_dim, self.player_action_dim)
+        all_joint_actions = []
+
+        # Compute equilibrium for each game
+        if self.eq_sol == 'QRE': all_dists,all_ne_values = self.level_k_qunatal(NF_Games)
+        # elif self.eq_sol == 'scaling_QRE': all_dists,all_ne_values = self.level_k_qunatal(NF_Games,scaling=True)
+        elif self.eq_sol == 'Pareto': all_dists,all_ne_values = self.pareto(NF_Games)
+        elif self.eq_sol == 'Nash': raise NotImplementedError # not feasible for gen. sum. game
+        else: raise ValueError(f"Invalid EQ solution:{self.eq_sol}")
+
+        if update:
+            return all_dists, all_ne_values
+        else:
+            # Sample actions from strategies
+            for _ in all_dists:
+                a1, a2 = torch.multinomial(all_dists[0, :], 1).detach().cpu().numpy().flatten()
+                action_idxs = (a1, a2)
+                joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
+                all_joint_actions.append(joint_action_idx)
+            return np.array(all_joint_actions), all_dists, all_ne_values
+
+    def choose_joint_action(self, obs, epsilon=0.0, feasible_JAs= None, debug=False):
+        sample = random.random()
+
+        # Explore -------------------------------------
+        if sample < epsilon:
+            action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
+            if feasible_JAs is not None:
+                action_probs = feasible_JAs*action_probs
+                action_probs = action_probs/np.sum(action_probs)
+            joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
+            joint_action = self.joint_action_space[joint_action_idx]
+
+        # Exploit -------------------------------------
+        else:
+            with torch.no_grad():
+                NF_Game = self.get_normal_form_game(obs)
+                joint_action_idx, dists, ne_vs = self.compute_EQ(NF_Game)
+                joint_action_idx = joint_action_idx[0]
+                joint_action = self.joint_action_space[joint_action_idx]
+                action_probs = dists
+
+                # Check feasible actions and resample
+                # if feasible_JAs is not None:
+                #     na = len(Action.ALL_ACTIONS)
+                #     feasibleM = feasible_JAs.reshape([na, na])
+                #     feasible_As = np.array([[np.any(feasibleM[ia,:]) for ia in range(6)],
+                #                             [np.any(feasibleM[:,ia]) for ia in range(6)]])
+                #     action_probs = feasible_As * action_probs.detach().cpu().numpy()[0]
+                #     action_idxs = [np.random.choice(np.arange(self.player_action_dim),
+                #                                     p=action_probs[ip]/action_probs[ip].sum())
+                #                          for ip in range(2)]
+                #     joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(tuple(action_idxs))
+                #     joint_action = self.joint_action_space[joint_action_idx]
+
+
+        return joint_action, joint_action_idx, action_probs
+
+
+    ###################################################
+    # Update Utils ######################################
+    ###################################################
+
+    def update(self):
+        if (
+                # self.memory_len < self.mem_size/2
+                len(self._memory) < self._memory_batch_size
+        ):  return 0
+
+        ego, partner = 0,1
+
+        # transitions = self.memory_sample()
+        transitions = self._memory.sample(self._memory_batch_size)
+
+        batch = self._memory.transition(*zip(*transitions))
+        BATCH_SIZE = len(transitions)
+        state = torch.cat(batch.state)
+        action = torch.cat(batch.action)
+        reward = torch.cat(batch.reward)
+        next_state = torch.cat(batch.next_state)
+        done = torch.cat(batch.done)
+
+        # # Q-Learning with target network
+        q_value = self.model(state).gather(1, action)
+
+        # Batch calculate Q(s'|pi) and form mask for later condensation to expectation
+        # all_next_states,all_p_next_states,prospect_idxs = self.flatten_next_prospects(batch.next_prospects)
+
+        # Compute equalib value for each outcome ---------------
+        # NF_games = self.get_normal_form_game(torch.cat(all_next_states), use_target=True)
+        # NF_games = self.get_normal_form_game(torch.cat(all_next_states), with_model=self.target)
+        NF_games = self.get_normal_form_game(next_state, with_model=self.target)
+        _, next_q_value = self.compute_EQ(NF_games, update=True)
+
+        # Convert to numpy then back ----------------------------
+        expected_q_value = reward + (self.gamma) * next_q_value[:,ego].unsqueeze(-1) * (1 - done)
+
+        # Optimize ----------------
+        loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
+        loss = loss.mean()
+        self.optimizer.zero_grad()
+        loss.backward()
+
+        # In-place gradient clipping
+        if self.clip_grad is not None:
+            torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
+        self.optimizer.step()
+        return loss.item()
+
+    def update_target(self):
+        # self.target = soft_update(self.model, self.target, self.tau)
+        target_net_state_dict = self.target.state_dict()
+        policy_net_state_dict = self.model.state_dict()
+        for key in policy_net_state_dict:
+            target_net_state_dict[key] = policy_net_state_dict[key] * (self.tau) + target_net_state_dict[key] * (1 - self.tau)
+        self.target.load_state_dict(target_net_state_dict)
+        return self.target
 

@@ -559,7 +559,7 @@ def main():
 
     # cpt_params = {'b': 0, 'lam': 1,
     #               'eta_p':0.88,'eta_n':0.88,
-    #               'delta_p':0.61,'delta_n':0.69}
+    #               'delta_p':0.61,'delta_n':"0.69"}
     # cpt_params = {'b': 'e', 'lam': 1,
     #               'eta_p':1,'eta_n':1,
     #               'delta_p':0.61,'delta_n':0.69}

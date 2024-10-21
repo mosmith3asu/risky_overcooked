@@ -142,57 +142,6 @@ class SelfPlay_QRE_OSA(object):
     def update_checkpoint(self):
         self.checkpoint_model.load_state_dict(self.model.state_dict())
 
-    ###################################################
-    ## Memory #########################################
-    ###################################################
-    # def memory_double_push(self, state, action, rewards, next_prospects, done):
-    #     """ Push both agent's experience into memory from ego perspective"""
-    #     if not isinstance(action, torch.Tensor): action = torch.tensor(action, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
-    #     if not isinstance(done, torch.Tensor): done = torch.tensor(done, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
-    #     rewards = rewards.flatten()
-    #
-    #     # Append Agent 1 experiences
-    #     reward = torch.tensor([rewards[0]], dtype=torch.float32, device=self.device).reshape(1, 1).to(self.device)
-    #
-    #     # assert len(reward.shape)==2,f'reward shape should be 2D:{reward.shape}'
-    #     self._memory.append(self._transition(state, action, reward, next_prospects, done))
-    #
-    #     # # Append Agent 2 experience
-    #     s_prime = self.invert_obs(state)
-    #     a_prime = self.invert_joint_action(action).to(self.device)
-    #     r_prime = torch.tensor([rewards[1]], dtype=torch.float32, device=self.device).reshape(1, 1).to(self.device)
-    #     np_prime = self.invert_prospect(next_prospects)
-    #     # assert len(r_prime.shape) == 2, f'reward shape should be 2D:{r_prime.shape}'
-    #     self._memory.append(self._transition(s_prime, a_prime, r_prime, np_prime, done))
-
-    # def memory_sample(self):
-    #     return random.sample(self._memory, self._memory_batch_size)
-
-    # @property
-    # def memory_len(self):
-    #     return len(self._memory)
-
-    ###################################################
-    # Self-Play Utils ######################################
-    ###################################################
-
-    # def invert_prospect(self, prospects):
-    #     _prospects = copy.deepcopy(prospects)
-    #     for i,prospect in enumerate(_prospects):
-    #         _prospects[i][1] = self.invert_obs(prospect[1])
-    #     return _prospects
-    # def invert_obs(self, obs_batch):
-    #     N_PLAYER_FEAT = 9
-    #     obs_batch = torch.cat([obs_batch[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
-    #                            obs_batch[:, :N_PLAYER_FEAT],
-    #                            obs_batch[:, 2 * N_PLAYER_FEAT:]], dim=1)
-    #     return obs_batch
-    #
-    # def invert_joint_action(self, action_batch):
-    #     BATCH_SIZE = action_batch.shape[0]
-    #     action_batch = torch.tensor(
-    #         [Action.reverse_joint_action_index(action_batch[i]) for i in range(BATCH_SIZE)]).unsqueeze(1)
-    #     return action_batch
 
     ###################################################
     # Nash Utils ######################################

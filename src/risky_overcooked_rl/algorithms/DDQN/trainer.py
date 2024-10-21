@@ -536,7 +536,7 @@ class ResponseTrainer():
         self._rshape_scale = None
 
         # Checkpointing/Saving utils ----------------
-        self.checkpoint_score = 0
+        self.checkpoint_score = -999
         # self.min_checkpoint_score = 20 - 0.5 * self.time_cost * self.env.horizon
         # self.min_checkpoint_score = 20 - 0.5 * self.time_cost * self.env.horizon
         self.checkpoint_mem = 3

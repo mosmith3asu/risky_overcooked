@@ -340,7 +340,7 @@ class CPT_MADDPG(MADDPG):
                 assert torch.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
                 prospect_td_targets = reward[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])
                 # expected_td_targets[i] = np.sum(prospect_td_targets * prospect_probs)  # rational
-                expected_next_q[i] = torch.sum(prospect_td_targets * prospect_probs)  # rational
+                expected_next_q[i] = torch.sum(prospect_td_targets.flatten() * prospect_probs.flatten())  # rational
 
             # target_next_q = torch.tensor(expected_td_targets, dtype=torch.float32, device=self.device)
 

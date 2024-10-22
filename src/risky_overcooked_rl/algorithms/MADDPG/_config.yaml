@@ -49,6 +49,14 @@ agent:
     lr: 5e-6       # typically ~ critic.lr * 0.1
     input_dim: None  # to be specified later
 
+  'cpt_params': # Default rational CPT parameters
+    'b': 0.0      # reference point
+    'lam': 1.0    # loss aversion
+    'eta_p': 1.0  # diminishing gain sensitivity
+    'eta_n': 1.0  # diminishing loss sensitivity
+    'delta_p': 1.0 # s-shaped probability estimation bias for gains
+    'delta_n': 1.0 # s-shaped probability estimation bias for losses
+
 
 
 

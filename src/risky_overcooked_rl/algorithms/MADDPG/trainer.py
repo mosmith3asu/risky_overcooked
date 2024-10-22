@@ -8,8 +8,8 @@ from risky_overcooked_rl.utils.rl_logger import RLLogger
 from collections import deque
 from risky_overcooked_rl.utils.state_utils import invert_obs, invert_joint_action, invert_prospect
 from src.risky_overcooked_rl.algorithms.MADDPG.utils import *
-from src.risky_overcooked_rl.algorithms.MADDPG.memory import ReplayMemory#ReplayBuffer
-from src.risky_overcooked_rl.algorithms.MADDPG.agents import MADDPG
+from src.risky_overcooked_rl.algorithms.MADDPG.memory import ReplayMemory, ReplayMemory_Prospect
+from src.risky_overcooked_rl.algorithms.MADDPG.agents import MADDPG,CPT_MADDPG
 
 class Trainer():
     def __init__(self, cfg):
@@ -291,6 +291,133 @@ class Trainer():
             #     self.replay_buffer.save(self.work_dir, self.step - 1)
         self.logger.wait_for_close(enable=True)
 
+class CPTTrainer(Trainer):
+    def __init__(self,cfg):
+        super().__init__(cfg)
+        self.replay_buffer = ReplayMemory_Prospect(int(float(cfg.env.replay_buffer_capacity)), self.device)
+        self.agent = CPT_MADDPG(cfg.agent.name, cfg.agent)
+
+    def warmup(self):
+        # train_sparse_rewards = deque(maxlen=self.env.horizon)
+        # train_shaped_rewards = deque(maxlen=self.env.horizon)
+        # train_loss = deque(maxlen=self.env.horizon)
+
+        for _ in range(self.num_warmup_episodes):
+            episode_sparse_reward = 0
+            episode_shaped_reward = 0
+            self.env.reset()
+            # obs = self.mdp.get_lossless_encoding_vector(self.env.state)
+            obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=self.device)
+
+            for t in range(self.env.horizon):
+                # Act
+                action = np.array([np.random.choice(np.arange(len(Action.ALL_ACTIONS))) for _ in range(self.n_agents)])
+                joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(tuple(action))
+                joint_action = self.joint_action_space[joint_action_idx]
+
+                # Step state-action
+                next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
+                                                                   joint_action=Action.ALL_JOINT_ACTIONS[
+                                                                       joint_action_idx],  as_tensor=True, device=self.device)
+                next_state, sparse_rewards, done, info = self.env.step(joint_action)
+                # next_obs = self.mdp.get_lossless_encoding_vector(self.env.state)
+                next_obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=self.device)
+                shaped_rewards = info['shaped_r_by_agent']
+
+                # Log and store in memory and update
+                episode_sparse_reward += sparse_rewards
+                episode_shaped_reward += np.mean(shaped_rewards)
+                total_rewards = np.mean(sparse_rewards) + np.array(shaped_rewards).reshape(-1, 1)
+                self.replay_buffer.double_push(state=obs,
+                                        action=joint_action_idx,
+                                        rewards = total_rewards,
+                                        next_prospects=next_state_prospects,
+                                        done = done)
+
+                # Close step
+                obs = next_obs
+                # self.step += 1
+                if done:
+                    print('warmup/episode_reward', [episode_sparse_reward, episode_shaped_reward])
+                    break
+
+    def run(self):
+        sparse_rewards_buffer = []
+        shaped_rewards_buffer = []
+        # loss_buffer = []
+
+        self.warmup()
+        for epi in range(self.num_episodes):
+            self.logger.start_iteration()
+
+            # Exploration noise
+            # percentage = max(0, self.ou_exploration_steps - (self.step - self.num_warmup_steps)) / self.ou_exploration_steps
+            prog = epi / self.num_episodes
+            self.noise_percentage = prog ** self.noise.exp_decay
+            self.agent.scale_noise(
+                self.noise.final_scale + (self.noise.init_scale - self.noise.final_scale) * self.noise_percentage)
+            self.agent.reset_noise()
+
+            # TRAINING ROLLOUT ##################################
+            episode_sparse_reward = 0
+            episode_shaped_reward = 0
+            self.env.reset()
+            obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=self.device)
+
+            for t in range(self.env.horizon):
+                self.logger.spin()  # prevents plot from freezing
+
+                # Act
+                agent_observations = torch.vstack([obs, invert_obs(obs)])
+                agent_actions = self.agent.act(agent_observations, sample=True)
+                joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(tuple(agent_actions))
+                joint_action = self.joint_action_space[joint_action_idx]
+
+                # Step state-action
+                next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
+                                                                   joint_action=Action.ALL_JOINT_ACTIONS[
+                                                                       joint_action_idx], as_tensor=True,
+                                                                   device=self.device)
+                next_state, sparse_rewards, done, info = self.env.step(joint_action)
+                next_obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, self.device)
+                shaped_rewards = info['shaped_r_by_agent']
+
+                # Log and store in memory and update
+                episode_sparse_reward += sparse_rewards
+                episode_shaped_reward += np.mean(shaped_rewards)
+                total_rewards = np.mean(sparse_rewards) + np.array(shaped_rewards).reshape(-1, 1)
+                self.replay_buffer.double_push(state=obs,
+                                               action=joint_action_idx,
+                                               rewards=total_rewards,
+                                               next_prospects=next_state_prospects,
+                                               done=done)
+                self.agent.update(self.replay_buffer)
+
+                # Close step
+                obs = next_obs
+                if done:
+                    print(f'[{round(prog * 100, 1)}% | epi: {epi}] train/episode_reward',
+                          [episode_sparse_reward, episode_shaped_reward])
+                    break
+
+            # Log episode stats
+            sparse_rewards_buffer.append(episode_sparse_reward)
+            shaped_rewards_buffer.append(episode_shaped_reward)
+
+            # EVALUATION ROLLOUT ##################################
+
+            if epi % self.eval_episode_freq == 0:
+                ave_eval_reward = self.evaluate()
+                self.logger.log(
+                    test_reward=[epi, np.mean(ave_eval_reward)],
+                    train_reward=[epi, np.mean(sparse_rewards_buffer) + np.mean(shaped_rewards_buffer)],
+                )
+                self.logger.draw()
+                sparse_rewards_buffer = []
+                shaped_rewards_buffer = []
+            self.logger.end_iteration()
+
+        self.logger.wait_for_close(enable=True)
 
 
 def main():

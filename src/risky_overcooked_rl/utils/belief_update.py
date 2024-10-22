@@ -34,6 +34,10 @@ class BayesianBeliefUpdate():
     def most_likely_partner(self):
         return self.candidate_partners[np.argmax(self.belief)]
 
+    @property
+    def best_response(self):
+        return self.candidate_responses[np.argmax(self.belief)]
+
     def plot_belief_history(self):
         plt.plot(self.belief_history)
         plt.show()

@@ -43,29 +43,34 @@ class ReplayMemory(object):
 
 class ReplayMemory_Prospect(object):
 
-    def __init__(self, capacity,device):
+    def __init__(self, capacity, device):
+        self.transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_prospects', 'done'))
         self.memory = deque([], maxlen=capacity)
-        self.transition = namedtuple('Transition',('obs', 'action', 'p_next_obss','next_obss', 'reward'))
         self.device = device
+
+    def double_push(self, state, action, rewards, next_prospects, done):
+        """ Push both agent's experience into memory from ego perspective"""
+        if not isinstance(action, torch.Tensor): action = torch.tensor(action, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
+        if not isinstance(done, torch.Tensor): done = torch.tensor(done, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
+        rewards = rewards.flatten()
+
+        # Append Agent 1 experiences
+        reward = torch.tensor([rewards[0]], dtype=torch.float32, device=self.device).reshape(1, 1).to(self.device)
+
+        # assert len(reward.shape)==2,f'reward shape should be 2D:{reward.shape}'
+        self.memory.append(self.transition(state, action, reward, next_prospects, done))
+
+        # # Append Agent 2 experience
+        s_prime = invert_obs(state)
+        a_prime = invert_joint_action(action).to(self.device)
+        r_prime = torch.tensor([rewards[1]], dtype=torch.float32, device=self.device).reshape(1, 1).to(self.device)
+        np_prime = invert_prospect(next_prospects)
+        # assert len(r_prime.shape) == 2, f'reward shape should be 2D:{r_prime.shape}'
+        self.memory.append(self.transition(s_prime, a_prime, r_prime, np_prime, done))
 
     def push(self, *args):
         """Save a transition"""
         self.memory.append(self.transition(*args))
-
-    def double_push(self, obs, joint_action_idx, rewards, p_next_obss,next_obss, done):
-        """ Push both agent's experience into memory from ego perspective"""
-        n_agents = 2
-        rewards = rewards.flatten()
-        joint_action_idx = torch.tensor(joint_action_idx, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
-        rewards = torch.tensor(rewards, dtype=torch.float32, device=self.device).reshape(2, 1).to(self.device)
-        done = torch.tensor(done, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
-
-        for i in range(n_agents):
-            if i==1: # invert the perspective
-                joint_action_idx = invert_joint_action(joint_action_idx)
-                obs = invert_obs(obs)
-                next_obss = invert_obs(next_obss)
-            self.push(obs, joint_action_idx, rewards[i], p_next_obss, next_obss, done)
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)

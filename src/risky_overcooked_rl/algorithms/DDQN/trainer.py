@@ -84,8 +84,8 @@ class Trainer:
         self._rshape_scale = None
 
         # Checkpointing/Saving utils ----------------
-        self.checkpoint_score = 0
-        self.min_checkpoint_score = 20 - 0.5 * self.time_cost*self.env.horizon
+        self.checkpoint_score = -999
+        # self.min_checkpoint_score = 20 - 0.5 * self.time_cost*self.env.horizon
         self.checkpoint_mem = 3
         # self.has_checkpointed = False
         self.train_rewards = deque(maxlen=self.checkpoint_mem)
@@ -122,7 +122,10 @@ class Trainer:
         for key, val in config.items():
             print(f'{key}={val}')
     def init_sched(self,config,eps_decay = 1,rshape_decay=1):
-
+        # def exponential_decay(N0, Nf, t, T):
+        #     w = 0.75
+        #     if t > T: return Nf
+        #     return N0 * (Nf / N0) ** ((t / T) ** w)
         def exponential_decay(N0, Nf, t, T, cycle=True):
             w = 0.75
             if t > T:
@@ -452,6 +455,8 @@ class Trainer:
         #         self.has_checkpointed = True
         #         return True
         # return False
+
+
     def package_model_info(self,rational=False):
         model_info = {
             'timestamp': self.timestamp,
@@ -474,6 +479,7 @@ class Trainer:
         # self.model_manager.save(model,model_info,self.fname)
         self.logger.save_fig(f"./models/{self.fname}.png")
         print(f'finished\n\n')
+
 
 class ResponseTrainer():
     def __init__(self,partner_model_object,config):

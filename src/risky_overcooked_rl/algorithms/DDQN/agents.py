@@ -647,7 +647,8 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
 
 class ResponseAgent(object):
 
-    def __init__(self, obs_shape, n_actions, config,cpt_agent,**kwargs):
+    def __init__(self, obs_shape, n_actions, config,cpt_agent,
+                 use_partner_prior=False,**kwargs):
         self.clip_grad = config['clip_grad']
         self.num_hidden_layers = config['num_hidden_layers']
         self.size_hidden_layers = config['size_hidden_layers']
@@ -675,6 +676,8 @@ class ResponseAgent(object):
         self.checkpoint_model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
         self.target.load_state_dict(self.model.state_dict())
         self.checkpoint_model.load_state_dict(self.model.state_dict())
+        if use_partner_prior:
+            self.load_agent_dict(cpt_agent)
 
 
         lr_warmup_iter = config['lr_sched'][2]
@@ -687,6 +690,12 @@ class ResponseAgent(object):
                                                total_iters=lr_warmup_iter)
         self.optimistic_value_expectation = False
         if self.optimistic_value_expectation: warnings.warn("Optimistic value expectation is set to True.")
+
+    def load_agent_dict(self,agent):
+        self.model.load_state_dict(agent.model.state_dict())
+        self.target.load_state_dict(agent.model.state_dict())
+        self.checkpoint_model.load_state_dict(agent.model.state_dict())
+
 
     def update_checkpoint(self):
         self.checkpoint_model.load_state_dict(self.model.state_dict())

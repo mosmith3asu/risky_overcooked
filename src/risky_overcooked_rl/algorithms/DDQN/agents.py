@@ -648,7 +648,7 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
 class ResponseAgent(object):
 
     def __init__(self, obs_shape, n_actions, config,cpt_agent,
-                 use_partner_prior=False,**kwargs):
+                 use_partner_prior=True,**kwargs):
         self.clip_grad = config['clip_grad']
         self.num_hidden_layers = config['num_hidden_layers']
         self.size_hidden_layers = config['size_hidden_layers']

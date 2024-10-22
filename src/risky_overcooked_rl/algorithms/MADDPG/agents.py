@@ -288,61 +288,48 @@ class CPT_MADDPG(MADDPG):
         agent = self.agent
         target_policy = self.agent.target_policy
 
-        ''' Update critic '''
+        # ''' Update critic '''
         agent.critic_optimizer.zero_grad()
-        expected_next_q = torch.nan*torch.ones([BATCH_SIZE, 1], dtype=torch.float32, device=self.device)
+        # expected_next_q = torch.nan * torch.ones([BATCH_SIZE, 1], dtype=torch.float32, device=self.device)
         # all_next_obs, all_p_next_obs, prospect_masks,determinstic_mask = self.flatten_next_prospects(batch.next_prospects)
         all_next_obs, all_p_next_obs, prospect_masks = self.flatten_next_prospects(batch.next_prospects)
         all_next_obs = torch.concatenate(all_next_obs)
-        all_p_next_obs= torch.tensor(all_p_next_obs,device=self.device,dtype=torch.float32)
+        # all_p_next_obs = torch.tensor(all_p_next_obs, device=self.device, dtype=torch.float32)
         with torch.no_grad():
-            # # Batch determinstic transitions (for speed)
-            # next_obs = all_next_obs[determinstic_mask]
-            # target_next_actions = torch.hstack(
-            #     [onehot_from_logits(target_policy(no)) for no in [next_obs, invert_obs(next_obs)]]
-            # )
-            # target_critic_in = torch.hstack([next_obs, target_next_actions])
-            # expected_next_q[determinstic_mask,:] = reward[determinstic_mask] + (1 - done[determinstic_mask,:]) * \
-            #                                        self.gamma * agent.target_critic(target_critic_in)
-            #
-            #
-            # # Handle multiple outcome prospects individually
-            #
-            # target_next_actions = torch.hstack(
-            #     [onehot_from_logits(target_policy(no)) for no in [all_next_obs, invert_obs(all_next_obs)]]
-            # )
-            # # TD-target (CPT) expectation
-            # for i,prospect_mask in enumerate(prospect_masks):#range(BATCH_SIZE - n_determinstic):
-            #     if prospect_mask is not None:
-            #         # prospect_mask = prospect_masks[i]
-            #         prospect_probs = all_p_next_obs[prospect_mask]
-            #         prospect_target_critic_in = torch.hstack(
-            #             [all_next_obs[prospect_mask], target_next_actions[prospect_mask]])
-            #         prospect_values = agent.target_critic(prospect_target_critic_in)
-            #         assert torch.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
-            #         prospect_td_targets = reward[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])
-            #         # expected_td_targets[i] = np.sum(prospect_td_targets * prospect_probs)  # rational
-            #         expected_next_q[i] = torch.sum(prospect_td_targets * prospect_probs)  # rational
-
-            # assert torch.isnan(expected_next_q).sum() == 0, 'Expected next q should not contain nan values'
             target_next_actions = torch.hstack(
                 [onehot_from_logits(target_policy(no)) for no in [all_next_obs, invert_obs(all_next_obs)]]
             )
             all_critic_in = torch.hstack([all_next_obs, target_next_actions])
             all_prospect_values = agent.target_critic(all_critic_in)
             # TD-target (CPT) expectation
-            for i in range(BATCH_SIZE):
-                prospect_mask = prospect_masks[i]
-                prospect_probs = all_p_next_obs[prospect_mask]
-                # prospect_target_critic_in = torch.hstack([all_next_obs[prospect_mask], target_next_actions[prospect_mask]])
-                # prospect_values = agent.target_critic(prospect_target_critic_in)
-                prospect_values = all_prospect_values[prospect_mask]
-                assert torch.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
-                prospect_td_targets = reward[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])
-                # expected_td_targets[i] = np.sum(prospect_td_targets * prospect_probs)  # rational
-                expected_next_q[i] = torch.sum(prospect_td_targets.flatten() * prospect_probs.flatten())  # rational
+            expected_next_q = self.prospect_value_expectations(reward, done, prospect_masks, all_prospect_values, all_p_next_obs)
 
-            # target_next_q = torch.tensor(expected_td_targets, dtype=torch.float32, device=self.device)
+        # ''' Update critic '''
+        # agent.critic_optimizer.zero_grad()
+        # expected_next_q = torch.nan*torch.ones([BATCH_SIZE, 1], dtype=torch.float32, device=self.device)
+        # # all_next_obs, all_p_next_obs, prospect_masks,determinstic_mask = self.flatten_next_prospects(batch.next_prospects)
+        # all_next_obs, all_p_next_obs, prospect_masks = self.flatten_next_prospects(batch.next_prospects)
+        # all_next_obs = torch.concatenate(all_next_obs)
+        # all_p_next_obs= torch.tensor(all_p_next_obs,device=self.device,dtype=torch.float32)
+        # with torch.no_grad():
+        #     target_next_actions = torch.hstack(
+        #         [onehot_from_logits(target_policy(no)) for no in [all_next_obs, invert_obs(all_next_obs)]]
+        #     )
+        #     all_critic_in = torch.hstack([all_next_obs, target_next_actions])
+        #     all_prospect_values = agent.target_critic(all_critic_in)
+        #     # TD-target (CPT) expectation
+        #
+        #     for i in range(BATCH_SIZE):
+        #         prospect_mask = prospect_masks[i]
+        #         prospect_probs = all_p_next_obs[prospect_mask]
+        #         # prospect_target_critic_in = torch.hstack([all_next_obs[prospect_mask], target_next_actions[prospect_mask]])
+        #         # prospect_values = agent.target_critic(prospect_target_critic_in)
+        #         prospect_values = all_prospect_values[prospect_mask]
+        #         assert torch.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
+        #         prospect_td_targets = reward[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])
+        #         expected_next_q[i] = torch.sum(prospect_td_targets.flatten() * prospect_probs.flatten())  # rational
+        #     assert not torch.any(torch.isnan(expected_next_q)), 'Expected next Q should not be nan'
+        #     # target_next_q = torch.tensor(expected_td_targets, dtype=torch.float32, device=self.device)
 
         # critic_in = torch.cat((obses, actions), dim=2).view(self.batch_size, -1)
         critic_in = torch.hstack([obs, actions])
@@ -368,29 +355,7 @@ class CPT_MADDPG(MADDPG):
         agent.policy_optimizer.step()
 
         self.update_all_targets()
-    # def flatten_next_prospects(self, next_prospects):
-    #     """
-    #     Used for flattening next_state prospects into list of outcomes for batch processing
-    #      - improve model-value prediction speed
-    #      - condensed to back to |batch_size| after using expectation
-    #     """
-    #     all_deterministic_next_states = []
-    #     all_prospect_next_states = []
-    #     all_prospect_p_next_states = []
-    #     prospect_idxs = []
-    #     determinstic_idxs = []
-    #     total_outcomes = 0
-    #     for i, prospect in enumerate(next_prospects):
-    #         n_outcomes = len(prospect)
-    #         if n_outcomes == 1:
-    #             determinstic_idxs.append(i)
-    #             prospect_idxs.append(None)
-    #         else:
-    #             prospect_idxs.append(np.arange(total_outcomes, total_outcomes + n_outcomes))
-    #         all_prospect_next_states += [outcome[1] for outcome in prospect]
-    #         all_prospect_p_next_states += [outcome[2] for outcome in prospect]
-    #         total_outcomes += n_outcomes
-    #     return all_prospect_next_states, all_prospect_p_next_states, prospect_idxs, determinstic_idxs
+
     def flatten_next_prospects(self, next_prospects):
         """
         Used for flattening next_state prospects into list of outcomes for batch processing
@@ -410,32 +375,25 @@ class CPT_MADDPG(MADDPG):
             total_outcomes += n_outcomes
         return all_next_states, all_p_next_states, prospect_idxs
     def prospect_value_expectations(self, reward, done, prospect_masks,
-                                    prospect_next_q_values, prospect_p_next_states,
-                                    prospect_next_q_values_ref=None, debug=False):
+                                    prospect_next_q_values, prospect_p_next_states,debug=False):
         """CPT expectation used for modification when class inherited by CPT version
         - condenses prospects back into expecations of |batch_size|
         """
 
         BATCH_SIZE = len(prospect_masks)
+        prospect_next_q_values = prospect_next_q_values.detach().cpu().numpy()
+        prospect_p_next_states = np.array(prospect_p_next_states).reshape(-1,1)
         done = done.detach().cpu().numpy()
         rewards = reward.detach().cpu().numpy()
         expected_td_targets = np.zeros([BATCH_SIZE, 1])
         for i in range(BATCH_SIZE):
             prospect_mask = prospect_masks[i]
             prospect_values = prospect_next_q_values[prospect_mask, :]
-            prospect_probs = prospect_p_next_states[prospect_mask, :]
+            prospect_probs = prospect_p_next_states[prospect_mask,:]
             prospect_td_targets = rewards[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])
-            if prospect_next_q_values_ref is not None:
-                prospect_values_ref = prospect_next_q_values_ref[prospect_mask, :]
-                prospect_td_targets_ref = rewards[i, :] + (self.gamma) * prospect_values_ref * (1 - done[i, :])
-                prospect_td_targets_ref = prospect_td_targets_ref.flatten()
-            else:
-                prospect_td_targets_ref = None
             if debug: assert np.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
 
-            expected_td_targets[i] = self.CPT.expectation(prospect_td_targets.flatten(),
-                                                          prospect_probs.flatten(),
-                                                          value_refs=prospect_td_targets_ref)
+            expected_td_targets[i] = self.CPT.expectation(prospect_td_targets.flatten(), prospect_probs.flatten())
             if debug and self.CPT.is_rational:
                 rat_expected_td_target = np.sum(prospect_td_targets * prospect_probs)
                 # assert np.all(rat_expected_td_target == expected_td_targets[i]), \

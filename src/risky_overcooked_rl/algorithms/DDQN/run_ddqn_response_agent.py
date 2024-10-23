@@ -14,11 +14,25 @@ from risky_overcooked_rl.utils.model_manager import parse_args,get_default_confi
 def main():
     config = get_default_config()
 
-    config['p_slip']= 0.4
-    config['epsilon_sched'][-1] *= 2
-    config['rshape_sched'][-1] *= 2
+
+    # config['epsilon_sched'][-1] *= 3
+    # config['rshape_sched'][-1] *= 3
+    # config['epsilon_sched'] = [1.0, 0, 10_000]
+    # config['rshape_sched'] = [1.0, 0, 10_000]
+    config['epsilon_sched'] = [1.0, 0, 20_000]
+    config['rshape_sched'] = [1.0, 0, 20_000]
+    # config['replay_memory_size'] = 10_000
     config = parse_args(config)
     config["ALGORITHM"] = 'Response-' + config['ALGORITHM']
+    config['LAYOUT'] = 'risky_coordination_ring'
+    config['p_slip'] = 0.25
+    config['cpt_params']= {'b': 0,
+     'lam': 0.5,
+     'eta_p': 1,
+     'eta_n': 0.88,
+     'delta_p': 0.61,
+     'delta_n': 0.69}
+
 
     # Run Curriculum learning
     for key, val in config['cpt_params'].items():

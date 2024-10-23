@@ -3,13 +3,14 @@ from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,SoupState, ObjectState
 from risky_overcooked_py.mdp.actions import Action
 import time
-from risky_overcooked_rl.utils.rl_logger import RLLogger
+from risky_overcooked_rl.utils.rl_logger import RLLogger, TrajectoryVisualizer, TrajectoryHeatmap
 
 from collections import deque
 from risky_overcooked_rl.utils.state_utils import invert_obs, invert_joint_action, invert_prospect
 from src.risky_overcooked_rl.algorithms.MADDPG.utils import *
 from src.risky_overcooked_rl.algorithms.MADDPG.memory import ReplayMemory, ReplayMemory_Prospect
 from src.risky_overcooked_rl.algorithms.MADDPG.agents import MADDPG,CPT_MADDPG
+
 
 class Trainer():
     def __init__(self, cfg):
@@ -24,7 +25,7 @@ class Trainer():
         # Create env
         self.mdp = OvercookedGridworld.from_layout_name(cfg.env.layout)
         self.mdp.p_slip = cfg.env.p_slip
-        self.env = OvercookedEnv.from_mdp(self.mdp, horizon=cfg.env.horizon, time_cost=0)
+        self.env = OvercookedEnv.from_mdp(self.mdp, horizon=cfg.env.horizon, time_cost=cfg.env.time_cost)
 
         # Define agents
         # self.agent_indexes = [0, 1]
@@ -56,26 +57,29 @@ class Trainer():
         self.replay_buffer = ReplayMemory(int(float(cfg.env.replay_buffer_capacity)),self.device)
 
 
-        # self.step = 0
-        # self.estimated_step = 0
+        # Add Logger Elements ###########################
+        self.traj_visualizer = TrajectoryVisualizer(self.env)
+        self.traj_heatmap = TrajectoryHeatmap(self.env)
 
-        self.logger = RLLogger(rows=3, cols=1, num_iterations=self.num_episodes)
+        self.logger = RLLogger(rows=2, cols=1, num_iterations=self.num_episodes)
         self.logger.add_lineplot('test_reward', xlabel='', ylabel='$R_{test}$', filter_window=30, display_raw=True, loc=(0, 1))
         self.logger.add_lineplot('train_reward', xlabel='', ylabel='$R_{train}$', filter_window=30, display_raw=True,  loc=(1, 1))
         # self.logger.add_lineplot('loss', xlabel='iter', ylabel='$Loss$', filter_window=30, display_raw=True, loc=(2, 1))
-        # self.logger.add_checkpoint_line()
+        self.logger.add_checkpoint_line()
         # self.logger.add_table('Params', config)
         self.logger.add_status()
-        # self.logger.add_button('Preview', callback=self.traj_visualizer.preview_qued_trajectory)
-        # self.logger.add_button('Heatmap', callback=self.traj_heatmap.preview)
-        # self.logger.add_button('Save ', callback=self.save)
+        self.logger.add_button('Preview', callback=self.traj_visualizer.preview_qued_trajectory)
+        self.logger.add_button('Heatmap', callback=self.traj_heatmap.preview)
+        self.logger.add_button('Save ', callback=self.save)
+
+        self.checkpoint_score_buffer = deque(maxlen=3)
+        self.checkpoint_score = -999
 
     def evaluate(self):
         average_episode_reward = 0
-
-        # self.video_recorder.init(enabled=True)
         for episode in range(self.num_eval_episodes):
             self.env.reset()
+            state_history = [self.env.state.deepcopy()]
             done = False
             episode_reward = 0
             while not done:
@@ -86,10 +90,11 @@ class Trainer():
                 joint_action = self.joint_action_space[joint_action_idx]
                 next_state, rewards, done, info = self.env.step(joint_action)
                 episode_reward += np.mean(rewards)
+                state_history.append(next_state.deepcopy())
             average_episode_reward += episode_reward
         average_episode_reward /= self.num_eval_episodes
         print(f'\neval/episode_reward, {average_episode_reward}\n')
-        return average_episode_reward
+        return average_episode_reward,state_history
 
     def warmup(self):
         # train_sparse_rewards = deque(maxlen=self.env.horizon)
@@ -184,11 +189,13 @@ class Trainer():
             # EVALUATION ROLLOUT ##################################
 
             if epi % self.eval_episode_freq == 0:
-                ave_eval_reward = self.evaluate()
+                ave_eval_reward,state_history = self.evaluate()
                 self.logger.log(
                     test_reward=[epi, np.mean(ave_eval_reward)],
                     train_reward=[epi, np.mean(sparse_rewards_buffer) + np.mean(shaped_rewards_buffer)],
                 )
+                self.checkpoint_score_buffer.append(np.mean(ave_eval_reward))
+                self.checkpoint(epi, state_history)
                 self.logger.draw()
                 sparse_rewards_buffer = []
                 shaped_rewards_buffer = []
@@ -290,6 +297,23 @@ class Trainer():
             # if self.step % 5e4 == 0 and self.save_replay_buffer:
             #     self.replay_buffer.save(self.work_dir, self.step - 1)
         self.logger.wait_for_close(enable=True)
+
+    def checkpoint(self, it, state_history):
+
+        score = np.mean(self.checkpoint_score_buffer)
+        if score > self.checkpoint_score:
+            print(f'\nCheckpointing model at iteration {it} with score {score}...\n')
+            # self.ego_agent.update_checkpoint() # TODO: Implement this
+            self.logger.update_checkpiont_line(it)
+            self.checkpoint_score = score
+            self.has_checkpointed = True
+
+            self.traj_visualizer.que_trajectory(state_history)
+            self.traj_heatmap.que_trajectory(state_history)
+            return True
+
+    def save(self):
+        pass
 
 class CPTTrainer(Trainer):
     def __init__(self,cfg):
@@ -407,11 +431,13 @@ class CPTTrainer(Trainer):
             # EVALUATION ROLLOUT ##################################
 
             if epi % self.eval_episode_freq == 0:
-                ave_eval_reward = self.evaluate()
+                ave_eval_reward,state_history = self.evaluate()
                 self.logger.log(
                     test_reward=[epi, np.mean(ave_eval_reward)],
                     train_reward=[epi, np.mean(sparse_rewards_buffer) + np.mean(shaped_rewards_buffer)],
                 )
+                self.checkpoint_score_buffer.append(np.mean(ave_eval_reward))
+                self.checkpoint(epi, state_history)
                 self.logger.draw()
                 sparse_rewards_buffer = []
                 shaped_rewards_buffer = []

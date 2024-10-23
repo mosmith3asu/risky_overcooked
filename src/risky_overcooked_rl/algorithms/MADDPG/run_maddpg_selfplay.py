@@ -13,7 +13,7 @@ def run() -> None:
     cfg.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # Trainer(cfg).run()
 
-    # cfg.env.warmu
+
     CPTTrainer(cfg).run()
 
 

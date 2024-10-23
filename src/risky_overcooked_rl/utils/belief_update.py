@@ -2,12 +2,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 from src.risky_overcooked_rl.utils.state_utils import invert_obs
 class BayesianBeliefUpdate():
-    def __init__(self, partner_agents, response_agents):
+    def __init__(self, partner_agents, response_agents,names=None,title=''):
         self.iego,self.ipartner = 0,1
         self.candidate_partners = partner_agents
         self.candidate_responses = response_agents
         self.belief = np.ones(len(partner_agents)) / len(partner_agents)
         self.belief_history = [self.belief]
+        self.title = title
+        self.names = names
+        self.alpha = 0.001 # noise parameter
+        self.min_belief = 0.01
 
 
     def update_belief(self, obs, action):
@@ -15,11 +19,24 @@ class BayesianBeliefUpdate():
         obs = invert_obs(obs)
         prior = self.belief
 
+        noise = self.alpha * np.random.rand(self.belief.size)
+
+
         likelihood = np.array([self.get_prob_partner_action(partner, obs, action)  for partner in self.candidate_partners])
+        likelihood += noise
+
         likelihood = likelihood / np.sum(likelihood)
         pE = np.sum([likelihood[i] * prior[i] for i in range(len(self.candidate_partners))])
         posterior = prior * likelihood/pE
+        posterior[np.where(posterior==0)] = self.min_belief
+        posterior = posterior/np.sum(posterior)
+        # posterior = posterior + noise
+        # posterior = posterior/np.sum(posterior)
+        # self.belief = (1-self.alpha)*self.belief + self.alpha*posterior
+        assert not np.any(posterior==0), 'Bad estimation'
         self.belief = posterior
+
+
         self.belief_history.append(self.belief)
     def get_prob_partner_action(self,agent,obs,joint_action_idx):
         """
@@ -39,7 +56,10 @@ class BayesianBeliefUpdate():
         return self.candidate_responses[np.argmax(self.belief)]
 
     def plot_belief_history(self):
-        plt.plot(self.belief_history)
+        fig,ax = plt.subplots()
+        ax.plot(self.belief_history)
+        ax.legend(self.names)
+        ax.set_title(self.title)
         plt.show()
 
 class SimulatedAgent():
@@ -72,6 +92,7 @@ def main():
         all_beliefs.append(belief_updater.belief)
 
         print(belief_updater.belief)
+    plt.title('Sample Belief Update')
     plt.plot(all_beliefs)
     plt.show()
 if __name__ =="__main__":

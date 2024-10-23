@@ -11,20 +11,23 @@ from risky_overcooked_rl.utils.deep_models import SelfPlay_QRE_OSA_CPT
 from risky_overcooked_rl.utils.belief_update import BayesianBeliefUpdate
 
 if __name__ == "__main__":
+    # partner_type = 'Averse'
+    partner_type = 'Seeking'
     config = get_default_config()
     config['p_slip'] = 0.4
     config = parse_args(config)
     config["ALGORITHM"] = 'Evaluate-' + config['ALGORITHM']
 
     config['loads'] = 'risky_coordination_ring_pslip04__b00_lam05_etap10_etan088_deltap10_deltan10__10_09_2024-13_44'
-    # trainer = Trainer(SelfPlay_QRE_OSA_CPT, config)
     seeking_agent = Trainer(SelfPlay_QRE_OSA_CPT, config).model
+    if partner_type == 'Seeking': trainer = Trainer(SelfPlay_QRE_OSA_CPT, config)
 
     config['loads'] = 'risky_coordination_ring_pslip04__b00_lam225_etap088_etan10_deltap10_deltan10__10_09_2024-13_43'
     averse_agent = Trainer(SelfPlay_QRE_OSA_CPT, config).model
-    trainer = Trainer(SelfPlay_QRE_OSA_CPT, config)
+    if partner_type == 'Averse': trainer = Trainer(SelfPlay_QRE_OSA_CPT, config)
 
-    belief_updater = BayesianBeliefUpdate([seeking_agent,averse_agent],[seeking_agent,averse_agent])
+    belief_updater = BayesianBeliefUpdate([seeking_agent,averse_agent],[seeking_agent,averse_agent],
+                                          names = ['Seeking','Averse'],title=f'Belief | {partner_type} Partner')
 
 
     N_tests = 1

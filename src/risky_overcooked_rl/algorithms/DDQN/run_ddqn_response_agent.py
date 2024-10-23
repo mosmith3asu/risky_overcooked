@@ -17,10 +17,20 @@ def main():
 
     # config['epsilon_sched'][-1] *= 3
     # config['rshape_sched'][-1] *= 3
-    # config['epsilon_sched'] = [1.0, 0, 10_000]
+    # Alg 1 #################
+    # config['epsilon_sched'] = [1.0, 0.1, 10_000]
     # config['rshape_sched'] = [1.0, 0, 10_000]
-    config['epsilon_sched'] = [1.0, 0, 20_000]
+    # Alg 2 #################
+    # config['epsilon_sched'] = [1.0, 0.1, 20_000]
+    # config['rshape_sched'] = [1.0, 0, 20_000]
+
+    # Alg 3 #################
+    config['epsilon_sched'] = [1.0, 0.1, 20_000]
     config['rshape_sched'] = [1.0, 0, 20_000]
+    config['replay_memory_size'] = 100_000
+    config['gamma'] = 0.99
+
+    # Parse other configs #################
     # config['replay_memory_size'] = 10_000
     config = parse_args(config)
     config["ALGORITHM"] = 'Response-' + config['ALGORITHM']

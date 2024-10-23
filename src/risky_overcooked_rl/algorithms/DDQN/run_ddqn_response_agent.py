@@ -14,27 +14,28 @@ from risky_overcooked_rl.utils.model_manager import parse_args,get_default_confi
 def main():
     config = get_default_config()
     # TESTING #############
-    config = parse_args(config)
-    config['p_slip'] = 0.4
-    config["ALGORITHM"] = 'Response-' + config['ALGORITHM']
-    config['LAYOUT'] = 'risky_coordination_ring'
-    config['replay_memory_size'] = 1_000
-    ResponseTrainer(SelfPlay_QRE_OSA_CPT, config).run()
-
+    # config = parse_args(config)
+    # config['p_slip'] = 0.4
+    # config["ALGORITHM"] = 'Response-' + config['ALGORITHM']
+    # config['LAYOUT'] = 'risky_coordination_ring'
+    # config['replay_memory_size'] = 1_000
+    # ResponseTrainer(SelfPlay_QRE_OSA_CPT, config).run()
+    config['note'] = 'With Memory Prioritized'
     # config['epsilon_sched'][-1] *= 3
     # config['rshape_sched'][-1] *= 3
     # Alg 1 #################
-    # config['epsilon_sched'] = [1.0, 0.1, 10_000]
-    # config['rshape_sched'] = [1.0, 0, 10_000]
+    config['epsilon_sched'] = [1.0, 0.1, 10_000]
+    config['rshape_sched'] = [1.0, 0, 10_000]
+
     # Alg 2 #################
     # config['epsilon_sched'] = [1.0, 0.1, 20_000]
     # config['rshape_sched'] = [1.0, 0, 20_000]
 
     # Alg 3 #################
-    config['epsilon_sched'] = [1.0, 0.1, 20_000]
-    config['rshape_sched'] = [1.0, 0, 20_000]
-    config['replay_memory_size'] = 100_000
-    config['gamma'] = 0.99
+    # config['epsilon_sched'] = [1.0, 0.1, 20_000]
+    # config['rshape_sched'] = [1.0, 0, 20_000]
+    # config['replay_memory_size'] = 100_000
+    # config['gamma'] = 0.99
 
     # Parse other configs #################
     # config['replay_memory_size'] = 10_000

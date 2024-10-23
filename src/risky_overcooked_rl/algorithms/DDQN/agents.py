@@ -420,6 +420,7 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         ):  return 0
         if self._memory.with_priority:
             transitions, weights, tree_idxs = self._memory.priority_sample(self._memory_batch_size)
+            weights = weights.to(self.device)
         else:
             transitions = self._memory.sample(self._memory_batch_size)
             BATCH_SIZE = len(transitions)
@@ -730,6 +731,7 @@ class ResponseAgent(object):
         ego, partner = 0,1
         if self._memory.with_priority:
             transitions, weights, tree_idxs = self._memory.priority_sample(self._memory_batch_size)
+            weights = weights.to(self.device)
         else:
             transitions = self._memory.sample(self._memory_batch_size)
             BATCH_SIZE = len(transitions)

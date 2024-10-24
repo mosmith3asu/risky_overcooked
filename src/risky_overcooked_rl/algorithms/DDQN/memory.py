@@ -24,9 +24,9 @@ class ReplayMemory_Simple(object):
             self.beta = 0.1  # determines the amount of importance-sampling correction, b = 1 fully compensate for the non-uniform probabilities
             self.max_priority = self.eps  # priority for new samples, init as eps
 
-            self.count = 0
-            self.real_size = 0
-            self.size = capacity
+            # self.count = 0
+            # self.real_size = 0
+            # self.size = capacity
 
 
     def push(self, state, action, reward, next_state,done):
@@ -39,11 +39,11 @@ class ReplayMemory_Simple(object):
 
         if self.with_priority:
             # store transition index with maximum priority in sum tree
-            self.tree.add(self.max_priority, self.count)
+            self.tree.add(self.max_priority, len(self)-1)
 
             # update counters
-            self.count = (self.count + 1) % self.size
-            self.real_size = min(self.size, self.real_size + 1)
+            # self.count = (self.count + 1) % self.size
+            # self.real_size = min(self.size, self.real_size + 1)
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
@@ -52,7 +52,7 @@ class ReplayMemory_Simple(object):
         return len(self.memory)
 
     def priority_sample(self, batch_size):
-        assert self.real_size >= batch_size, "buffer contains less samples than batch size"
+        # assert len(self) >= batch_size, "buffer contains less samples than batch size"
 
         sample_idxs, tree_idxs = [], []
         priorities = torch.empty(batch_size, 1, dtype=torch.float)
@@ -86,7 +86,7 @@ class ReplayMemory_Simple(object):
         # instead of δ_i (this is thus weighted IS, not ordinary IS, see e.g. Mahmood et al., 2014).
         # For stability reasons, we always normalize weights by 1/maxi wi so that they only scale the
         # update downwards (Section 3.4, first paragraph)
-        weights = (self.real_size * probs) ** -self.beta
+        weights = (len(self) * probs) ** -self.beta
 
         # As mentioned in Section 3.4, whenever importance sampling is used, all weights w_i were scaled
         # so that max_i w_i = 1. We found that this worked better in practice as it kept all weights
@@ -133,9 +133,9 @@ class ReplayMemory_Prospect(object):
             self.beta = 0.1  # determines the amount of importance-sampling correction, b = 1 fully compensate for the non-uniform probabilities
             self.max_priority =  self.eps  # priority for new samples, init as eps
 
-            self.count = 0
-            self.real_size = 0
-            self.size = capacity
+            # self.count = 0
+            # self.real_size = 0
+            # self.size = capacity
 
 
 
@@ -168,17 +168,17 @@ class ReplayMemory_Prospect(object):
 
         if self.with_priority:
             # store transition index with maximum priority in sum tree
-            self.tree.add(self.max_priority, self.count)
+            self.tree.add(self.max_priority, len(self)-1)
 
             # update counters
-            self.count = (self.count + 1) % self.size
-            self.real_size = min(self.size, self.real_size + 1)
+            # self.count = (self.count + 1) % self.size
+            # self.real_size = min(self.size, self.real_size + 1)
 
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
     def priority_sample(self, batch_size):
-        assert self.real_size >= batch_size, "buffer contains less samples than batch size"
+        # assert len(self) >= batch_size, "buffer contains less samples than batch size"
 
         sample_idxs, tree_idxs = [], []
         priorities = torch.empty(batch_size, 1, dtype=torch.float)
@@ -212,7 +212,7 @@ class ReplayMemory_Prospect(object):
         # instead of δ_i (this is thus weighted IS, not ordinary IS, see e.g. Mahmood et al., 2014).
         # For stability reasons, we always normalize weights by 1/maxi wi so that they only scale the
         # update downwards (Section 3.4, first paragraph)
-        weights = (self.real_size * probs) ** -self.beta
+        weights = (len(self) * probs) ** -self.beta
 
         # As mentioned in Section 3.4, whenever importance sampling is used, all weights w_i were scaled
         # so that max_i w_i = 1. We found that this worked better in practice as it kept all weights
@@ -277,11 +277,11 @@ class ReplayMemory_Prospect(object):
 class SumTree:
     def __init__(self, size):
         self.nodes = [0] * (2 * size - 1)
-        self.data = [None] * size
-
+        # self.data = [None] * size
+        self.data = deque([], maxlen=size)
         self.size = size
-        self.count = 0
-        self.real_size = 0
+        # self.count = 0
+        # self.real_size = 0
 
     @property
     def total(self):
@@ -299,11 +299,13 @@ class SumTree:
             parent = (parent - 1) // 2
 
     def add(self, value, data):
-        self.data[self.count] = data
-        self.update(self.count, value)
+        # self.data[self.count] = data
+        # self.update(self.count, value)
+        self.data.append(data)
+        self.update(len(self.data)-1, value)
 
-        self.count = (self.count + 1) % self.size
-        self.real_size = min(self.size, self.real_size + 1)
+        # self.count = (self.count + 1) % self.size
+        # self.real_size = min(self.size, self.real_size + 1)
 
     def get(self, cumsum):
         assert cumsum <= self.total

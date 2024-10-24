@@ -18,6 +18,7 @@ def main():
     config['p_slip'] = 0.4
     config["ALGORITHM"] = 'Response-' + config['ALGORITHM']
     config['LAYOUT'] = 'risky_coordination_ring'
+    config['replay_memory_size'] = 1_000
     ResponseTrainer(SelfPlay_QRE_OSA_CPT, config).run()
 
     # config['epsilon_sched'][-1] *= 3

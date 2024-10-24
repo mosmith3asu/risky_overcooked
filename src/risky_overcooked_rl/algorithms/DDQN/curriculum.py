@@ -67,7 +67,7 @@ class CirriculumTrainer(Trainer):
 
             # Testing Step ##########################################
             time4test = (it % self.test_interval == 0)
-            if time4test:
+            if time4test and rollout_info['mean_loss']>0:
                 self.curriculum.eval('on')
 
                 # Rollout test episodes ----------------------

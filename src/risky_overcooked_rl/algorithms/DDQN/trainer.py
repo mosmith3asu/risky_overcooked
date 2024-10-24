@@ -660,7 +660,7 @@ class ResponseTrainer():
             # Testing Step ##########################################
             # time4test = (it % self.test_interval == 0 and it > 2)
             time4test = (it % self.test_interval == 0)
-            if time4test:
+            if time4test and rollout_info['mean_loss'] >0:
 
                 # Rollout test episodes ----------------------
                 test_rewards = []

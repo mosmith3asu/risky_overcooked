@@ -13,7 +13,12 @@ from risky_overcooked_rl.utils.model_manager import parse_args,get_default_confi
 # noinspection PyDictCreation
 def main():
     config = get_default_config()
-
+    # TESTING #############
+    config = parse_args(config)
+    config['p_slip'] = 0.4
+    config["ALGORITHM"] = 'Response-' + config['ALGORITHM']
+    config['LAYOUT'] = 'risky_coordination_ring'
+    ResponseTrainer(SelfPlay_QRE_OSA_CPT, config).run()
 
     # config['epsilon_sched'][-1] *= 3
     # config['rshape_sched'][-1] *= 3

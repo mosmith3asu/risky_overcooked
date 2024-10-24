@@ -272,20 +272,6 @@ class SelfPlay_QRE_OSA(object):
                 joint_action = self.joint_action_space[joint_action_idx]
                 action_probs = dists
 
-                # Check feasible actions and resample
-                # if feasible_JAs is not None:
-                #     na = len(Action.ALL_ACTIONS)
-                #     feasibleM = feasible_JAs.reshape([na, na])
-                #     feasible_As = np.array([[np.any(feasibleM[ia,:]) for ia in range(6)],
-                #                             [np.any(feasibleM[:,ia]) for ia in range(6)]])
-                #     action_probs = feasible_As * action_probs.detach().cpu().numpy()[0]
-                #     action_idxs = [np.random.choice(np.arange(self.player_action_dim),
-                #                                     p=action_probs[ip]/action_probs[ip].sum())
-                #                          for ip in range(2)]
-                #     joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(tuple(action_idxs))
-                #     joint_action = self.joint_action_space[joint_action_idx]
-
-
         return joint_action, joint_action_idx, action_probs
 
 
@@ -426,13 +412,19 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         if self.frozen: raise ValueError('Model is frozen, cannot update')
 
         if (
-                len(self._memory) < self.mem_size / 2
+                len(self._memory) < self.mem_size
+                # len(self._memory) < self.mem_size / 2
                 # self.memory_len < self.mem_size / 2
                 # self.memory_len < self._memory_batch_size
                 # or self.memory_len < 0.25*self.mem_size
         ):  return 0
-
-        transitions = self._memory.sample(self._memory_batch_size)
+        if self._memory.with_priority:
+            transitions, weights, tree_idxs = self._memory.priority_sample(self._memory_batch_size)
+        else:
+            transitions = self._memory.sample(self._memory_batch_size)
+            BATCH_SIZE = len(transitions)
+            weights = torch.ones([BATCH_SIZE,1],device=self.device)
+        # transitions = self._memory.sample(self._memory_batch_size)
         batch = self._memory.transition(*zip(*transitions))
         BATCH_SIZE = len(transitions)
         state = torch.cat(batch.state)
@@ -472,8 +464,15 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
                                                             prospect_next_q_values_ref = all_next_value_ref)
 
         # Optimize ----------------
-        loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
-        loss = loss.mean()
+        if self._memory.with_priority:
+            TD_error = torch.abs(q_value - expected_q_value)
+            self._memory.update_priorities(tree_idxs, TD_error.detach().cpu().numpy())
+            loss = torch.mean((q_value - expected_q_value) ** 2 * weights)
+        else:
+            loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
+            loss = loss.mean()
+        # loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
+        # loss = loss.mean()
         self.optimizer.zero_grad()
         loss.backward()
 
@@ -519,131 +518,6 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
 
 
 
-
-        # BATCH_SIZE = len(prospect_masks)
-        # done = done.detach().cpu().numpy()
-        # rewards = reward.detach().cpu().numpy()
-        # expected_next_q_values = np.nan * np.ones([BATCH_SIZE, 1])
-        # expected_q_value = np.nan * np.ones([BATCH_SIZE, 1])
-        # for i in range(BATCH_SIZE):
-        #     prospect_mask = prospect_masks[i]
-        #     prospect_values = prospect_next_q_values[prospect_mask, :]
-        #     prospect_probs = prospect_p_next_states[prospect_mask, :]
-        #     assert np.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
-        #     prospect_td_targets = rewards[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])  # TD-Target
-        #     expected_q_value[i] = np.sum(prospect_td_targets * prospect_probs)
-        # return torch.FloatTensor(expected_q_value).to(self.device)
-
-
-        # Positive match-----------------
-        # BATCH_SIZE = len(prospect_masks)
-        # done = done.detach().cpu().numpy().astype(float)
-        # rewards = reward.detach().cpu().numpy()
-        # expected_next_q_values = np.nan * np.ones([BATCH_SIZE, 1])
-        # expected_q_value = np.nan * np.ones([BATCH_SIZE, 1])
-        # expected_q_value2 = np.nan * np.ones([BATCH_SIZE, 1])
-        # for i in range(BATCH_SIZE):
-        #     prospect_mask = prospect_masks[i]
-        #     prospect_values = prospect_next_q_values[prospect_mask, :]
-        #     prospect_probs = prospect_p_next_states[prospect_mask, :]
-        #     assert np.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
-        #
-        #     # calc Q' expectation
-        #     expected_next_q_values[i] = np.sum(prospect_values * prospect_probs)
-        #     expected_q_value[i] = rewards[i, :] + (self.gamma) * expected_next_q_values[i] * (1 - done[i, :])  # TD-Target
-        #
-        #     # calc Td as expectation
-        #     prospect_td_targets = rewards[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])  # TD-Target
-        #     expected_q_value2[i] = np.sum(prospect_td_targets * prospect_probs)
-        #
-        #     assert np.all(expected_q_value[i] == expected_q_value2[i]), 'CPT expectation not equal to sum of prospect values'
-        # return torch.FloatTensor(expected_q_value).to(self.device)
-
-        # BATCH_SIZE = len(prospect_masks)
-        # done = done.detach().cpu().numpy()
-        # rewards = reward.detach().cpu().numpy()
-        # expected_q_value = np.zeros([BATCH_SIZE, 1])
-        # expected_next_q_values = np.nan * np.ones([BATCH_SIZE, 1])
-        # for i in range(BATCH_SIZE):
-        #     prospect_mask = prospect_masks[i]
-        #     prospect_values = prospect_next_q_values[prospect_mask, :]
-        #     prospect_probs = prospect_p_next_states[prospect_mask, :]
-        #     assert np.sum(prospect_probs) == 1, 'prospect probs should sum to 1'
-        #     # expected_next_q_values[i] = np.sum(prospect_values * prospect_probs)
-        #     prospect_td_targets = rewards[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])
-        #     expected_q_value[i] = np.sum(prospect_td_targets * prospect_probs)
-        # # assert not np.any(np.isnan(expected_next_q_values)), 'prospect expectations not filled'
-        # # expected_next_q_values = torch.FloatTensor(expected_next_q_values).to(self.device)
-        # # expected_q_value = reward + (self.gamma) * expected_next_q_values * (1 - done)  # TD-Target
-        # expected_q_value = torch.FloatTensor(expected_q_value).to(self.device)
-        # return expected_q_value
-
-
-    #
-    # def update(self):
-    #     if self.memory_len < 2*self._memory_batch_size:
-    #         return None
-    #     self.CPT.recalc_b()
-    #
-    #     transitions = self.memory_sample()
-    #     batch = self._transition(*zip(*transitions))
-    #     BATCH_SIZE = len(transitions)
-    #     state = torch.cat(batch.state)
-    #     # next_state = torch.cat(batch.next_prospects)
-    #     action = torch.cat(batch.action)
-    #     reward = torch.cat(batch.reward)
-    #     done = torch.cat(batch.done)
-    #
-    #
-    #     # Q-Learning with target network
-    #     # q_values = self.model(state) # .unsqueeze(0)
-    #     q_value = self.model(state).gather(1, action)
-    #
-    #     # Batch calculate Q(s'|pi) and form mask for later condensation to expectation
-    #     prospect_idxs = []
-    #     all_next_states = []
-    #     all_p_next_states = []
-    #     for i, prospect in enumerate(batch.next_prospects):
-    #         n_outcomes = len(prospect)
-    #         all_next_states +=  [outcome[1] for outcome in prospect]
-    #         all_p_next_states += [outcome[2] for outcome in prospect]
-    #         prospect_idxs += [i for _ in range(n_outcomes)]
-    #     NF_games = self.get_normal_form_game(torch.cat(all_next_states), use_target=True)
-    #     _, all_next_q_value = self.compute_EQ(NF_games, update=True)
-    #     all_next_q_value = all_next_q_value[:,0].reshape(-1, 1)
-    #     # all_p_next_states = torch.tensor(all_p_next_states, dtype=torch.float32, device=self.device).reshape(-1, 1)
-    #
-    #     all_next_q_value = all_next_q_value.detach().cpu().numpy()
-    #     all_p_next_states = np.array(all_p_next_states).reshape(-1, 1)
-    #     prospect_idxs = np.array(prospect_idxs)
-    #
-    #
-    #     # Reduce prospects into expected next q-values
-    #     _done = done.detach().cpu().numpy()
-    #     _rewards = reward.detach().cpu().numpy()
-    #     expected_q_value = np.zeros([BATCH_SIZE, 1])
-    #     _expected_q_value = np.zeros([BATCH_SIZE, 1])
-    #     for i in range(BATCH_SIZE):
-    #         mask = np.where(prospect_idxs==i)[0]
-    #         td_targets =  _rewards[i,:] + (self.gamma)*all_next_q_value[mask,:]*(1 - _done[i,:])
-    #         expected_q_value[i] =  self.CPT.expectation(td_targets.flatten(), all_p_next_states[mask,:].flatten())
-    #     expected_q_value = torch.tensor(expected_q_value,dtype=torch.float32,device=self.device)
-    #     # expected_q_value = torch.zeros([BATCH_SIZE, 1], dtype = torch.float32, device=self.device)
-    #     # for i in range(BATCH_SIZE):
-    #     #     mask = np.where(prospect_idxs==i)[0]
-    #     #     td_targets =  reward[i,:] + (self.gamma)*all_next_q_value[mask,:]*(1 - done[i,:])
-    #     #     expected_q_value[i] =  self.CPT.expectation(td_targets.flatten(), all_p_next_states[mask,:].flatten())
-    #
-    #
-    #     # Optimize ----------------
-    #     loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
-    #     loss = loss.mean()
-    #     self.optimizer.zero_grad()
-    #     loss.backward()
-    #     # In-place gradient clipping
-    #     if self.clip_grad is not None: torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
-    #     self.optimizer.step()
-    #     return loss.item()
 
 class ResponseAgent(object):
 
@@ -846,18 +720,23 @@ class ResponseAgent(object):
     ###################################################
 
     def update(self):
-        if (
+        if self._memory.with_priority and  len(self._memory) < self.mem_size:
+            return 0
+        elif (
                 # self.memory_len < self.mem_size/2
                 len(self._memory) < self._memory_batch_size
         ):  return 0
 
         ego, partner = 0,1
-
-        # transitions = self.memory_sample()
-        transitions = self._memory.sample(self._memory_batch_size)
+        if self._memory.with_priority:
+            transitions, weights, tree_idxs = self._memory.priority_sample(self._memory_batch_size)
+        else:
+            transitions = self._memory.sample(self._memory_batch_size)
+            BATCH_SIZE = len(transitions)
+            weights = torch.ones([BATCH_SIZE,1],device=self.device)
 
         batch = self._memory.transition(*zip(*transitions))
-        BATCH_SIZE = len(transitions)
+
         state = torch.cat(batch.state)
         action = torch.cat(batch.action)
         reward = torch.cat(batch.reward)
@@ -880,12 +759,16 @@ class ResponseAgent(object):
         expected_q_value = reward + (self.gamma) * next_q_value[:,ego].unsqueeze(-1) * (1 - done)
 
         # Optimize ----------------
-        loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
-        loss = loss.mean()
+        if self._memory.with_priority:
+            TD_error = torch.abs(q_value - expected_q_value)
+            self._memory.update_priorities(tree_idxs, TD_error.detach().cpu().numpy())
+            loss = torch.mean((q_value - expected_q_value) ** 2 * weights)
+        else:
+            loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
+            loss = loss.mean()
+
         self.optimizer.zero_grad()
         loss.backward()
-
-        # In-place gradient clipping
         if self.clip_grad is not None:
             torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
         self.optimizer.step()

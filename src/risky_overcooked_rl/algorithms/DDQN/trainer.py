@@ -579,15 +579,15 @@ class ResponseTrainer():
         return h
     def init_sched(self, config, eps_decay=1, rshape_decay=1):
 
-        def exponential_decay(N0, Nf, t, T, cycle=True):
-            w = 0.75
-            if t > T:
-                if cycle:  # cycle through min and max decay after final iteration reached
-                    _t = t % T if int(t / T) % 2 == 0 else T - t % T
-                    return (N0 * (Nf / N0) ** ((_t / T) ** w))
-                else:
-                    return Nf
-            return N0 * (Nf / N0) ** ((t / T) ** w)
+        # def exponential_decay(N0, Nf, t, T, cycle=True):
+        #     w = 0.75
+        #     if t > T:
+        #         if cycle:  # cycle through min and max decay after final iteration reached
+        #             _t = t % T if int(t / T) % 2 == 0 else T - t % T
+        #             return (N0 * (Nf / N0) ** ((_t / T) ** w))
+        #         else:
+        #             return Nf
+        #     return N0 * (Nf / N0) ** ((t / T) ** w)
 
         EPS_START, EPS_END, EPS_DUR = config['epsilon_sched']
         RAT_START, RAT_END, RAT_DUR = config['rationality_sched']
@@ -602,8 +602,13 @@ class ResponseTrainer():
             [np.linspace(RAT_START, RAT_END, RAT_DUR), RAT_END * np.ones(self.ITERATIONS - RAT_DUR)])
         # self.epsilon_sched = np.hstack(
         #     [np.linspace(EPS_START, EPS_END, EPS_DUR), EPS_END * np.ones(self.ITERATIONS - EPS_DUR)])
-        self.epsilon_sched = [exponential_decay(N0=EPS_START, Nf=EPS_END, t=t, T=EPS_DUR) for t in
-                              range(self.ITERATIONS)]
+        # self.epsilon_sched = [exponential_decay(N0=EPS_START, Nf=EPS_END, t=t, T=EPS_DUR) for t in
+        #                       range(self.ITERATIONS)]
+        # self.epsilon_sched = np.hstack(
+        #     [np.linspace(EPS_START, EPS_END, EPS_DUR), RSHAPE_END * np.ones(self.ITERATIONS - EPS_DUR)])
+        exp_decay = 4
+        self.epsilon_sched = [EPS_START - (EPS_START - EPS_END) * prog**exp_decay for prog in np.arange(EPS_DUR)/EPS_DUR] + \
+                                [EPS_END for _ in range(self.ITERATIONS - EPS_DUR)]
 
         self.rshape_sched = np.hstack(
             [np.linspace(RSHAPE_START, RSHAPE_END, RSHAPE_DUR), RSHAPE_END * np.ones(self.ITERATIONS - RSHAPE_DUR)])

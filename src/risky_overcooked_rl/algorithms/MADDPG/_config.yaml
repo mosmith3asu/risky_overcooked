@@ -4,7 +4,7 @@ device: None
 env:
   layout: 'risky_coordination_ring'
   p_slip: 0.4
-  time_cost: -0.2
+  time_cost: 0
   horizon: 400
 #  horizon: 200
   seed: 42
@@ -21,7 +21,8 @@ env:
 
   reward_shaping:
     init_scale: 1.0
-    exp_decay: 4
+#    exp_decay: 4
+    exp_decay: 1
     final_scale: 0.0
     perc_delay: 0.0 # percentage of total episodes to delay reward shaping decay
 

@@ -12,8 +12,6 @@ def run() -> None:
     cfg = parse_config()
     cfg.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # Trainer(cfg).run()
-
-
     CPTTrainer(cfg).run()
 
 

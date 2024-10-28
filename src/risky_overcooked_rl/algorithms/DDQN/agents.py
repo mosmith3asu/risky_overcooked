@@ -323,7 +323,9 @@ class SelfPlay_QRE_OSA(object):
         loss.backward()
 
         # In-place gradient clipping
-        if self.clip_grad is not None:  torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
+        if self.clip_grad is not None:
+            # torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad)
         self.optimizer.step()
         return loss.item()
 
@@ -478,7 +480,9 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         loss.backward()
 
         # In-place gradient clipping
-        if self.clip_grad is not None:  torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
+        if self.clip_grad is not None:
+            # torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad)
         self.optimizer.step()
         return loss.item()
     def prospect_value_expectations(self,reward,done,prospect_masks,
@@ -772,7 +776,8 @@ class ResponseAgent(object):
         self.optimizer.zero_grad()
         loss.backward()
         if self.clip_grad is not None:
-            torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
+            # torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad)
         self.optimizer.step()
         return loss.item()
 

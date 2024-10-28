@@ -9,7 +9,7 @@ from risky_overcooked_rl.utils.state_utils import invert_obs, invert_joint_actio
 class ReplayMemory_Simple(object):
     " For training rational response (partner/robot) agent"
 
-    def __init__(self, capacity,device,with_priority=True):
+    def __init__(self, capacity,device,with_priority=False):
         self.memory = deque([], maxlen=capacity)
         self.transition = namedtuple('Transition', ('state', 'action', 'reward','next_state','done'))
         self.device = device
@@ -118,7 +118,7 @@ class ReplayMemory_Prospect(object):
     https://paperswithcode.com/method/prioritized-experience-replay
     """
 
-    def __init__(self, capacity, device,with_priority=True):
+    def __init__(self, capacity, device,with_priority=False):
         self.transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_prospects', 'done'))
         self.memory = deque([], maxlen=capacity)
         self.device = device

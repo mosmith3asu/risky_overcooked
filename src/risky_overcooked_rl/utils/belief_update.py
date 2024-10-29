@@ -1,51 +1,79 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from src.risky_overcooked_rl.utils.state_utils import invert_obs
+from collections import deque
+from src.risky_overcooked_py.mdp.actions import Action
+
 class BayesianBeliefUpdate():
-    def __init__(self, partner_agents, response_agents,names=None,title=''):
+    def __init__(self, partner_agents,response_agents,
+                 capacity=10, alpha = 0.9,
+                 names=None,title=''):
+        """
+        Runs a Bayesian belief update on the partner's policy given a sequence of observations and actions
+        :param partner_agents: possible policies for the (human) partner
+        :param response_agents: possible paired (by index) policies for the (robot) ego agent
+        :param capacity: number of transitions in memory to performe belief over
+        :param alpha: decayed weighting on previous observatiosn
+        :param names: names of policies (for plotting)
+        :param title: title of plot
+        """
         self.iego,self.ipartner = 0,1
         self.candidate_partners = partner_agents
         self.candidate_responses = response_agents
+        assert len(partner_agents) == len(response_agents), 'Must have same number of partner and response agents'
+        self.n_candidates = len(partner_agents)
+        self.candidate_likelihood_mem = [deque(maxlen=capacity) for _ in range(self.n_candidates)]
+
         self.belief = np.ones(len(partner_agents)) / len(partner_agents)
         self.belief_history = [self.belief]
         self.title = title
         self.names = names
-        self.alpha = 0.001 # noise parameter
-        self.min_belief = 0.01
+        self.alpha = alpha
 
 
-    def update_belief(self, obs, action):
+
+
+
+    def update_belief(self, obs, action, agent=1):
         """https://towardsdatascience.com/how-to-use-bayesian-inference-for-predictions-in-python-4de5d0bc84f3"""
-        obs = invert_obs(obs)
+
         prior = self.belief
 
-        noise = self.alpha * np.random.rand(self.belief.size)
-
-
         likelihood = np.array([self.get_prob_partner_action(partner, obs, action)  for partner in self.candidate_partners])
-        likelihood += noise
-
+        # likelihood += 1e-32
         likelihood = likelihood / np.sum(likelihood)
-        pE = np.sum([likelihood[i] * prior[i] for i in range(len(self.candidate_partners))])
-        posterior = prior * likelihood/pE
-        posterior[np.where(posterior==0)] = self.min_belief
-        posterior = posterior/np.sum(posterior)
-        # posterior = posterior + noise
-        # posterior = posterior/np.sum(posterior)
-        # self.belief = (1-self.alpha)*self.belief + self.alpha*posterior
-        assert not np.any(posterior==0), 'Bad estimation'
+        for i, l in enumerate(likelihood):
+            self.candidate_likelihood_mem[i].append(l)
+
+        n_samples = len(self.candidate_likelihood_mem[0])
+        decay_vec = np.array([self.alpha**(n_samples-i-1) for i in range(n_samples)])
+
+        cum_likelihood = np.zeros(self.belief.size)
+        for i, likelihoods in enumerate(self.candidate_likelihood_mem):
+            cum_likelihood[i] = np.sum(np.array(likelihoods) * decay_vec)
+        cum_likelihood = cum_likelihood / np.sum(cum_likelihood)
+        assert not np.any(np.isnan(cum_likelihood)), 'NaN in cum_likelihood'
+
+
+        pE = np.sum([cum_likelihood[i] * prior[i] for i in range(len(self.candidate_partners))])
+        posterior = prior * cum_likelihood / pE
+        posterior = posterior / np.sum(posterior)
         self.belief = posterior
-
-
         self.belief_history.append(self.belief)
+        # pE = np.sum([likelihood[i] * prior[i] for i in range(len(self.candidate_partners))])
+        # posterior = prior * likelihood/pE
+        # posterior = posterior/np.sum(posterior)
+        # self.belief = posterior
+        # self.belief_history.append(self.belief)
     def get_prob_partner_action(self,agent,obs,joint_action_idx):
         """
         Gets probability that the partner took action given the observation
         - CPT partner assumes ego follows same policy
         """
-        partner_action_index = joint_action_idx % 6
+        # partner_action_index = joint_action_idx % 6
+        partner_action_index = Action.INDEX_TO_ACTION_INDEX_PAIRS[joint_action_idx][1]
         _, _, action_probs = agent.choose_joint_action(obs, epsilon=0)
-        return float(action_probs[0,self.ipartner,partner_action_index])
+        return float(action_probs[0, self.ipartner, partner_action_index])
 
     @property
     def most_likely_partner(self):
@@ -83,17 +111,71 @@ def main():
     SAMPLED_AGENT = 1
     partner_agents = [SimulatedAgent(i) for i in range(len(SimulatedAgent.dists ))]
     response_agents = [SimulatedAgent(i) for i in range(len(SimulatedAgent.dists ))]
-    belief_updater = BayesianBeliefUpdate(partner_agents, response_agents)
+    belief_updater = BayesianBeliefUpdate(partner_agents, response_agents,
+                                          title=f'True: Agent {SAMPLED_AGENT}',
+                                          names=[f'Agent {i}' for i in range(len(partner_agents))])
     print(belief_updater.belief)
     all_beliefs.append(belief_updater.belief)
     for i in range(100):
         action = partner_agents[SAMPLED_AGENT].sample_action()
-        belief_updater.update_belief(None,action)
+        belief_updater.update_belief(None,action, agent=0)
         all_beliefs.append(belief_updater.belief)
 
         print(belief_updater.belief)
-    plt.title('Sample Belief Update')
-    plt.plot(all_beliefs)
-    plt.show()
+
+    belief_updater.plot_belief_history()
 if __name__ =="__main__":
     main()
+
+# DEPRICATED #################
+# class BayesianBeliefUpdate():
+#     def __init__(self, partner_agents,response_agents,names=None,title=''):
+#         self.iego,self.ipartner = 0,1
+#         self.candidate_partners = partner_agents
+#         self.candidate_responses = response_agents
+#         self.belief = np.ones(len(partner_agents)) / len(partner_agents)
+#         self.belief_history = [self.belief]
+#         self.title = title
+#         self.names = names
+#         # self.alpha = 0.001 # noise scale parameter
+#         self.alpha = 0.0000  # noise scale parameter
+#
+#
+#
+#     def update_belief(self, obs, action):
+#         """https://towardsdatascience.com/how-to-use-bayesian-inference-for-predictions-in-python-4de5d0bc84f3"""
+#         obs = invert_obs(obs)
+#         prior = self.belief
+#
+#         likelihood = np.array([self.get_prob_partner_action(partner, obs, action)  for partner in self.candidate_partners])
+#         likelihood += self.alpha * np.random.rand(self.belief.size) # add noise
+#         likelihood = likelihood / np.sum(likelihood)
+#
+#         pE = np.sum([likelihood[i] * prior[i] for i in range(len(self.candidate_partners))])
+#         posterior = prior * likelihood/pE
+#         posterior = posterior/np.sum(posterior)
+#         self.belief = posterior
+#         self.belief_history.append(self.belief)
+#     def get_prob_partner_action(self,agent,obs,joint_action_idx):
+#         """
+#         Gets probability that the partner took action given the observation
+#         - CPT partner assumes ego follows same policy
+#         """
+#         partner_action_index = joint_action_idx % 6
+#         _, _, action_probs = agent.choose_joint_action(obs, epsilon=0)
+#         return float(action_probs[0,self.ipartner,partner_action_index])
+#
+#     @property
+#     def most_likely_partner(self):
+#         return self.candidate_partners[np.argmax(self.belief)]
+#
+#     @property
+#     def best_response(self):
+#         return self.candidate_responses[np.argmax(self.belief)]
+#
+#     def plot_belief_history(self):
+#         fig,ax = plt.subplots()
+#         ax.plot(self.belief_history)
+#         ax.legend(self.names)
+#         ax.set_title(self.title)
+#         plt.show()

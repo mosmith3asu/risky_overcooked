@@ -305,7 +305,8 @@ class RLLogger(object):
 
         self.raw_settings = {'c': 'k', 'lw': lw}
         self.filtered_settings = {'c': 'r', 'lw': lw}
-
+    def close_plots(self):
+        plt.close(self.root_fig)
     def log(self, **data):
         for key, value in data.items():
             assert len(value) == 2, f'Value must be a tuple of length 2. Got {key}:{value}'

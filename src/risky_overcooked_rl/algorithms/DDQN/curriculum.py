@@ -44,23 +44,23 @@ class CirriculumTrainer(Trainer):
                 self.init_sched(self.config, eps_decay=self.schedule_decay, rshape_decay=self.schedule_decay)
             risks = rollout_info['onion_risked'] + rollout_info['dish_risked'] + rollout_info['soup_risked']
             handoffs = rollout_info['onion_handoff'] + rollout_info['dish_handoff'] + rollout_info['soup_handoff']
-
-            print(f"[it:{it}"
-                  f" {self.curriculum.name}:{self.curriculum.current_cirriculum}-{cit}]"
-                  f"[R:{round(cum_reward, 3)} "
-                  f" Rshape:{np.round(cum_shaped_rewards, 3)} "
-                  f" L:{round(rollout_info['mean_loss'], 3)} ]"
-                  # f"| slips:{slips} "
-                  f"[ risks:{risks} "
-                  f" handoffs:{handoffs} ]"
-                  f" |"
-                  f"| mem:{len(self.model._memory)} "
-                  f"| rshape:{round(self.rshape_sched[cit], 3)} "
-                  f"| rat:{round(self.rationality_sched[cit], 3)}"
-                  f"| eps:{round(self.epsilon_sched[cit], 3)} "
-                  f"| LR={round(self.model.optimizer.param_groups[0]['lr'], 4)}"
-                  f"| rstart={round(self.random_start_sched[cit], 3)}"
-                  )
+            if self.enable_report:
+                print(f"[it:{it}"
+                      f" {self.curriculum.name}:{self.curriculum.current_cirriculum}-{cit}]"
+                      f"[R:{round(cum_reward, 3)} "
+                      f" Rshape:{np.round(cum_shaped_rewards, 3)} "
+                      f" L:{round(rollout_info['mean_loss'], 3)} ]"
+                      # f"| slips:{slips} "
+                      f"[ risks:{risks} "
+                      f" handoffs:{handoffs} ]"
+                      f" |"
+                      f"| mem:{len(self.model._memory)} "
+                      f"| rshape:{round(self.rshape_sched[cit], 3)} "
+                      f"| rat:{round(self.rationality_sched[cit], 3)}"
+                      f"| eps:{round(self.epsilon_sched[cit], 3)} "
+                      f"| LR={round(self.model.optimizer.param_groups[0]['lr'], 4)}"
+                      f"| rstart={round(self.random_start_sched[cit], 3)}"
+                      )
 
             train_rewards.append(cum_reward + cum_shaped_rewards)
             train_losses.append(rollout_info['mean_loss'])
@@ -95,18 +95,22 @@ class CirriculumTrainer(Trainer):
                                 train_reward=[it, np.mean(train_rewards)],
                                 loss=[it, np.mean(train_losses)])
                 self.logger.draw()
-                print(f"\nTest: | nTests= {self.N_tests} "
-                      f"| Ave Reward = {np.mean(test_rewards)} "
-                      f"| Ave Shaped Reward = {np.mean(test_shaped_rewards)}"
-                      # f"\n{action_history}\n"#, f"{aprob_history[0]}\n"
-                      )
+
+                if self.enable_report:
+                    print(f"\nTest: | nTests= {self.N_tests} "
+                          f"| Ave Reward = {np.mean(test_rewards)} "
+                          f"| Ave Shaped Reward = {np.mean(test_shaped_rewards)}"
+                          # f"\n{action_history}\n"#, f"{aprob_history[0]}\n"
+                          )
 
                 train_rewards = []
                 train_losses = []
                 self.curriculum.eval('off')
             self.logger.end_iteration()
-        self.logger.wait_for_close(enable=True)
-
+        # self.logger.wait_for_close(enable=True)
+        self.logger.wait_for_close(enable=self.wait_for_close)
+        if self.auto_save: self.save()
+        self.logger.close_plots()
     def curriculum_rollout(self, it, rationality,epsilon,rshape_scale,p_rand_start=0):
         self.model.rationality = rationality
         self.env.reset()

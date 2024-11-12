@@ -502,8 +502,48 @@ def animation():
     fname = 'CPT_animation_all'
     print(len(IMGS))
     imageio.mimsave(f'{fname}.gif', IMGS,loop=0,fps=fps)
+def animation_all():
+    fps = 10
+    fname = 'CPT_animation'
+    IMGS = []
+    cpt_params = {'b': 0, 'lam': 1.0,
+                  'eta_p': 1., 'eta_n': 1.,
+                  'delta_p': 1., 'delta_n': 1.}
+
+
+
+    N = 30
+    sp_b = np.linspace(0, 1, N)
+    sp_lam = 1/np.linspace(1, 0.5, N)
+    sp_eta_p = np.linspace(1, 0.3, N)
+    sp_eta_n = np.linspace(1, 0.8, N)
+    sp_delta_p = np.linspace(1, 0.6, N)
+    sp_delta_n = np.linspace(1, 0.4, N)
+
+    for lam,eta_p,eta_n,delta_p,delta_n in zip(
+            sp_lam,sp_eta_p,sp_eta_n,sp_delta_p,sp_delta_n):
+        cpt_params['eta_p'] = eta_p
+        cpt_params['eta_n'] = eta_n
+        cpt_params['delta_p'] = delta_p
+        cpt_params['delta_n'] = delta_n
+        # cpt_params['lam'] = lam
+        CPT = CumulativeProspectTheory(**cpt_params)
+        IMGS.append(CPT.plot_curves(with_params=True, get_img=True,neg_lambda=True))
+    for lam, eta_p, eta_n, delta_p, delta_n in reversed(list(zip(
+            sp_lam, sp_eta_p, sp_eta_n, sp_delta_p, sp_delta_n))):
+        cpt_params['eta_p'] = eta_p
+        cpt_params['eta_n'] = eta_n
+        cpt_params['delta_p'] = delta_p
+        cpt_params['delta_n'] = delta_n
+        # cpt_params['lam'] = lam
+        CPT = CumulativeProspectTheory(**cpt_params)
+        IMGS.append(CPT.plot_curves(with_params=True, get_img=True, neg_lambda=True))
+    fname = 'CPT_animation_all'
+    print(len(IMGS))
+    imageio.mimsave(f'{fname}.gif', IMGS,loop=0,fps=fps)
 
 def main():
+    animation_all()
     # animation()
     # # example from https://engineering.purdue.edu/DELP/education/decision_making_slides/Module_12___Cumulative_Prospect_Theory.pdf
     # # values = np.array([80,60,40,20,0])

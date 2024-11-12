@@ -93,6 +93,11 @@ class Trainer:
 
         # Report ----------------
         self.print_config(config)
+        self.auto_save = config['auto_save']
+        self.wait_for_close = config['wait_for_close']
+        self.save_dir = config['save_dir']
+        self.fname_ext = config['fname_ext']
+        self.enable_report = config['enable_report']
 
     @property
     def fname(self):
@@ -116,7 +121,7 @@ class Trainer:
                 f"_deltap{str(self.cpt_params['delta_p']).replace('.', '')}" \
                 f"_deltan{str(self.cpt_params['delta_n']).replace('.', '')}" \
                 f"__{self.config['Date']}"
-        return h
+        return self.fname_ext + h
 
     def print_config(self,config):
         for key, val in config.items():
@@ -148,7 +153,8 @@ class Trainer:
             [np.linspace(RAT_START, RAT_END, RAT_DUR), RAT_END * np.ones(self.ITERATIONS - RAT_DUR)])
         # self.epsilon_sched = np.hstack(
         #     [np.linspace(EPS_START, EPS_END, EPS_DUR), EPS_END * np.ones(self.ITERATIONS - EPS_DUR)])
-        self.epsilon_sched = [exponential_decay(N0=EPS_START, Nf=EPS_END, t=t, T=EPS_DUR) for t in range(self.ITERATIONS)]
+        # self.epsilon_sched = [exponential_decay(N0=EPS_START, Nf=EPS_END, t=t, T=EPS_DUR) for t in range(self.ITERATIONS)]
+        self.epsilon_sched = [EPS_END + (EPS_START - EPS_END) * (1-t/self.ITERATIONS)**2 for t in range(self.ITERATIONS)]
 
         self.rshape_sched = np.hstack(
             [np.linspace(RSHAPE_START, RSHAPE_END, RSHAPE_DUR), RSHAPE_END * np.ones(self.ITERATIONS - RSHAPE_DUR)])
@@ -183,22 +189,22 @@ class Trainer:
             # slips = rollout_info['onion_slips'] + rollout_info['dish_slips'] + rollout_info['soup_slips']
             risks = rollout_info['onion_risked'] + rollout_info['dish_risked'] + rollout_info['soup_risked']
             handoffs = rollout_info['onion_handoff'] + rollout_info['dish_handoff'] + rollout_info['soup_handoff']
-
-            print(f"Iteration {it} "
-                  f"| train reward:{round(cum_reward, 3)} "
-                  f"| shaped reward:{np.round(cum_shaped_rewards, 3)} "
-                  f"| loss:{round(rollout_info['mean_loss'], 3)} "
-                  # f"| slips:{slips} "
-                  f"| risks:{risks} "
-                  f"| handoffs:{handoffs} "
-                  f" |"
-                  f"| mem:{self.model.memory_len} "
-                  f"| rshape:{round(self.rshape_sched[it], 3)} "
-                  f"| rat:{round(self.rationality_sched[it], 3)}"
-                  f"| eps:{round(self.epsilon_sched[it], 3)} "
-                  f"| LR={round(self.model.optimizer.param_groups[0]['lr'], 4)}"
-                  f"| rstart={round(self.random_start_sched[it], 3)}"
-                  )
+            if self.enable_report:
+                print(f"Iteration {it} "
+                      f"| train reward:{round(cum_reward, 3)} "
+                      f"| shaped reward:{np.round(cum_shaped_rewards, 3)} "
+                      f"| loss:{round(rollout_info['mean_loss'], 3)} "
+                      # f"| slips:{slips} "
+                      f"| risks:{risks} "
+                      f"| handoffs:{handoffs} "
+                      f" |"
+                      f"| mem:{self.model.memory_len} "
+                      f"| rshape:{round(self.rshape_sched[it], 3)} "
+                      f"| rat:{round(self.rationality_sched[it], 3)}"
+                      f"| eps:{round(self.epsilon_sched[it], 3)} "
+                      f"| LR={round(self.model.optimizer.param_groups[0]['lr'], 4)}"
+                      f"| rstart={round(self.random_start_sched[it], 3)}"
+                      )
 
             train_rewards.append(cum_reward + cum_shaped_rewards)
             train_losses.append(rollout_info['mean_loss'])
@@ -232,16 +238,20 @@ class Trainer:
                            train_reward=[it, np.mean(train_rewards)],
                            loss=[it, np.mean(train_losses)])
                 self.logger.draw()
-                print(f"\nTest: | nTests= {self.N_tests} "
-                      f"| Ave Reward = {np.mean(test_rewards)} "
-                      f"| Ave Shaped Reward = {np.mean(test_shaped_rewards)}"
-                      # f"\n{action_history}\n"#, f"{aprob_history[0]}\n"
-                      )
+
+                if self.enable_report:
+                    print(f"\nTest: | nTests= {self.N_tests} "
+                          f"| Ave Reward = {np.mean(test_rewards)} "
+                          f"| Ave Shaped Reward = {np.mean(test_shaped_rewards)}"
+                          # f"\n{action_history}\n"#, f"{aprob_history[0]}\n"
+                          )
 
                 train_rewards = []
                 train_losses = []
 
-        self.logger.wait_for_close(enable=True)
+        # self.logger.wait_for_close(enable=True)
+        self.logger.wait_for_close(enable=self.wait_for_close)
+        if self.auto_save: self.save()
 
     ################################################################
     # Train/Test Rollouts   ########################################
@@ -472,13 +482,22 @@ class Trainer:
         return model_info
     def save(self,*args):
         # find saved models absolute dir -------------
+
         print(f'\n\nSaving model to {self.fname}...')
-        dir = get_absolute_save_dir()
+        dir = get_absolute_save_dir(path = self.save_dir)
         torch.save(self.model.checkpoint_model.state_dict(), dir + f"{self.fname}.pt")
         # model_info = self.package_model_info()
         # self.model_manager.save(model,model_info,self.fname)
-        self.logger.save_fig(f"./models/{self.fname}.png")
+        self.logger.save_fig(f"{dir}{self.fname}.png")
         print(f'finished\n\n')
+        #
+        # print(f'\n\nSaving model to {self.fname}...')
+        # dir = get_absolute_save_dir()
+        # torch.save(self.model.checkpoint_model.state_dict(), dir + f"{self.fname}.pt")
+        # # model_info = self.package_model_info()
+        # # self.model_manager.save(model,model_info,self.fname)
+        # self.logger.save_fig(f"./models/{self.fname}.png")
+        # print(f'finished\n\n')
 
 
 class ResponseTrainer():

@@ -6,19 +6,19 @@ import yaml
 import argparse
 import json
 
-def get_absolute_save_dir():
+def get_absolute_save_dir(path = '\\risky_overcooked_rl\\models\\'):
     dirs = os.getcwd().split('\\')
     src_idx = dirs.index('src') # find index of src directory
-    return '\\'.join(dirs[:src_idx+1]) + '\\risky_overcooked_rl\\models\\'
+    return '\\'.join(dirs[:src_idx+1]) + path
 
 def get_src_dir():
     dirs = os.getcwd().split('\\')
     src_idx = dirs.index('src') # find index of src directory
     return '\\'.join(dirs[:src_idx+1])
 
-def get_default_config():
+def get_default_config(path = '\\risky_overcooked_rl\\utils\\_default_config.yaml'):
     src_dir = get_src_dir()
-    with open(f'{src_dir}\\risky_overcooked_rl\\utils\\_default_config.yaml') as f:
+    with open(f'{src_dir}{path}') as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
     return config
 

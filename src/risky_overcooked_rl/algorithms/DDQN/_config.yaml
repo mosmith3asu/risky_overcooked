@@ -9,12 +9,12 @@
   'loads': ''         # loaded model
 
   # Learning Params ----------------
-  "rand_start_sched": [0.0, 0.0, 10_000]  # percentage of ITERATIONS with random start states
+  "rand_start_sched": [0.0, 0.0, 1]  # percentage of ITERATIONS with random start states
   'epsilon_sched': [1.0, 0.15, 2000]      # epsilon-greedy range (start,end, dur)
   'rshape_sched': [1, 0, 5_000]           # reward shaping decay (start,end, dur)
   'time_cost': -0.2                      # cost per time step (<0: -0.2 ==> 1soup/100steps)
-  'rationality_sched': [10, 10, 10_000]   # rationality level range (start,end, dur) (end=test)
-  'lr_sched': [0.0001, 0.0001, 1_000]         # learning rat schedule (start, end, dur)
+  'rationality_sched': [10, 10, 1]   # rationality level range (start,end, dur) (end=test)
+  'lr_sched': [0.0001, 0.0001, 1]         # learning rat schedule (start, end, dur)
 #  'lr_sched': [0.00000000000001, 0.00000000000001, 1_000]         # learning rat schedule (start, end, dur)
 
 
@@ -35,3 +35,9 @@
       'delta_p': 1.0 # s-shaped probability estimation bias for gains
       'delta_n': 1.0 # s-shaped probability estimation bias for losses
   'note': ''  # additional notes'
+
+  'fname_ext': '' # additional filename extension
+  'save_dir': '\\risky_overcooked_rl\\models\\'
+  'wait_for_close': True
+  'auto_save': False
+  'enable_report': True

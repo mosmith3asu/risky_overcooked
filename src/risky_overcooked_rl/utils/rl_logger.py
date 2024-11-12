@@ -518,11 +518,11 @@ class RLLogger(object):
 
     def wait_for_close(self,enable=True):
         """Stops the program to wait for user input (i.e. save model, save plot, close, ect..)"""
-
-        print('\nWaiting for plot to close...')
-        while plt.fignum_exists(self.fig_number):
-            self.spin()
-            time.sleep(0.1)
+        if enable:
+            print('\nWaiting for plot to close...')
+            while plt.fignum_exists(self.fig_number):
+                self.spin()
+                time.sleep(0.1)
 
         # if enable:
         #     plt.ioff()

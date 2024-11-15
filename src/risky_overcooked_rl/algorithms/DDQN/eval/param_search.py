@@ -17,12 +17,13 @@ def get_config_search_list(search_dict):
     search_list = []
     def_config = get_default_config(path = '\\risky_overcooked_rl\\algorithms\\DDQN\\_config.yaml')
     def_config["ITERATIONS"] = 15_000
+    # def_config["ITERATIONS"] = 20
     # def_config["epsilon_sched"] = [1,1,2]
     # def_config["rshape_sched"] = [1,1,2]
     def_config["enable_report"] = False
 
     def_config["auto_save"] = True
-    def_config['save_dir'] = '\\risky_overcooked_rl\\algorithms\\DDQN\\param_search\\'
+    def_config['save_dir'] = '\\risky_overcooked_rl\\algorithms\\DDQN\\eval\\param_search\\'
 
     def_config["wait_for_close"] = False
     def_config['enable_report'] =False

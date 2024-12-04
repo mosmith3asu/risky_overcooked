@@ -82,9 +82,19 @@ class MultiFramePygameImage:
             frames_path
         )
 
+    # def blit_on_surface(
+    #     self, surface, top_left_pixel_position, frame_name, **kwargs
+    # ):
+    #     surface.blit(
+    #         self.image,
+    #         top_left_pixel_position,
+    #         area=self.frames_rectangles[frame_name],
+    #         **kwargs
+    #     )
     def blit_on_surface(
-        self, surface, top_left_pixel_position, frame_name, **kwargs
+        self, surface, top_left_pixel_position, frame_name,alpha=1, **kwargs
     ):
+        self.image.set_alpha(255*alpha)
         surface.blit(
             self.image,
             top_left_pixel_position,

@@ -496,7 +496,8 @@ class RLLogger(object):
                 # self.lines[key].set_xdata(x)
                 _y = self.remove_outliers(y)
                 # self.axs[key].set_ylim([np.min(_y), np.max(_y)])
-                self.axs[key].set_ylim([0, 1.1*np.max(_y)])
+                if np.size(_y) > 2:
+                    self.axs[key].set_ylim([0, 1.1*np.max(_y)])
 
         for key, _ in self.filtered_lines.items():
             data = self.logs[key]

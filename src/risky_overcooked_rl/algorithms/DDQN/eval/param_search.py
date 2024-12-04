@@ -16,10 +16,10 @@ def train_worker(config):
 def get_config_search_list(search_dict):
     search_list = []
     def_config = get_default_config(path = '\\risky_overcooked_rl\\algorithms\\DDQN\\_config.yaml')
-    def_config["ITERATIONS"] = 15_000
-    # def_config["ITERATIONS"] = 20
-    # def_config["epsilon_sched"] = [1,1,2]
-    # def_config["rshape_sched"] = [1,1,2]
+    # def_config["ITERATIONS"] = 15_000
+    def_config["ITERATIONS"] = 20
+    def_config["epsilon_sched"] = [1,1,2]
+    def_config["rshape_sched"] = [1,1,2]
     def_config["enable_report"] = False
 
     def_config["auto_save"] = True
@@ -43,7 +43,7 @@ def get_config_search_list(search_dict):
     return search_list
 def main():
     # PARAMETER SEARCH
-    N_workers = 4
+    N_workers = 2
     # search_space = {
     #     'lr': [0.001],  # learning rate
     #     'gamma': [0.95],  # discount factor

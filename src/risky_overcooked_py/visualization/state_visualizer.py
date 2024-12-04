@@ -447,7 +447,7 @@ class StateVisualizer:
         (x, y) = position
         return (self.tile_size * x, self.tile_size * y)
 
-    def _render_players(self, surface, players):
+    def _render_players(self, surface, players,alpha=1):
         def chef_frame_name(direction_name, held_object_name):
             frame_name = direction_name
             if held_object_name:
@@ -477,11 +477,13 @@ class StateVisualizer:
                 surface,
                 self._position_in_unscaled_pixels(player.position),
                 chef_frame_name(direction_name, held_object_name),
+                alpha = alpha
             )
             self.CHEFS_IMG.blit_on_surface(
                 surface,
                 self._position_in_unscaled_pixels(player.position),
                 hat_frame_name(direction_name, player_color_name),
+                alpha=alpha
             )
 
     @staticmethod
@@ -494,7 +496,7 @@ class StateVisualizer:
             num_onions,
         )
 
-    def _render_objects(self, surface, objects, grid):
+    def _render_objects(self, surface, objects, grid,alpha=1):
         def render_soup(surface, obj, grid):
             (x_pos, y_pos) = obj.position
             if grid[y_pos][x_pos] == POT:
@@ -511,6 +513,7 @@ class StateVisualizer:
                 surface,
                 self._position_in_unscaled_pixels(obj.position),
                 frame_name,
+                alpha=alpha
             )
 
         for obj in objects.values():
@@ -521,6 +524,7 @@ class StateVisualizer:
                     surface,
                     self._position_in_unscaled_pixels(obj.position),
                     obj.name,
+                    alpha=alpha
                 )
 
     def _render_cooking_timers(self, surface, objects, grid):

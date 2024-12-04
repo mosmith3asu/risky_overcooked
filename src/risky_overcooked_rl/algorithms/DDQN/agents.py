@@ -59,7 +59,6 @@ class DQN_vector_feature(nn.Module):
         # x = self.mlp_activation(self.layer2(x))
         # x = self.layer3(x) # linear output layer (action-values)
         return x
-# SelfPlay_QRE_OSA
 
 
 class SelfPlay_QRE_OSA(object):
@@ -519,9 +518,6 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
                     'Rational CPT expectation not equal to sum of prospect values'
         expected_td_targets = torch.tensor(expected_td_targets, dtype=torch.float32, device=self.device)
         return expected_td_targets
-
-
-
 
 
 class ResponseAgent(object):

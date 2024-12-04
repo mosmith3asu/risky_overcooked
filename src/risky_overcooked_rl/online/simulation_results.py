@@ -167,8 +167,6 @@ def run_tests(partner_type, config,inference_type, N_tests=10, rationality=10):
     # partner_type = 'Seeking'
 
 
-    # CONFIG 1: #######################
-
 
     averse_fname = config['averse_fname']
     seeking_fname = config['seeking_fname']

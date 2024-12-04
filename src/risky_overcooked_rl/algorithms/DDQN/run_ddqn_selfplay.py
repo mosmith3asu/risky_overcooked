@@ -10,7 +10,15 @@ from risky_overcooked_rl.utils.model_manager import parse_args,get_default_confi
 
 # noinspection PyDictCreation
 def main():
-    config = get_default_config()
+
+    # config_1 = get_default_config()
+    # config_2 = get_default_config(path = '\\risky_overcooked_rl\\algorithms\\DDQN\\_config.yaml')
+    #
+    # for key, val in config_1.items():
+    #     if config_2[key] != val:
+    #         print(key, val, config_2[key])
+    config = get_default_config(path = '\\risky_overcooked_rl\\algorithms\\DDQN\\_config.yaml')
+    # config['p_slip'] = 0.4
 
     # config['epsilon_sched']= [1.0, 0.15, 4000]
     config = parse_args(config)

@@ -15,11 +15,12 @@ import itertools
 import torch
 
 class Discriminability():
-    def __init__(self,layout,joint_policies,N_samples = 1000):
+    def __init__(self,layout,joint_policies,N_samples = 1000,debug=False):
         self.N_samples = N_samples
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.policies = joint_policies
         self.agents = [1] # which agents to compare
+        self.debug = debug
 
         self.mdp = OvercookedGridworld.from_layout_name(layout)
         self.env = OvercookedEnv.from_mdp(self.mdp, horizon=200)
@@ -32,14 +33,24 @@ class Discriminability():
         M = 0.5 * (P + Q)
         return 0.5*self.KL_divergence(P,M) + 0.5*self.KL_divergence(Q,M)
 
-    def KL_divergence(self,P,Q):
-        return np.sum(P*np.log(P/Q + 1e-10))
+    def KL_divergence(self,P,Q,epsilon=1e-10):
+        # return np.sum(P*np.log(P/Q + 1e-10))
+        P += epsilon
+        Q += epsilon
+        return np.sum(P*np.log(P/Q))
 
-    def mutual_distance_metric(self,dists,discount=0.5):
+    # def mutual_distance_metric(self,dists,discount=0.5):
+    #    """Does not work between 0-1"""
+    #     dists = np.array(dists)
+    #     d_min = np.min(dists)
+    #     return np.sum(dists-d_min)**discount + d_min
+    def mutual_distance_metric(self,dists,discount=0.75):
         dists = np.array(dists)
         d_min = np.min(dists)
-        return np.sum(dists-d_min)**discount + d_min
-
+        return np.sum(np.log(discount*(dists-d_min)+1)) + d_min
+        # dists = np.array(dists)
+        # d_min = np.min(dists)
+        # return d_min
     def run(self):
         distances = np.zeros(self.N_samples)
         for i in range(self.N_samples):
@@ -51,9 +62,13 @@ class Discriminability():
                 for idx1,idx2 in self.comparison_idxs:
                     pA1 = action_probs[idx1][0, k, :].detach().cpu().numpy()
                     pA2 = action_probs[idx2][0, k, :].detach().cpu().numpy()
+
+                    # if self.debug and idx:
+
                     kl = self.jensen_shannon_divergence(pA1,pA2)
                     KL_diverences.append(kl)
             distances[i]=self.mutual_distance_metric(KL_diverences)
+            assert not np.isnan(distances[i]), 'Nan KL divergence detected'
         return np.mean(distances)
 
     def get_random_state(self):

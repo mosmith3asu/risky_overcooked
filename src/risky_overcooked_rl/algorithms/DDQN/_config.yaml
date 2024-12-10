@@ -23,10 +23,10 @@
   "num_hidden_layers": 5            # MLP params
   "size_hidden_layers": 256         # MLP params
   "minibatch_size": 256             # size of mini-batches
-  "replay_memory_size": 20_000      # size of replay memory
+  "replay_memory_size": 100_000      # size of replay memory
 #  'clip_grad': 100
 #  'clip_grad': 1 # with norm clip
-  'clip_grad': 1.0 #0.5 # with norm clip
+  'clip_grad': 0.75 #1.0 #0.5 # with norm clip
   'cpt_params':   # Default rational CPT parameters
       'b': 0.0      # reference point
       'lam': 1.0    # loss aversion

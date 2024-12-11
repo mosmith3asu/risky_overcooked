@@ -279,10 +279,10 @@ class SelfPlay_QRE_OSA(object):
     ###################################################
 
     def update(self):
-        if (
-                # self.memory_len < self.mem_size/2
-                len(self._memory) < self._memory_batch_size
-        ):  return 0
+        # if (
+        #         # self.memory_len < self.mem_size/2
+        #         len(self._memory) < self._memory_batch_size
+        # ):  return 0
 
         # transitions = self.memory_sample()
         transitions = self._memory.sample(self._memory_batch_size)
@@ -412,13 +412,13 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
     def update(self):
         if self.frozen: raise ValueError('Model is frozen, cannot update')
 
-        if (
-                len(self._memory) < self.mem_size
-                # len(self._memory) < self.mem_size / 2
-                # self.memory_len < self.mem_size / 2
-                # self.memory_len < self._memory_batch_size
-                # or self.memory_len < 0.25*self.mem_size
-        ):  return 0
+        # if (
+        #         len(self._memory) < self.mem_size
+        #         # len(self._memory) < self.mem_size / 2
+        #         # self.memory_len < self.mem_size / 2
+        #         # self.memory_len < self._memory_batch_size
+        #         # or self.memory_len < 0.25*self.mem_size
+        # ):  return 0
         if self._memory.with_priority:
             transitions, weights, tree_idxs = self._memory.priority_sample(self._memory_batch_size)
             weights = weights.to(self.device)
@@ -723,10 +723,10 @@ class ResponseAgent(object):
     def update(self):
         if self._memory.with_priority and  len(self._memory) < self.mem_size:
             return 0
-        elif (
-                # self.memory_len < self.mem_size/2
-                len(self._memory) < self._memory_batch_size
-        ):  return 0
+        # elif (
+        #         # self.memory_len < self.mem_size/2
+        #         len(self._memory) < self._memory_batch_size
+        # ):  return 0
 
         ego, partner = 0,1
         if self._memory.with_priority:

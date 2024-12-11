@@ -17,10 +17,11 @@ def get_src_dir():
     return '\\'.join(dirs[:src_idx+1])
 
 def get_default_config(path = '\\risky_overcooked_rl\\utils\\_default_config.yaml'):
-    src_dir = get_src_dir()
-    with open(f'{src_dir}{path}') as f:
-        config = yaml.load(f, Loader=yaml.SafeLoader)
-    return config
+    raise NotImplementedError('This function is deprecated. Moved to <algorithm>.__init__.py')
+    # src_dir = get_src_dir()
+    # with open(f'{src_dir}{path}') as f:
+    #     config = yaml.load(f, Loader=yaml.SafeLoader)
+    # return config
 
 def parse_args(config):
 

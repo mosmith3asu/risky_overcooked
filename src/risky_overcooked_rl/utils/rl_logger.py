@@ -487,17 +487,31 @@ class RLLogger(object):
         for key, data in self.logs.items():
             x = data[:, 0]
             y = data[:, 1]
+
             self.lines[key].set_data(x, y)
             if len(x) > 1:
-                self.axs[key].set_xlim([np.min(x), 1.1*np.max(x)])
-                # self.axs[key].set_ylim([0, np.max(y)])
-                self.axs[key].set_ylim([np.min(y), np.max(y)])
-            if 'loss' in key.lower():
-                # self.lines[key].set_xdata(x)
-                _y = self.remove_outliers(y)
-                # self.axs[key].set_ylim([np.min(_y), np.max(_y)])
-                if np.size(_y) > 2:
-                    self.axs[key].set_ylim([0, 1.1*np.max(_y)])
+                self.axs[key].set_xlim([np.min(x), 1.1 * np.max(x)])
+
+                if 'loss' in key.lower():
+                    _y = y
+                    # _y = self.remove_outliers(y)
+                    if np.size(_y) > 2:
+                        self.axs[key].set_ylim([0, 1.1 * np.max(_y + 1e-6)])
+                else:
+                    self.axs[key].set_ylim([np.min(y), np.max(y) + 0.1])
+            # self.lines[key].set_data(x, y)
+            # if len(x) > 1:
+            #     self.axs[key].set_xlim([np.min(x), 1.1*np.max(x)])
+            #     # self.axs[key].set_ylim([0, np.max(y)])
+            #     self.axs[key].set_ylim([np.min(y), np.max(y)+0.1])
+            #
+            #
+            # if 'loss' in key.lower():
+            #     # self.lines[key].set_xdata(x)
+            #     _y = self.remove_outliers(y)
+            #     # self.axs[key].set_ylim([np.min(_y), np.max(_y)])
+            #     if np.size(_y) > 2:
+            #         self.axs[key].set_ylim([0, 1.1*np.max(_y+1e-6)])
 
         for key, _ in self.filtered_lines.items():
             data = self.logs[key]
@@ -519,15 +533,15 @@ class RLLogger(object):
 
     def wait_for_close(self,enable=True):
         """Stops the program to wait for user input (i.e. save model, save plot, close, ect..)"""
-        if enable:
+        if enable and not self.is_closed:
             print('\nWaiting for plot to close...')
             while plt.fignum_exists(self.fig_number):
                 self.spin()
                 time.sleep(0.1)
+    @property
+    def is_closed(self):
+        return not plt.fignum_exists(self.fig_number)
 
-        # if enable:
-        #     plt.ioff()
-        #     plt.show()
 
     def save_fig(self,PATH):
         self.root_fig.savefig(PATH)

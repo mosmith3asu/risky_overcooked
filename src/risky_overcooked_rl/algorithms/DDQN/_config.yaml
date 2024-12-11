@@ -4,24 +4,25 @@
   # Env Params ----------------
   'LAYOUT': "risky_coordination_ring"
   'HORIZON': 200
-  'ITERATIONS': 30_000
+  'ITERATIONS': 15_000
   "p_slip": 0.1
   'loads': ''         # loaded model
 
   # Learning Params ----------------
   "rand_start_sched": [0.0, 0.0, 1]  # percentage of ITERATIONS with random start states
-  'epsilon_sched': [1.0, 0.15, 2000]      # epsilon-greedy range (start,end, dur)
+  'epsilon_sched': [1.0, 0.15, 3_000]      # epsilon-greedy range (start,end, dur)
   'rshape_sched': [1, 0, 5_000]           # reward shaping decay (start,end, dur)
   'time_cost': -0.2                      # cost per time step (<0: -0.2 ==> 1soup/100steps)
   'rationality_sched': [10, 10, 1]   # rationality level range (start,end, dur) (end=test)
   'lr_sched': [0.0001, 0.0001, 1]         # learning rat schedule (start, end, dur)
+  'warmup_transitions': 20_000       # number of transitions in mem before training starts
 #  'lr_sched': [0.00000000000001, 0.00000000000001, 1_000]         # learning rat schedule (start, end, dur)
 
 
   'gamma': 0.95                     # discount factor
   'tau': 0.005                      # soft update weight of target network
   "num_hidden_layers": 5            # MLP params
-  "size_hidden_layers": 256         # MLP params
+  "size_hidden_layers": 128 #256         # MLP params
   "minibatch_size": 256             # size of mini-batches
   "replay_memory_size": 100_000      # size of replay memory
 #  'clip_grad': 100

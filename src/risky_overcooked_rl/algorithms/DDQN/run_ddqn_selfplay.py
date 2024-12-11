@@ -5,8 +5,8 @@ print('\\'.join(os.getcwd().split('\\')[:-1]))
 sys.path.append('\\'.join(os.getcwd().split('\\')[:-1]))
 from risky_overcooked_rl.algorithms.DDQN.curriculum import CirriculumTrainer
 from risky_overcooked_rl.algorithms.DDQN.agents import SelfPlay_QRE_OSA_CPT
-from risky_overcooked_rl.utils.model_manager import parse_args,get_default_config#, ModelManager
-
+from risky_overcooked_rl.utils.model_manager import parse_args#, ModelManager
+import risky_overcooked_rl.algorithms.DDQN as Algorithm
 
 # noinspection PyDictCreation
 def main():
@@ -17,8 +17,8 @@ def main():
     # for key, val in config_1.items():
     #     if config_2[key] != val:
     #         print(key, val, config_2[key])
-    config = get_default_config(path = '\\risky_overcooked_rl\\algorithms\\DDQN\\_config.yaml')
-    # config['p_slip'] = 0.4
+    config = Algorithm.get_default_config()
+    config['p_slip'] = 0.4
 
     # config['epsilon_sched']= [1.0, 0.15, 4000]
     config = parse_args(config)

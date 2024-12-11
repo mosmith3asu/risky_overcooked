@@ -39,12 +39,16 @@ class Trainer:
         self.curriculum = None
 
         self.ITERATIONS = config['ITERATIONS']
+        self.warmup_transitions = config['warmup_transitions']
+
+
         self.mdp = OvercookedGridworld.from_layout_name(self.LAYOUT)
         self.mdp.p_slip = config['p_slip']
         self.env = OvercookedEnv.from_mdp(self.mdp, horizon=self.HORIZON,time_cost=self.time_cost)
         self.N_tests = 1
         self.test_interval = 10  # test every n iterations
         self.feasible_action = FeasibleActionManager(self.env)
+        self.training_iteration = 0
 
         # Define Parameter Schedules ------------------
         self.init_sched(config)
@@ -90,14 +94,15 @@ class Trainer:
         # self.has_checkpointed = False
         self.train_rewards = deque(maxlen=self.checkpoint_mem)
         self.test_rewards = deque(maxlen=self.checkpoint_mem)
-
-        # Report ----------------
-        self.print_config(config)
         self.fname_ext = config['fname_ext']
         self.save_dir = config['save_dir']
         self.wait_for_close = config['wait_for_close']
         self.auto_save = config['auto_save']
         self.enable_report = config['enable_report']
+
+        # Report ----------------
+        if self.enable_report: self.print_config(config)
+
 
     @property
     def fname(self):
@@ -440,7 +445,8 @@ class Trainer:
 
         score = np.mean(self.test_rewards)
         if score > self.checkpoint_score:
-            print(f'\nCheckpointing model at iteration {it} with score {score}...\n')
+            if self.enable_report:
+                print(f'\nCheckpointing model at iteration {it} with score {score}...\n')
             self.model.update_checkpoint()
             self.logger.update_checkpiont_line(it)
             self.checkpoint_score = score

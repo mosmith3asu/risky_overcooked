@@ -19,6 +19,7 @@ class CirriculumTrainer(Trainer):
         train_losses = []
         # Main training Loop
         for it in range(self.ITERATIONS):
+            self.training_iteration = it
             cit = self.curriculum.iteration
             self.logger.start_iteration()
             self.logger.spin()
@@ -34,17 +35,20 @@ class CirriculumTrainer(Trainer):
                                         rshape_scale=self.rshape_sched[cit],
                                         p_rand_start=self.random_start_sched[cit])
 
-            if it > 1: self.model.scheduler.step()  # updates learning rate scheduler
-            self.model.update_target()  # performs soft update of target network
 
+            did_update = (rollout_info['mean_loss']!=0)
+            if did_update:
+                self.model.scheduler.step()  # updates learning rate scheduler
+                self.model.update_target()  # performs soft update of target network
+                next_cirriculum = self.curriculum.step_cirriculum(cum_reward)
+                if next_cirriculum:
+                    self.init_sched(self.config, eps_decay=self.schedule_decay, rshape_decay=self.schedule_decay)
 
-            next_cirriculum = self.curriculum.step_cirriculum(cum_reward)
-            if next_cirriculum:
-                self.init_sched(self.config, eps_decay=self.schedule_decay, rshape_decay=self.schedule_decay)
-            risks = rollout_info['onion_risked'] + rollout_info['dish_risked'] + rollout_info['soup_risked']
-            handoffs = rollout_info['onion_handoff'] + rollout_info['dish_handoff'] + rollout_info['soup_handoff']
-
+            # Report
             if self.enable_report:
+                risks = rollout_info['onion_risked'] + rollout_info['dish_risked'] + rollout_info['soup_risked']
+                handoffs = rollout_info['onion_handoff'] + rollout_info['dish_handoff'] + rollout_info['soup_handoff']
+
                 print(f"[it:{it}"
                       f" {self.curriculum.name}:{self.curriculum.current_cirriculum}-{cit}]"
                       f"[R:{round(cum_reward, 3)} "
@@ -106,6 +110,15 @@ class CirriculumTrainer(Trainer):
                 train_losses = []
                 self.curriculum.eval('off')
             self.logger.end_iteration()
+
+
+            ####### END TRAINING ON LOGGER CLOSED ########
+            if self.logger.is_closed:
+                print(f"Logger Closed at iteration {it}. Ending training...")
+                break
+
+
+
         self.logger.wait_for_close(enable=self.wait_for_close)
         # self.logger.wait_for_close(enable=True)
         self.logger.close_plots()
@@ -175,8 +188,10 @@ class CirriculumTrainer(Trainer):
                                           next_prospects=next_state_prospects,
                                           done=done)
             # Update model ----------------
-            loss = self.model.update()
-            if loss is not None: losses.append(loss)
+            if len(self.model._memory) > self.warmup_transitions:
+                loss = self.model.update()
+                if loss is not None: losses.append(loss)
+            else: losses.append(0)
 
             # Terminate episode
             if done: break
@@ -189,24 +204,6 @@ class CirriculumTrainer(Trainer):
         rollout_info['mean_loss'] = np.mean(losses)
 
         return cum_reward, cum_shaped_reward, rollout_info
-
-    # def checkpoint(self,it):
-    #     if len(self.train_rewards) == self.checkpoint_mem:
-    #         # ave_train = np.mean(self.train_rewards)
-    #         ave_test = np.mean(self.test_rewards)
-    #         # score = (ave_train + ave_test)/2
-    #         score = ave_test
-    #         if score > self.min_checkpoint_score and score >= self.checkpoint_score:
-    #             print(f'\nCheckpointing model at iteration {it} with score {score}...\n')
-    #             self.model.update_checkpoint()
-    #             self.logger.update_checkpiont_line(it)
-    #             # empty buffer to delay next checkpoint
-    #             self.train_rewards = deque(maxlen=self.checkpoint_mem)
-    #             self.test_rewards = deque(maxlen=self.checkpoint_mem)
-    #             self.has_checkpointed = True
-    #             self.checkpoint_score = score
-    #             return True
-    #     return False
 
 
 

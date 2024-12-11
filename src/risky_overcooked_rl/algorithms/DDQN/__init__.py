@@ -1,14 +1,16 @@
-# import numpy as np
-# import matplotlib.pyplot as plt
+
+def get_default_config(path = '\\risky_overcooked_rl\\algorithms\\DDQN\\_config.yaml'):
+    import yaml
+    import os
+
+    dirs = os.getcwd().split('\\')
+    src_idx = dirs.index('src')  # find index of src directory
+    src_dir = '\\'.join(dirs[:src_idx+1])
+    with open(f'{src_dir}{path}') as f:
+        config = yaml.load(f, Loader=yaml.SafeLoader)
+    return config
 
 
-def main():
-    pass
-
-
-def subfun():
-    pass
-
-
-if __name__ == "__main__":
-    main()
+def get_save_dir():
+    # TODO: implement this is save confing to generalize to other algs
+    return '\\risky_overcooked_rl\\models'

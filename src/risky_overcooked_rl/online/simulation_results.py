@@ -7,8 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import random
-from risky_overcooked_rl.utils.model_manager import get_default_config, parse_args #get_argparser
-from risky_overcooked_rl.utils.trainer import Trainer
+from risky_overcooked_rl.utils.model_manager import get_default_config
 from risky_overcooked_rl.utils.deep_models import SelfPlay_QRE_OSA_CPT
 from risky_overcooked_rl.utils.belief_update import BayesianBeliefUpdate
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
@@ -16,6 +15,16 @@ from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
 from itertools import count
 from src.risky_overcooked_py.mdp.actions import Action
 
+def predictability(pA_k,a_k,discrete=True):
+    if discrete: return int(np.argmax(pA_k) == a_k)
+    else: return pA_k[a_k]
+
+
+
+def KL_divergence(p, q):
+    p = np.array(p)/np.sum(p)
+    q = np.array(q)/np.sum(q)
+    return np.log(np.sum(p * np.log(p / q)))
 def simulate_oracle_episode(env, partner_policy):
     iego,ipartner = 0,1
     device = partner_policy.device
@@ -23,7 +32,12 @@ def simulate_oracle_episode(env, partner_policy):
     obs_history = []
     action_history = []
     aprob_history = []
-    predictability = []
+    predictabilityH = []
+    predictabilityR = []
+    actionprobH = []
+    actionprobR = []
+    kl_divergenceH = []
+    kl_divergenceR = []
     cum_reward = 0
 
     rollout_info = {
@@ -58,8 +72,24 @@ def simulate_oracle_episode(env, partner_policy):
         partner_iA = joint_action_idx % 6
         ego_iA = joint_action_idx // 6
 
-        pa_hat = pA.detach().cpu().numpy()[0, ipartner, partner_iA]  # prob of partner action given ego inference
-        predictability.append(pa_hat)
+        # Calc Predictability
+        pA = pA.detach().cpu().numpy()
+        pa_R = pA[0, iego, ego_iA]
+        pa_H = pA[0, ipartner, partner_iA]
+        pa_hat_R = predictability(pA[0, iego],ego_iA)
+        pa_hat_H = predictability(pA[0, ipartner],partner_iA)
+        # pa_hat_R = pA[0, iego, ego_iA]  # prob of ego action given partner inference
+        # pa_hat_H = pA[0, ipartner, partner_iA]  # prob of partner action given ego inference
+        predictabilityH.append(pa_hat_H)
+        predictabilityR.append(pa_hat_R)
+
+        actionprobR.append(pa_R)
+        actionprobH.append(pa_H)
+
+        # kl_divergenceR.append(KL_divergence(pA[0, iego], pA[0, iego]))
+        # kl_divergenceH.append(KL_divergence(pA[0, ipartner], pA[0, ipartner]))
+
+
 
         # STEP ---------------------------------------------------------
         next_state, reward, done, info = env.step(joint_action)
@@ -77,7 +107,12 @@ def simulate_oracle_episode(env, partner_policy):
     stats = {
         'risks_taken': np.sum(rollout_info['onion_risked']) + np.sum(rollout_info['dish_risked']) + np.sum(rollout_info['soup_risked']),
         'reward': cum_reward,
-        'predictability': np.mean(predictability),
+        'predictabilityR': np.mean(predictabilityR),
+        'predictabilityH': np.mean(predictabilityH),
+        'kl_divergenceH': KL_divergence(actionprobH, predictabilityH),
+        'kl_divergenceR': KL_divergence(actionprobR, predictabilityR),
+        # 'kl_divergenceH': np.mean(kl_divergenceH),
+        # 'kl_divergenceR': np.mean(kl_divergenceR)#
 
     }
 
@@ -89,7 +124,12 @@ def simulate_episode(env, partner_policy, belief):
     obs_history = []
     action_history = []
     aprob_history = []
-    predictability = []
+    predictabilityH = []
+    predictabilityR = []
+    actionprobH = []
+    actionprobR = []
+    kl_divergenceH = []
+    kl_divergenceR = []
     cum_reward = 0
 
     rollout_info = {
@@ -127,8 +167,42 @@ def simulate_episode(env, partner_policy, belief):
         ego_policy = belief.best_response
         _, ego_iJA, ego_pA = ego_policy.choose_joint_action(obs, epsilon=0)
         ego_iA = ego_iJA // 6
-        pa_hat = ego_pA.detach().cpu().numpy()[0,ipartner,partner_iA] # prob of partner action given ego inference
-        predictability.append(pa_hat)
+
+
+        # Calc Predictability
+        # ego_pA = ego_pA.detach().cpu().numpy()
+        # partner_pA = partner_pA.detach().cpu().numpy()
+        #
+        #
+        # pa_R = ego_pA[0,iego,ego_iA]
+        # pa_hat_H = ego_pA[0, ipartner, partner_iA]  # prob of partner action given ego inference
+        # # kl_divergenceR.append(KL_divergence(ego_pA[0, ipartner], partner_pA[0, ipartner]))
+        #
+        # pa_H = partner_pA[0, ipartner,partner_iA]
+        # pa_hat_R = partner_pA[0, iego, ego_iA]  # prob of ego action given partner inference
+        # # kl_divergenceR.append(KL_divergence(partner_pA[0, iego], ego_pA[0, iego]))
+
+        ego_pA = ego_pA.detach().cpu().numpy()
+        partner_pA = partner_pA.detach().cpu().numpy()
+
+
+        pa_R = ego_pA[0,iego,ego_iA]
+        pa_hat_H = predictability(ego_pA[0, ipartner],partner_iA)
+
+        pa_H = partner_pA[0, ipartner,partner_iA]
+        pa_hat_R = predictability(partner_pA[0, iego],ego_iA)
+        # pa_hat_R = partner_pA[0, iego, ego_iA]  # prob of ego action given partner inference
+        # kl_divergenceR.append(KL_divergence(partner_pA[0, iego], ego_pA[0, iego]))
+
+        actionprobR.append(pa_R)
+        actionprobH.append(pa_H)
+
+
+
+        predictabilityH.append(pa_hat_H)
+        predictabilityR.append(pa_hat_R)
+
+        kl_divergenceH.append(KL_divergence([pa_H, 1-pa_H], [pa_hat_H, 1-pa_hat_H]))
 
 
         # Calc Joint Action
@@ -155,8 +229,12 @@ def simulate_episode(env, partner_policy, belief):
     stats = {
         'risks_taken': np.sum(rollout_info['onion_risked']) + np.sum(rollout_info['dish_risked']) + np.sum(rollout_info['soup_risked']),
         'reward': cum_reward,
-        'predictability': np.mean(predictability),
-
+        'predictabilityR': np.mean(predictabilityR),
+        'predictabilityH': np.mean(predictabilityH),
+        'kl_divergenceH': KL_divergence(actionprobH, predictabilityH),
+        'kl_divergenceR': KL_divergence(actionprobR, predictabilityR),
+        # 'kl_divergenceH': np.mean(kl_divergenceH),
+        # 'kl_divergenceR': np.mean(kl_divergenceR)#
     }
 
     return stats
@@ -166,6 +244,8 @@ def run_tests(partner_type, config,inference_type, N_tests=10, rationality=10):
     # partner_type = 'Averse'
     # partner_type = 'Seeking'
 
+
+    # CONFIG 1: #######################
 
 
     averse_fname = config['averse_fname']
@@ -202,11 +282,17 @@ def run_tests(partner_type, config,inference_type, N_tests=10, rationality=10):
     stat_samples = {
         'risks_taken': [],
         'reward': [],
-        'predictability': [],
+        'predictabilityH': [],
+        'predictabilityR': [],
+        'kl_divergenceH': [],
+        'kl_divergenceR': [],
 
     }
 
     for i in range(N_tests):
+        torch.seed()
+        random.seed()
+        np.random.seed()
 
         if inference_type == 'oracle':
             stats = simulate_oracle_episode(env, true_agent)
@@ -232,7 +318,7 @@ def run_tests(partner_type, config,inference_type, N_tests=10, rationality=10):
     return stat_samples
 
 if __name__ == "__main__":
-    N_tests = 100
+    N_tests = 500
     reward_offset = 40
 
     config = get_default_config()
@@ -242,7 +328,7 @@ if __name__ == "__main__":
     # config['p_slip'] = 0.25
     # config['averse_fname'] = 'risky_coordination_ring_pslip025__b00_lam225_etap088_etan10_deltap061_deltan069__10_21_2024-11_31'
     # config['seeking_fname'] = 'risky_coordination_ring_pslip025__b00_lam05_etap10_etan088_deltap061_deltan069__10_21_2024-11_31'
-    # config['rational_fname'] = None
+    # config['rational_fname'] = 'risky_coordination_ring_pslip025__rational__10_29_2024-10_18'
 
     # # # CONFIG 2: #######################
     # config['LAYOUT'] = 'risky_coordination_ring'
@@ -250,20 +336,30 @@ if __name__ == "__main__":
     # config['averse_fname'] = 'risky_coordination_ring_pslip04__b00_lam225_etap088_etan10_deltap061_deltan069__10_22_2024-11_35'
     # config['seeking_fname'] =  'risky_coordination_ring_pslip04__b00_lam05_etap10_etan088_deltap061_deltan069__10_22_2024-11_36'
     # config['rational_fname'] = 'risky_coordination_ring_pslip04__rational__10_09_2024-13_44'
+    # config['rational_fname'] ='risky_coordination_ring_pslip04__rational__10_28_2024-12_51'
 
     # # # CONFIG 3: #######################
+    # config['LAYOUT'] = 'risky_multipath'
+    # config['p_slip'] = 0.1
+    # config['averse_fname'] = 'risky_multipath_pslip01__b00_lam225_etap088_etan10_deltap061_deltan069__10_21_2024-21_32'
+    # config['seeking_fname'] = 'risky_multipath_pslip01__b00_lam05_etap10_etan088_deltap061_deltan069__10_21_2024-21_32'
+    # config['rational_fname'] = 'risky_multipath_pslip01__rational__10_11_2024-12_20'
+
+    # # # CONFIG 4: #######################
     config['LAYOUT'] = 'risky_multipath'
-    config['p_slip'] = 0.1
-    config['averse_fname'] = 'risky_multipath_pslip01__b00_lam225_etap088_etan10_deltap061_deltan069__10_21_2024-21_32'
-    config['seeking_fname'] = 'risky_multipath_pslip01__b00_lam05_etap10_etan088_deltap061_deltan069__10_21_2024-21_32'
-    config['rational_fname'] = 'risky_multipath_pslip01__rational__10_11_2024-12_20'
+    config['p_slip'] = 0.25
+    config['averse_fname'] = 'risky_multipath_pslip025__b00_lam225_etap088_etan10_deltap10_deltan10__10_17_2024-06_12'
+    config['seeking_fname'] = 'risky_multipath_pslip025__b00_lam05_etap10_etan088_deltap10_deltan10__10_17_2024-06_12'
+    config['rational_fname'] = 'risky_multipath_pslip025__rational__10_28_2024-16_26'
 
     ###########################################################################
     ###########################################################################
     ###########################################################################
 
     plt.ioff()
-    fig, axs = plt.subplots(1, 3, figsize=(10, 3), constrained_layout=True)
+    # fig, axs = plt.subplots(1, 4, figsize=(13, 3), constrained_layout=True)
+    # fig, axs = plt.subplots(1, 4, figsize=(13, 3))
+    fig, axs = plt.subplots(1, 4, figsize=(13, 3))
 
 
     # colors = ['red','blue']
@@ -279,13 +375,16 @@ if __name__ == "__main__":
                    'Averse': {'Oracle':[],'RS-ToM':[],'Rational':[]}, },
         'Risks Taken': {'Seeking': {'Oracle':[],'RS-ToM': [], 'Rational': []},
                         'Averse': {'Oracle':[],'RS-ToM': [], 'Rational': []}, },
-        'Predictability': {'Seeking': {'Oracle':[],'RS-ToM': [], 'Rational': []},
+        'Robot Predictability': {'Seeking': {'Oracle':[],'RS-ToM': [], 'Rational': []},
                             'Averse': {'Oracle':[],'RS-ToM': [], 'Rational': []}, },
+        'Human Predictability': {'Seeking': {'Oracle': [], 'RS-ToM': [], 'Rational': []},
+                           'Averse': {'Oracle': [], 'RS-ToM': [], 'Rational': []}, },
     }
     ylims = {
         'Reward': [-40 + reward_offset,50 + reward_offset],
         'Risks Taken': [0,50],
-        'Predictability': [0,1],
+        'Robot Predictability': [0,1],
+        'Human Predictability': [0, 1],
     }
 
 
@@ -293,26 +392,36 @@ if __name__ == "__main__":
         stat_samples = run_tests(partner_type, inference_type=['seeking','averse','rational'], config=config, N_tests=N_tests)
         data['Reward'][partner_type]['RS-ToM'] = np.array(stat_samples['reward']) + reward_offset
         data['Risks Taken'][partner_type]['RS-ToM'] = stat_samples['risks_taken']
-        data['Predictability'][partner_type]['RS-ToM'] = stat_samples['predictability']
+        data['Robot Predictability'][partner_type]['RS-ToM'] = stat_samples['predictabilityR']
+        data['Human Predictability'][partner_type]['RS-ToM'] = stat_samples['predictabilityH']
+        # data['Robot Predictability'][partner_type]['RS-ToM'] =  stat_samples['kl_divergenceR']
+        # data['Human Predictability'][partner_type]['RS-ToM'] =  stat_samples['kl_divergenceH']
     for i, partner_type in enumerate(agents):
         stat_samples = run_tests(partner_type,inference_type='oracle',config=config, N_tests=N_tests)
         data['Reward'][partner_type]['Oracle'] = np.array(stat_samples['reward']) + reward_offset
         data['Risks Taken'][partner_type]['Oracle'] = stat_samples['risks_taken']
-        data['Predictability'][partner_type]['Oracle'] = stat_samples['predictability']
+        data['Robot Predictability'][partner_type]['Oracle'] =stat_samples['predictabilityR']
+        data['Human Predictability'][partner_type]['Oracle'] =stat_samples['predictabilityH']
+        # data['Robot Predictability'][partner_type]['Oracle'] = stat_samples['kl_divergenceR']
+        # data['Human Predictability'][partner_type]['Oracle'] = stat_samples['kl_divergenceH']
     for i, partner_type in enumerate(agents):
         if config['rational_fname'] is not None:
             stat_samples = run_tests(partner_type,inference_type=['rational'],config=config, N_tests=N_tests)
             data['Reward'][partner_type]['Rational'] = np.array(stat_samples['reward']) + reward_offset
             data['Risks Taken'][partner_type]['Rational'] = stat_samples['risks_taken']
-            data['Predictability'][partner_type]['Rational'] = stat_samples['predictability']
+            data['Robot Predictability'][partner_type]['Rational'] = stat_samples['predictabilityR']
+            data['Human Predictability'][partner_type]['Rational'] = stat_samples['predictabilityH']
+            # data['Robot Predictability'][partner_type]['Rational'] = stat_samples['kl_divergenceR']
+            # data['Human Predictability'][partner_type]['Rational'] = stat_samples['kl_divergenceH']
         else:
             dum_val = 0
             data['Reward'][partner_type]['Rational'] = [dum_val]
             data['Risks Taken'][partner_type]['Rational'] = [dum_val]
-            data['Predictability'][partner_type]['Rational'] = [dum_val/10]
+            data['Robot Predictability'][partner_type]['Rational'] = [dum_val/10]
+            data['Human Predictability'][partner_type]['Rational'] = [dum_val / 10]
     print(data)
     width = 0.35
-    features = ['Reward','Risks Taken','Predictability']
+    features = ['Reward','Risks Taken','Robot Predictability','Human Predictability']
     for i, feature in enumerate(features):
         d = data[feature]
         x = np.arange(len(agents))
@@ -330,81 +439,31 @@ if __name__ == "__main__":
                    label='Rational', facecolor=colors['Rational'],capsize=5)
 
 
-        # axs[i].bar(x - width / 2,[np.mean(d[a]['RS-ToM']) for a in agents],
-        #            width, yerr=np.std(d['Seeking']['RS-ToM']),
-        #            label='RS-ToM', facecolor=colors['RS-ToM'])
-        # axs[i].bar(x + width / 2, [np.mean(d[a]['Rational']) for a in agents],
-        #            width, yerr=np.std(d['Seeking']['Rational']),
-        #            label='Rational',facecolor=colors['Rational'])
         axs[i].set_xticks(x)
         axs[i].set_xticklabels([f'Risk-{name}\n Partner' for name in agents])
         axs[i].set_ylabel(f'{feature}' + (' (no time-cost)' if feature == 'Reward' else ''))
         axs[i].set_ylim(ylims[feature])
         if i == len(features)-1:
-            # axs[i].legend(bbox_to_anchor=(0., 1.02, 1., .102), loc='lower left', ncols=4, mode="expand", borderaxespad=0.)
-            axs[i].legend(bbox_to_anchor=(1.05, 1, 1.06, 0), loc='upper left', borderaxespad=0.)
-    fig.suptitle(f'{config["LAYOUT"]} \n [pslip={config["p_slip"]} | tests={N_tests}]', fontsize=16)
-    #            yerr=[np.std(stat_samples['risks_taken']), np.std(stat_samples['reward'])])
-    # axs[0].set_ylabel(f'{feature}')
-        # hist = np.array(get_belief_history(partner_type, N_tests=N_tests))
-        # mean = np.mean(hist, axis=0)
-        # variance = np.var(hist, axis=0)
-        # means[partner_type] = mean
-        # variances[partner_type] = variance
+            # axs[i].legend(bbox_to_anchor=(1.05, 1, 1.06, 0), loc='upper left', borderaxespad=0.)
+
+
+            fig.tight_layout()
+            fig.subplots_adjust(top=0.75)
+            left = axs[0].get_position().x0
+            right = 0.942  # for 4 plats
+            right = 0.693  # for 3 plats
+
+            # right = axs[1].get_position().x1 - 0.046
+            bottom = axs[-1].get_position().y1 * 1.05
+            top = 1
+            bbox = (left, bottom, right, top)
+            plt.legend(*axs[-1].get_legend_handles_labels(), loc='lower center', ncols=4, bbox_to_anchor=bbox,
+                       bbox_transform=plt.gcf().transFigure, mode='expand', borderaxespad=0.0,fontsize=12)
 
 
 
-    # for i, partner_type in enumerate(agents):
-    #     mean = means[partner_type]
-    #     variance = variances[partner_type]
-    #     x = np.arange(mean.shape[0])
-    #
-    #     for j in range(mean.shape[1]):
-    #         c = colors[j]
-    #         axs[i].plot(x, mean[:, j], color=c, label=agents[j])
-    #         axs[i].fill_between(x, mean[:, j] - np.sqrt(variance[:, j]), mean[:, j] + np.sqrt(variance[:, j]),
-    #                             color=c,
-    #                             alpha=0.2)
-    #     axs[i].set_xlabel("Episode")
-    #     axs[i].set_ylabel("Belief")
-    #     axs[i].set_title(f"{partner_type} Partner")
-    #     axs[i].legend()
-    # fig.suptitle(f'{N_tests} Tests [{"risky_coordination_ring"} | $pslip={0.25}$]', fontsize=16)
-    # fig.suptitle(f'{N_tests} Tests [{"risky_multipath"} | $pslip={0.1}$]', fontsize=16)
+
+    fig.suptitle(f'{config["LAYOUT"]}  [pslip={config["p_slip"]} | tests={N_tests}]\n ')
+
 
     plt.show()
-    # for i,partner_type in enumerate(agents):
-    #
-    #
-    #     hist = np.array(get_belief_history(partner_type,N_tests=N_tests))
-    #
-    #     mean = np.mean(hist, axis=0)
-    #     variance = np.var(hist, axis=0)
-    #     x = np.arange(mean.shape[0])
-    #
-    #     for j in range(mean.shape[1]):
-    #         c = colors[j]
-    #         axs[i].plot(x, mean[:,j], color=c, label=agents[j])
-    #         axs[i].fill_between(x,mean[:,j] - np.sqrt(variance[:,j]), mean[:,j]  + np.sqrt(variance[:,j]), color=c, alpha=0.2)
-    #     axs[i].set_xlabel("Episode")
-    #     axs[i].set_ylabel("Belief")
-    #     axs[i].set_title(f"Belief | {partner_type} Partner")
-    #     axs[i].legend()
-    # plt.show()
-    # hist_averse = get_belief_history('Averse', N_tests=N_tests)
-    # mean = np.mean(hist_seeking, axis=0)
-    # variance = np.var(hist_seeking, axis=0)
-    # ax.plot(mean_seeking, color='blue', label='Averse')
-    # plt.fill_between(mean - np.sqrt(variance), mean + np.sqrt(variance), color='red', alpha=0.2, label='Variance')
-
-    # Plot each line
-
-
-    # plt.figure(figsize=(10, 6))
-    # for line in data:
-    #     ax.plot(line, alpha=0.3, color='blue')
-    #
-    # hist_averse = get_belief_history('Averse', N_tests=10)
-    # # hist = np.mean(np.array(hist_seeking))
-    # hist = get_belief_history('Averse')
-    # hist = np.mean(hist)

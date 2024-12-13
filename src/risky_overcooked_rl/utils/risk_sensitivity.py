@@ -97,7 +97,7 @@ class CumulativeProspectTheory(object):
             Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]
             l = K - 1
             rho_p = 0
-            Fk = self.handle_rounding_error(Fk)
+            Fk = self.handle_percision_error(Fk)
             # assert np.all(np.array(Fk) <= 1), f"Invalid Fk={Fk}"
 
 
@@ -106,7 +106,7 @@ class CumulativeProspectTheory(object):
             return rho
         elif np.all(sorted_v > self.b):
             Fk = [np.sum(sorted_p[i:K]) for i in range(K)]
-            Fk = self.handle_rounding_error(Fk)
+            Fk = self.handle_percision_error(Fk)
             # assert np.all(np.array(Fk) <= 1), f"Invalid Fk={Fk}"
             l = -1
             rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K)
@@ -406,7 +406,7 @@ class CumulativeProspectTheory(object):
                 and self.eta_p == 1 and self.eta_n == 1
                 and self.delta_p == 1 and self.delta_n == 1)
 
-    def handle_rounding_error(self,Fk,sigdig=5):
+    def handle_percision_error(self,Fk,sigdig=5):
         """ handles unknown rounding error in Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]"""
         if np.any(np.array(Fk)>1):
             Fk = np.round(Fk,sigdig)

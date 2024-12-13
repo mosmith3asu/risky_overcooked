@@ -84,7 +84,7 @@ class CumulativeProspectTheory(object):
         # arrange all samples in ascending order
         sorted_idxs = np.argsort(values)
         sorted_v = values[sorted_idxs]
-        sorted_p = p_values[sorted_idxs]
+        sorted_p = np.array(p_values[sorted_idxs])  #sorted_p = p_values[sorted_idxs]
         K = len(sorted_v)  # number of samples
 
         if K == 1:
@@ -97,11 +97,17 @@ class CumulativeProspectTheory(object):
             Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]
             l = K - 1
             rho_p = 0
+            Fk = self.handle_rounding_error(Fk)
+            # assert np.all(np.array(Fk) <= 1), f"Invalid Fk={Fk}"
+
+
             rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
             rho = rho_p - rho_n
             return rho
         elif np.all(sorted_v > self.b):
             Fk = [np.sum(sorted_p[i:K]) for i in range(K)]
+            Fk = self.handle_rounding_error(Fk)
+            # assert np.all(np.array(Fk) <= 1), f"Invalid Fk={Fk}"
             l = -1
             rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K)
             rho_n = 0
@@ -284,7 +290,17 @@ class CumulativeProspectTheory(object):
         return p**delta/((p**delta + (1-p)**delta)**(1/delta))
     def w_neg(self,p):
         delta = self.delta_n
-        return p**delta/((p**delta + (1-p)**delta)**(1/delta))
+        return p ** delta / ((p ** delta + (1 - p) ** delta) ** (1 / delta))
+        # try:
+        #     assert 0<=p<=1, "p must be in [0,1]"
+        #     assert 0<=delta<=1, "delta must be in [0,1]"
+        #     x = (p ** delta + (1 - p) ** delta)
+        #     assert x>0, f'x={x}'
+        #     denom = (x**(float(1/delta)))
+        #     assert np.isnan(denom)==False, f'denom={denom}'
+        #     return p**delta/denom
+        # except:
+        #     raise ValueError(f'p={p}, delta={delta}')
 
     def util_plus(self,rew,eta):
         rew = max(rew, 0)
@@ -299,6 +315,7 @@ class CumulativeProspectTheory(object):
         return (prob ** gamma) / (((prob ** gamma) + (1 - prob) ** gamma) ** (1 / gamma))
 
     def plot_curves(self,with_params=False,get_img=False,neg_lambda=True):
+        rand_var = '\mathcal{X}' # \\tau
         # c_gain = 'tab:green'
         # c_loss = 'tab:red'
         c_gain = 'royalblue'
@@ -315,26 +332,27 @@ class CumulativeProspectTheory(object):
         u_plus = self.u_plus(vp)
         u_neg = -1*self.u_neg(vn)
         u = np.hstack([u_neg,u_plus])
-        axs[0].plot(vp,u_plus,color=c_gain,label='$u^+(r)$')
-        axs[0].plot(np.hstack([vn,vp[0]]),np.hstack([u_neg,u_plus[0]]),color=c_loss,label='$u^-(r)$')
+        axs[0].plot(vp,u_plus,color=c_gain,label=f'$u^+({rand_var}_i)$')
+        axs[0].plot(np.hstack([vn,vp[0]]),np.hstack([u_neg,u_plus[0]]),color=c_loss,label=f'$u^-({rand_var}_i)$')
         # axs[0].plot(v, u, color='g',label='Rational')
         axs[0].plot(v, v, color='gray',linestyle='--',label='Rational')
-        axs[0].set_xlabel('Value $\\tau_i$')
-        axs[0].set_ylabel('Perceived Value $u(\\tau_i)$')
+        axs[0].set_xlabel(f'Utility ${rand_var}_i$')
+        axs[0].set_ylabel(f'Perceived Utility $u({rand_var}_i)$')
         axs[0].set_ylim([min(v),max(v)])
         axs[0].plot([v[0], v[-1]], [0, 0], c="lightgrey", zorder=1, lw=1)
         axs[0].plot([0, 0], [v[0], v[-1]], c="lightgrey", zorder=1, lw=1)
         #make axis square
         axs[0].set_aspect('equal', adjustable='box')
         axs[0].legend(frameon=False,ncol=1)
+        axs[0].set_xlim([-10, 10])
         # axs[0].set_xlim([0,10])
         # axs[0].set_ylim([0, 10])
         # Plot probability weighting functions
         p = np.linspace(0,1,100)
         pp = self.w_plus(p)
         pn = self.w_neg(p)
-        axs[1].plot(p, pp,color=c_gain,label='$w^+(p)$')
-        axs[1].plot(p, pn,color=c_loss,label='$w^-(p)$')
+        axs[1].plot(p, pp,color=c_gain,label='$w^+(p_i)$')
+        axs[1].plot(p, pn,color=c_loss,label='$w^-(p_i)$')
         axs[1].plot(p, p, color='gray', label='Rational',linestyle='--')
         axs[1].set_xlabel('Probability $p_i$')
         axs[1].set_ylabel('Decision Weight $w(p_i)$')
@@ -387,6 +405,13 @@ class CumulativeProspectTheory(object):
         return (self.b==0 and self.lam==1
                 and self.eta_p == 1 and self.eta_n == 1
                 and self.delta_p == 1 and self.delta_n == 1)
+
+    def handle_rounding_error(self,Fk,sigdig=5):
+        """ handles unknown rounding error in Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]"""
+        if np.any(np.array(Fk)>1):
+            Fk = np.round(Fk,sigdig)
+        return Fk
+
 def animation():
     fps = 10
     fname = 'CPT_animation'
@@ -543,10 +568,10 @@ def animation_all():
     imageio.mimsave(f'{fname}.gif', IMGS,loop=0,fps=fps)
 
 def main():
-    animation_all()
+    # animation_all()
     # animation()
-    # # example from https://engineering.purdue.edu/DELP/education/decision_making_slides/Module_12___Cumulative_Prospect_Theory.pdf
-    # # values = np.array([80,60,40,20,0])
+    # example from https://engineering.purdue.edu/DELP/education/decision_making_slides/Module_12___Cumulative_Prospect_Theory.pdf
+    # values = np.array([80,60,40,20,0])
     # # p_values = np.array([0.2,0.2,0.2,0.2,0.2])
     # values = np.array([-10, -20, -1,1, 10, 20])
     # # values = np.array([-80, 60, 40, 20, 0])

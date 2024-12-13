@@ -15,12 +15,13 @@ import itertools
 import torch
 
 class Discriminability():
-    def __init__(self,layout,joint_policies,N_samples = 1000,debug=False):
+    def __init__(self,layout,joint_policies,N_samples = 1000,discount=0.75,debug=False):
         self.N_samples = N_samples
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.policies = joint_policies
         self.agents = [1] # which agents to compare
         self.debug = debug
+        self.discount = discount
 
         self.mdp = OvercookedGridworld.from_layout_name(layout)
         self.env = OvercookedEnv.from_mdp(self.mdp, horizon=200)
@@ -44,13 +45,11 @@ class Discriminability():
     #     dists = np.array(dists)
     #     d_min = np.min(dists)
     #     return np.sum(dists-d_min)**discount + d_min
-    def mutual_distance_metric(self,dists,discount=0.75):
+    def mutual_distance_metric(self,dists):
         dists = np.array(dists)
         d_min = np.min(dists)
-        return np.sum(np.log(discount*(dists-d_min)+1)) + d_min
-        # dists = np.array(dists)
-        # d_min = np.min(dists)
-        # return d_min
+        return np.sum(np.log(self.discount*(dists-d_min)+1)) + d_min
+
     def run(self):
         distances = np.zeros(self.N_samples)
         for i in range(self.N_samples):

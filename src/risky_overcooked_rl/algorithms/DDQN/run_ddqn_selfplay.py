@@ -28,6 +28,8 @@ def main():
     for key, val in config['cpt_params'].items():
         if isinstance(val,int): config['cpt_params'][key] = float(val)
 
+    # config['cpt_params'] = {'b': 0.0, 'lam': 2.25, 'eta_p': 0.88, 'eta_n': 1.0, 'delta_p': 0.61, 'delta_n': 0.69}  # risk-averse
+
     CirriculumTrainer(SelfPlay_QRE_OSA_CPT, config).run()
 
 

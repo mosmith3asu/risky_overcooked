@@ -7,16 +7,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import random
-from risky_overcooked_rl.utils.model_manager import get_default_config
+# from risky_overcooked_rl.utils.model_manager import get_default_config
+from risky_overcooked_rl.algorithms.DDQN import get_default_config
 from risky_overcooked_rl.utils.deep_models import SelfPlay_QRE_OSA_CPT
 from risky_overcooked_rl.utils.belief_update import BayesianBeliefUpdate
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
 from itertools import count
 
+# LAYOUT = 'risky_coordination_ring'; P_SLIP = 0.3
 # LAYOUT = 'risky_coordination_ring'; P_SLIP = 0.25
-# LAYOUT = 'risky_coordination_ring'; P_SLIP = 0.4
-LAYOUT = 'risky_multipath'; P_SLIP = 0.25
+LAYOUT = 'risky_coordination_ring'; P_SLIP = 0.4
+# LAYOUT = 'risky_multipath'; P_SLIP = 0.25
 # LAYOUT = 'risky_multipath'; P_SLIP = 0.1
 RATIONALITY = 10
 BELIEF_CAPACITY = 200
@@ -65,8 +67,14 @@ def get_belief_history(partner_type, N_tests=10, rationality=10,with_rational=Tr
 
 
     config = get_default_config()
+    if LAYOUT == 'risky_coordination_ring' and P_SLIP == 0.3:
+        config['LAYOUT'] = 'risky_coordination_ring'
+        config['p_slip'] = 0.25
+        seeking_fname = 'risky_coordination_ring_pslip03__b00_lam044_etap10_etan088_deltap061_deltan069__12_10_2024-05_10'
+        averse_fname = 'risky_coordination_ring_pslip03__b00_lam225_etap088_etan10_deltap061_deltan069__12_10_2024-05_10'
+        rational_fname = 'risky_coordination_ring_pslip03__rational__12_10_2024-05_10'
     # # CONFIG 1: #######################
-    if LAYOUT == 'risky_coordination_ring' and P_SLIP == 0.25:
+    elif LAYOUT == 'risky_coordination_ring' and P_SLIP == 0.25:
         config['LAYOUT'] = 'risky_coordination_ring'
         config['p_slip'] = 0.25
         averse_fname = 'risky_coordination_ring_pslip025__b00_lam225_etap088_etan10_deltap061_deltan069__10_21_2024-11_31'
@@ -77,9 +85,12 @@ def get_belief_history(partner_type, N_tests=10, rationality=10,with_rational=Tr
     elif LAYOUT == 'risky_coordination_ring' and P_SLIP == 0.4:
         config['LAYOUT'] = 'risky_coordination_ring'
         config['p_slip'] = 0.4
-        averse_fname = 'risky_coordination_ring_pslip04__b00_lam225_etap088_etan10_deltap061_deltan069__10_22_2024-11_35'
-        seeking_fname =  'risky_coordination_ring_pslip04__b00_lam05_etap10_etan088_deltap061_deltan069__10_22_2024-11_36'
-        rational_fname = 'risky_coordination_ring_pslip04__rational__10_09_2024-13_44'
+        # averse_fname = 'risky_coordination_ring_pslip04__b00_lam225_etap088_etan10_deltap061_deltan069__10_22_2024-11_35'
+        # seeking_fname =  'risky_coordination_ring_pslip04__b00_lam05_etap10_etan088_deltap061_deltan069__10_22_2024-11_36'
+        # rational_fname = 'risky_coordination_ring_pslip04__rational__10_09_2024-13_44'
+        seeking_fname = 'risky_coordination_ring_pslip03__b00_lam044_etap10_etan088_deltap061_deltan069'
+        averse_fname = 'risky_coordination_ring_pslip03__b00_lam225_etap088_etan10_deltap061_deltan069'
+        rational_fname = 'risky_coordination_ring_pslip03__rational'
 
     # CONFIG 3: #######################
     elif LAYOUT == 'risky_multipath' and P_SLIP == 0.1:

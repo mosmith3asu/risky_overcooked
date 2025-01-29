@@ -154,3 +154,5 @@ However, the lossless mask encoding they used may be feasible but has been shown
 ## To Do
 - When slipping in puddle, agent will lose `slipped_moves_lossed=2` moves (i.e. not be able to move for 2 tics) to incur risk when not holding object
 - Improve state encoding to include pot cooking tic
+- Change pot state to $20$ instead of $4$ when soup is done cooking.
+- Agents only using one pot (randomize pot state?)

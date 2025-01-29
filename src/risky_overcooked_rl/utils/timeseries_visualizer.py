@@ -250,10 +250,10 @@ def main():
     # layout = 'risky_multipath'; p_slip = 0.15
 
     # strategies = ['Averse','Averse'] # ego, partner policy
-    strategies = ['Seeking', 'Seeking']  # ego, partner policy
+    # strategies = ['Seeking', 'Seeking']  # ego, partner policy
     # strategies = ['Seeking', 'Averse']  # ego, partner policy
     # strategies = ['Rational','Seeking']  # ego, partner policy
-    # strategies = ['Rational', 'Averse']  # ego, partner policy
+    strategies = ['Rational', 'Averse']  # ego, partner policy
 
     # Initialize & Simulate
     visualizer = TimeseriesChronograph(layout=layout,p_slip=p_slip)

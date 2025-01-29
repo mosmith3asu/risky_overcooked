@@ -107,7 +107,7 @@ class TrajectoryHeatmap(object):
             'dish': False,
             'soup': False,
         }
-    def draw_backgrounds(self):
+    def draw_backgrounds(self,axs=None):
         state = self.qued_trajectory[0]
         # image = self.visualizer.render_state(state=state, grid=self.env.mdp.terrain_mtx)
         image = self.visualizer.render_state_nochefs(state=state, grid=self.env.mdp.terrain_mtx)
@@ -116,7 +116,8 @@ class TrajectoryHeatmap(object):
         image = np.flip(np.rot90(image, 3), 1)
         image = cv2.resize(image, (2 * 528, 2 * 464))
 
-        for ax in self.axs:
+
+        for ax in (self.axs if axs is None else axs):
             ax.imshow(image)
         return image
 
@@ -242,6 +243,55 @@ class TrajectoryHeatmap(object):
                           norm=colors.Normalize(vmin=0, vmax=np.max(scale_mask) * np.max(mask)),
                           cmap=my_cmap)
 
+    def draw_heatmap2(self,ax,mask):
+
+        """
+        https://python-graph-gallery.com/2d-density-plot/
+        https://python-graph-gallery.com/bubble-plot/
+        :param mask:
+        :return:
+        """
+        mask = np.flip(mask.T,axis=0)
+
+        # draw the heatmap ontop of overcooked map
+        from matplotlib.colors import ListedColormap
+        import matplotlib.patches as patches
+        import matplotlib.colors as colors
+
+        max_alpha = 0.5
+        # cmap = plt.cm.plasma
+        # cmap = plt.cm.jet
+        cmap = plt.cm.autumn
+        my_cmap = cmap(np.arange(cmap.N))
+        my_cmap[:, -1] = np.linspace(0, max_alpha, cmap.N)
+        my_cmap = ListedColormap(my_cmap)
+
+        ny,nx = self.grid_sz
+        img_shape = np.shape(self.img)[:2]
+        szy,szx = int(img_shape[0]/ny), int(img_shape[1]/nx)
+        # center = [0.5 * (szy - 1), 0.5 * (szx - 1)]
+        center = [0.5 * (szy), 0.5 * (szx)]
+        scale_mask = np.zeros([szy, szx])
+        for iy in range(szy):
+            for ix in range(szx):
+                scale_mask[iy, ix] = multivariate_normal.pdf([ix, iy], mean=center, cov=3*szx)
+
+        for iy in range(ny):
+            for ix in range(nx):
+                # x = np.linspace(ix, ix + 1, szx) * szx
+                # y = szy - np.linspace(iy, iy + 1, szy) * szy
+                # val = scale_mask * mask[iy, ix]
+                # X, Y = np.meshgrid(x, y)
+                # ax.pcolor(X, Y + szy * (ny - 1), val,
+                #           norm=colors.Normalize(vmin=0, vmax=np.max(scale_mask) * np.max(mask)),
+                #           cmap=my_cmap)
+                val = mask[iy, ix]/np.max(mask)
+                x = ix * szx
+                y = iy * szy
+                if val>0:
+
+                    rect = patches.Rectangle((x, y), szx, szy, facecolor=my_cmap(val), alpha=max_alpha*val)
+                    ax.add_patch(rect)
 
 
 class RLLogger(object):

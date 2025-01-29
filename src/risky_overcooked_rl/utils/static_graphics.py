@@ -27,17 +27,23 @@ sys.path.append('\\'.join(os.getcwd().split('\\')[:-1]))
 from risky_overcooked_rl.utils.model_manager import get_default_config, parse_args #get_argparser
 from risky_overcooked_rl.utils.trainer import Trainer
 from risky_overcooked_rl.utils.deep_models import SelfPlay_QRE_OSA_CPT
-
+from risky_overcooked_rl.utils.state_utils import StartStateManager
 
 class ChronophotographicVisualization(StateVisualizer):
 
     @classmethod
-    def from_custom_trajectory(cls, layout, trajectory,skip_n=2,init_orientation="W"):
+    def from_custom_trajectory(cls, layout, trajectory,skip_n=2,init_orientation=("W","W"),
+                               start_locs = False, held_objs=False,rand_pots=True
+
+                               ):
         joint_traj = np.array(trajectory)
         p1_traj, p2_traj, prob_slips = joint_traj[:,0], joint_traj[:,1],joint_traj[:,2]
         horizon = len(p1_traj)+1
         mdp = OvercookedGridworld.from_layout_name(layout)
         env = OvercookedEnv.from_mdp(mdp, horizon=horizon)
+
+        SSM = StartStateManager(mdp)
+        # SSM.set(loc=((1,1),(1,2)))
         env.reset()
 
         # --------------------------------------
@@ -47,8 +53,21 @@ class ChronophotographicVisualization(StateVisualizer):
                    'W': Direction.WEST,
                    'X': Action.STAY,
                    'I': Action.INTERACT}
-        env.state.players[0].orientation= dirs[init_orientation]
-        env.state.players[1].orientation = dirs[init_orientation]
+        env.state.players[0].orientation= dirs[init_orientation[0]]
+        env.state.players[1].orientation = dirs[init_orientation[1]]
+        if start_locs:
+            env.state.players[0].position = start_locs[0]
+            env.state.players[1].position = start_locs[1]
+        if held_objs:
+            for i,obj in enumerate(held_objs):
+                player = env.state.players[i]
+                if obj == "soup":
+                    soup = SoupState.get_soup(player.position, num_onions=3, num_tomatoes=0, finished=True)
+                    player.set_object(soup)
+                else:
+                    player.set_object(ObjectState(obj, player.position))
+        if rand_pots:
+            env.state = SSM.random_pot_contents(env.state)
         state_history = [env.state.deepcopy()]
         for a1, a2,p in zip(p1_traj, p2_traj,prob_slips):
             joint_action = (dirs[a1], dirs[a2])
@@ -166,7 +185,33 @@ class ChronophotographicVisualization(StateVisualizer):
         # ax.imshow(chefs)
         plt.show()
 
+
+def run1():
+    S, W, N, E, X, I = 'S', 'W', 'N', 'E', 'X', 'I'
+    joint_traj = [
+        [X, E, 0],
+        [X, E, 0],  # P2 PICK ONION
+        [X, E, 0],
+        # [X, E, 0],
+        # [X, N, 0],  # P1 PICK ONION
+    ]
+
+    # joint_traj = [
+    #     [X, S, 0],
+    #     [X, S, 0],  # P2 PICK ONION
+    #     [X, E, 0],
+    #     [X, E, 0],
+    #     [X, N, 0],  # P1 PICK ONION
+    #     [X, N, 0],  # P1 PICK ONION
+    # ]
+    ChronophotographicVisualization.from_custom_trajectory('risky_example1',
+                                                           joint_traj,
+                                                           skip_n=0,
+                                                           init_orientation=("E", "E"),
+                                                           held_objs=("soup", "onion"),
+                                                           ).preview()
 def main():
+    run1()
     # N_steps = 5
     # config = get_default_config()
     # config['loads'] = 'risky_coordination_ring_pslip04__rational__10_09_2024-13_44'
@@ -263,31 +308,44 @@ def main():
     # ChronophotographicVisualization.from_custom_trajectory('risky_coordination_ring_EXAMPLE', seeking_joint_traj).preview()
     # ChronophotographicVisualization.from_custom_trajectory('risky_coordination_ring_EXAMPLE', averse_joint_traj).preview()
     #[blue,green]
+    # seeking_joint_traj = [
+    #     [W, X, 0],
+    #     [S, X, 0],
+    #     [W, X, 0],
+    #     [W, X, 0],
+    #     [S, X, 0],
+    #     [I, X, 0],
+    #     [E, X, 0],
+    #     [E, W, 0],
+    #     [N, W, 0],
+    #     [E, W, 0],
+    #     [S, W, 0],
+    #     [E, S, 0],
+    #     [X, I, 0],
+    #
+    #     [X, E, 0],
+    #     [X, E, 0],
+    #     [X, W, 0],
+    #     # START
+    #     [N, W, 0],
+    #     [N, N, 0],
+    #     [N, N, 0],
+    #     [N, N, 0],
+    #     [W, N, 0],
+    # ]
     seeking_joint_traj = [
-        [W, X, 0],
-        [S, X, 0],
-        [W, X, 0],
-        [W, X, 0],
-        [S, X, 0],
-        [I, X, 0],
-        [E, X, 0],
-        [E, W, 0],
-        [N, W, 0],
         [E, W, 0],
         [S, W, 0],
-        [E, S, 0],
-        [X, I, 0],
-
-        [X, E, 0],
-        [X, E, 0],
-        [X, W, 0],
-        # START
-        [N, W, 0],
-        [N, N, 0],
-        [N, N, 0],
-        [N, N, 0],
+        [S, N, 0],
+        [S, N, 0],
         [W, N, 0],
+
     ]
+    # ChronophotographicVisualization.from_custom_trajectory('risky_multipath', seeking_joint_traj,skip_n=16).preview()
+    # ChronophotographicVisualization.from_custom_trajectory('risky_multipath', seeking_joint_traj, skip_n=0, start_locs=[(2,1),(3,4)],init_orientation=("E","W"),held_objs=("soup","onion")).preview()
+
+
+
     # averse_joint_traj = [
     #     [W, X, 0],
     #     [S, X, 0],
@@ -338,7 +396,8 @@ def main():
         [W, E, 0],
         [W, N, 0],
         [W, N, 0],
-    ]
+    ];
     ChronophotographicVisualization.from_custom_trajectory('risky_multipath', averse_joint_traj,skip_n=18).preview()
+
 if __name__ == "__main__":
     main()

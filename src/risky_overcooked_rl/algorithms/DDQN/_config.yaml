@@ -42,3 +42,4 @@
   'wait_for_close': True
   'auto_save': False
   'enable_report': True
+  'checkpoint_mem': 10

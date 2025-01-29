@@ -33,6 +33,8 @@ class BayesianBeliefUpdate():
 
 
 
+    def reset_prior(self):
+        self.belief = np.ones(self.n_candidates) / self.n_candidates
 
     def update_belief(self, obs, action, agent=1):
         """https://towardsdatascience.com/how-to-use-bayesian-inference-for-predictions-in-python-4de5d0bc84f3"""

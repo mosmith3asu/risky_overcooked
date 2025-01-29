@@ -15,13 +15,12 @@ from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
 from itertools import count
 
-# LAYOUT = 'risky_coordination_ring'; P_SLIP = 0.3
-# LAYOUT = 'risky_coordination_ring'; P_SLIP = 0.25
+
 LAYOUT = 'risky_coordination_ring'; P_SLIP = 0.4
-# LAYOUT = 'risky_multipath'; P_SLIP = 0.25
-# LAYOUT = 'risky_multipath'; P_SLIP = 0.1
+# LAYOUT = 'risky_multipath'; P_SLIP = 0.15
 RATIONALITY = 10
 BELIEF_CAPACITY = 200
+# N_TESTS = 3
 N_TESTS = 10
 SEED = None
 # SEED = 42
@@ -67,47 +66,52 @@ def get_belief_history(partner_type, N_tests=10, rationality=10,with_rational=Tr
 
 
     config = get_default_config()
-    if LAYOUT == 'risky_coordination_ring' and P_SLIP == 0.3:
-        config['LAYOUT'] = 'risky_coordination_ring'
-        config['p_slip'] = 0.25
-        seeking_fname = 'risky_coordination_ring_pslip03__b00_lam044_etap10_etan088_deltap061_deltan069__12_10_2024-05_10'
-        averse_fname = 'risky_coordination_ring_pslip03__b00_lam225_etap088_etan10_deltap061_deltan069__12_10_2024-05_10'
-        rational_fname = 'risky_coordination_ring_pslip03__rational__12_10_2024-05_10'
-    # # CONFIG 1: #######################
-    elif LAYOUT == 'risky_coordination_ring' and P_SLIP == 0.25:
-        config['LAYOUT'] = 'risky_coordination_ring'
-        config['p_slip'] = 0.25
-        averse_fname = 'risky_coordination_ring_pslip025__b00_lam225_etap088_etan10_deltap061_deltan069__10_21_2024-11_31'
-        seeking_fname = 'risky_coordination_ring_pslip025__b00_lam05_etap10_etan088_deltap061_deltan069__10_21_2024-11_31'
-        rational_fname = 'risky_coordination_ring_pslip025__rational__10_29_2024-10_18'
-
-    # # CONFIG 2: #######################
-    elif LAYOUT == 'risky_coordination_ring' and P_SLIP == 0.4:
-        config['LAYOUT'] = 'risky_coordination_ring'
-        config['p_slip'] = 0.4
-        # averse_fname = 'risky_coordination_ring_pslip04__b00_lam225_etap088_etan10_deltap061_deltan069__10_22_2024-11_35'
-        # seeking_fname =  'risky_coordination_ring_pslip04__b00_lam05_etap10_etan088_deltap061_deltan069__10_22_2024-11_36'
-        # rational_fname = 'risky_coordination_ring_pslip04__rational__10_09_2024-13_44'
-        seeking_fname = 'risky_coordination_ring_pslip03__b00_lam044_etap10_etan088_deltap061_deltan069'
-        averse_fname = 'risky_coordination_ring_pslip03__b00_lam225_etap088_etan10_deltap061_deltan069'
-        rational_fname = 'risky_coordination_ring_pslip03__rational'
-
-    # CONFIG 3: #######################
-    elif LAYOUT == 'risky_multipath' and P_SLIP == 0.1:
-        config['LAYOUT'] = 'risky_multipath'
-        config['p_slip'] = 0.1
-        averse_fname = 'risky_multipath_pslip01__b00_lam225_etap088_etan10_deltap061_deltan069__10_21_2024-21_32'
-        seeking_fname = 'risky_multipath_pslip01__b00_lam05_etap10_etan088_deltap061_deltan069__10_21_2024-21_32'
-        rational_fname = 'risky_multipath_pslip01__rational__10_11_2024-12_20'
-
-    elif LAYOUT == 'risky_multipath' and P_SLIP == 0.25:
-        config['LAYOUT'] = 'risky_multipath'
-        config['p_slip'] = 0.25
-        averse_fname  = 'risky_multipath_pslip025__b00_lam225_etap088_etan10_deltap10_deltan10__10_17_2024-06_12'
-        seeking_fname = 'risky_multipath_pslip025__b00_lam05_etap10_etan088_deltap10_deltan10__10_17_2024-06_12'
-        rational_fname  = 'risky_multipath_pslip025__rational__10_28_2024-16_26'
-    else:
-        raise ValueError('Invalid Configuration')
+    config['LAYOUT'] = LAYOUT
+    config['p_slip'] = P_SLIP
+    rational_fname =  f'{LAYOUT}_pslip0{int(P_SLIP * 10)}__rational'
+    averse_fname = f'{LAYOUT}_pslip0{int(P_SLIP * 10)}__b00_lam225_etap088_etan10_deltap061_deltan069'
+    seeking_fname = f'{LAYOUT}_pslip0{int(P_SLIP * 10)}__b00_lam044_etap10_etan088_deltap061_deltan069'
+    # if LAYOUT == 'risky_coordination_ring' and P_SLIP == 0.3:
+    #     config['LAYOUT'] = 'risky_coordination_ring'
+    #     config['p_slip'] = 0.25
+    #     seeking_fname = 'risky_coordination_ring_pslip03__b00_lam044_etap10_etan088_deltap061_deltan069__12_10_2024-05_10'
+    #     averse_fname = 'risky_coordination_ring_pslip03__b00_lam225_etap088_etan10_deltap061_deltan069__12_10_2024-05_10'
+    #     rational_fname = 'risky_coordination_ring_pslip03__rational__12_10_2024-05_10'
+    # # # CONFIG 1: #######################
+    # elif LAYOUT == 'risky_coordination_ring' and P_SLIP == 0.25:
+    #     config['LAYOUT'] = 'risky_coordination_ring'
+    #     config['p_slip'] = 0.25
+    #     averse_fname = 'risky_coordination_ring_pslip025__b00_lam225_etap088_etan10_deltap061_deltan069__10_21_2024-11_31'
+    #     seeking_fname = 'risky_coordination_ring_pslip025__b00_lam05_etap10_etan088_deltap061_deltan069__10_21_2024-11_31'
+    #     rational_fname = 'risky_coordination_ring_pslip025__rational__10_29_2024-10_18'
+    #
+    # # # CONFIG 2: #######################
+    # elif LAYOUT == 'risky_coordination_ring' and P_SLIP == 0.4:
+    #     config['LAYOUT'] = 'risky_coordination_ring'
+    #     config['p_slip'] = 0.4
+    #     # averse_fname = 'risky_coordination_ring_pslip04__b00_lam225_etap088_etan10_deltap061_deltan069__10_22_2024-11_35'
+    #     # seeking_fname =  'risky_coordination_ring_pslip04__b00_lam05_etap10_etan088_deltap061_deltan069__10_22_2024-11_36'
+    #     # rational_fname = 'risky_coordination_ring_pslip04__rational__10_09_2024-13_44'
+    #     seeking_fname = 'risky_coordination_ring_pslip03__b00_lam044_etap10_etan088_deltap061_deltan069'
+    #     averse_fname = 'risky_coordination_ring_pslip03__b00_lam225_etap088_etan10_deltap061_deltan069'
+    #     rational_fname = 'risky_coordination_ring_pslip03__rational'
+    #
+    # # CONFIG 3: #######################
+    # elif LAYOUT == 'risky_multipath' and P_SLIP == 0.1:
+    #     config['LAYOUT'] = 'risky_multipath'
+    #     config['p_slip'] = 0.1
+    #     averse_fname = 'risky_multipath_pslip01__b00_lam225_etap088_etan10_deltap061_deltan069__10_21_2024-21_32'
+    #     seeking_fname = 'risky_multipath_pslip01__b00_lam05_etap10_etan088_deltap061_deltan069__10_21_2024-21_32'
+    #     rational_fname = 'risky_multipath_pslip01__rational__10_11_2024-12_20'
+    #
+    # elif LAYOUT == 'risky_multipath' and P_SLIP == 0.25:
+    #     config['LAYOUT'] = 'risky_multipath'
+    #     config['p_slip'] = 0.25
+    #     averse_fname  = 'risky_multipath_pslip025__b00_lam225_etap088_etan10_deltap10_deltan10__10_17_2024-06_12'
+    #     seeking_fname = 'risky_multipath_pslip025__b00_lam05_etap10_etan088_deltap10_deltan10__10_17_2024-06_12'
+    #     rational_fname  = 'risky_multipath_pslip025__rational__10_28_2024-16_26'
+    # else:
+    #     raise ValueError('Invalid Configuration')
 
 
 
@@ -122,6 +126,7 @@ def get_belief_history(partner_type, N_tests=10, rationality=10,with_rational=Tr
 
     # Load Agents
     seeking_agent = SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config, seeking_fname)
+    # seeking_agent = SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config, seeking_fname)
     averse_agent = SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config, averse_fname)
     rational_agent = SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config, rational_fname)
     true_agent = SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config,
@@ -158,15 +163,14 @@ def get_belief_history(partner_type, N_tests=10, rationality=10,with_rational=Tr
 if __name__ == "__main__":
     plt.ioff()
 
-
-
+    fsz = 11
     # colors = [(127/255, 0, 219/255),(255 / 255, 154 / 255, 0),'black']
     colors = [(127/255, 0, 219/255),(255 / 255, 154 / 255, 0),'black']
 
     # clors = ['red','blue']
     agents = ['Seeking', 'Averse']
 
-    agent_canidates = ['Seeking', 'Averse', 'Rational']
+    agent_canidates = ['Seeking', 'Rational', 'Averse']
     # agent_canidates = ['Seeking', 'Averse']
 
     variances = {'Seeking':None, 'Averse':None}
@@ -180,7 +184,7 @@ if __name__ == "__main__":
     #     variances[partner_type] = variance
 
     plt.close('all')
-    fig, axs = plt.subplots(1, 2,figsize=(10,5))
+    fig, axs = plt.subplots(2, 1,figsize=(3,3.5))
     for i, partner_type in enumerate(agents):
         hist = np.array(get_belief_history(partner_type, N_tests=N_TESTS,rationality=RATIONALITY))
 
@@ -194,22 +198,50 @@ if __name__ == "__main__":
             std = np.std(hist[:, :, j], axis=0)
             x = np.arange(mean.shape[0])
             c = colors[j]
-            axs[i].plot(x, mean, color=c, label=canidate)
+
+            can_label = {
+                "Seeking": "$b(\pi_S\mid\mathcal{O})$", #"$\pi_S$",
+                "Rational":"$b(\pi_0\mid\mathcal{O})$", #"$\pi_0$",
+                "Averse":  "$b(\pi_A\mid\mathcal{O})$" #"$\pi_A$"
+            }
+            axs[i].plot(x, mean, color=c, label=can_label[canidate])#canidate)
             axs[i].fill_between(x, mean - std, mean + std,  color=c,alpha=0.2)
             # axs[i].plot(x, mean[:, j], color=c, label=agent_canidates[j])
             # axs[i].fill_between(x, mean[:, j] - np.sqrt(variance[:, j]), mean[:, j] + np.sqrt(variance[:, j]),
             #                     color=c,
             #                     alpha=0.2)
-        axs[i].set_xlabel("Episode")
-        axs[i].set_ylabel("Belief")
-        axs[i].set_title(f"{partner_type} Partner")
-        if i == len(agents) - 1:
-            axs[i].legend(loc='center right')
-        axs[i].set_ylim([-0.05,1.05])
-    fig.suptitle(f'{N_TESTS} Tests [{LAYOUT} | $pslip={P_SLIP}$]', fontsize=16)
-    # fig.suptitle(f'{N_tests} Tests [{"risky_multipath"} | $pslip={0.1}$]', fontsize=16)
+        if i==0:
+            axs[i].set_title(f'{"RCR" if LAYOUT == "risky_coordination_ring" else "RMP"}')
+            axs[i].set_xticks([])
+            # for minor ticks
+            axs[i].set_xticks([], minor=True)
+        else:
+            axs[i].set_xlabel("Timestep ($t$)",fontsize=fsz)
 
+        # axs[i].set_xlabel("Episode")
+        if  LAYOUT == "risky_coordination_ring":
+            pi_label = '$\pi_A$' if partner_type == 'Averse' else '$\pi_S$'
+            axs[i].set_ylabel(f"{partner_type} ({pi_label})",fontsize=fsz)
+            # axs[i].set_ylabel(f"{partner_type} Partner") #+ "\n($b(\\boldsymbol{\pi}\mid\\mathcal{O}$)")
+        # axs[i].set_title(f"{partner_type} Partner")
+        else:
+            axs[i].set_yticks([])
+            # for minor ticks
+            axs[i].set_yticks([], minor=True)
+            if i == len(agents) - 1:
+                axs[i].legend(loc='center right')
+        axs[i].set_ylim([-0.05,1.05])
+
+    # fig.suptitle(f'{"RCR" if LAYOUT == "risky_coordination_ring" else "RMP"}')
+
+    # fig.suptitle(f'{N_TESTS} Tests [{LAYOUT} | $pslip={P_SLIP}$]', fontsize=16)
+    # fig.suptitle(f'{N_tests} Tests [{"risky_multipath"} | $pslip={0.1}$]', fontsize=16)
+    fig.tight_layout()
+    # plt.savefig(f'"Fig_Belief_{"RCR" if LAYOUT == "risky_coordination_ring" else "RMP"}.svg"', bbox_inches='tight')
+    plt.subplots_adjust(left=0.19)
+    plt.savefig(f'Fig_Belief_{"RCR" if LAYOUT == "risky_coordination_ring" else "RMP"}.svg', bbox_inches='tight')
     plt.show()
+
     # for i,partner_type in enumerate(agents):
     #
     #

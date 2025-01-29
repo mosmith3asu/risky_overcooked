@@ -126,75 +126,57 @@ def main():
     #
     # ]
 
-    # bar_color = (255 / 255, 154 / 255, 0)
-    fig, axs = plt.subplots(1, 2, figsize=(10, 2))
-    ylim = [0,0.6]
 
     layout = 'risky_coordination_ring'
     PSLIPS = [0.2,0.3,0.4, 0.5,0.6, 0.7]
+    bar_color = (255 / 255, 154 / 255, 0)
 
     # layout = 'risky_multipath'
     # PSLIPS = [0.1, 0.15, 0.2, 0.25, 0.3]
-    pltnum=0
-    DATA = [['risky_coordination_ring', [0.2,0.3,0.4, 0.5,0.6, 0.7]],
-            ['risky_multipath', [0.1, 0.15, 0.2, 0.25, 0.3]]]
-    for layout, PSLIPS in DATA:
-        scores = []
-        sel_bar_color = (255 / 255, 90 / 255, 0)
-        bar_color = [tuple([50 / 255 for _ in range(3)]) for _ in range(len(PSLIPS))]
 
-        policy_batches = [
-            [
-                f'{layout}_pslip0{int(p_slip*10)}__rational',
-                # f'{layout}_pslip0{int(p_slip*10)}__b00_lam225_etap088_etan10_deltap061_deltan069',
-                # f'{layout}_pslip0{int(p_slip*10)}__b00_lam044_etap10_etan088_deltap061_deltan069'
-                f'{layout}_pslip0{int(p_slip * 10)}__b00_lam225_etap088_etan10_deltap061_deltan069',
-                f'{layout}_pslip0{int(p_slip * 10)}__b00_lam044_etap10_etan088_deltap061_deltan069'
-                ]
-            for p_slip in PSLIPS
-        ]
+    policy_batches = [
+        [
+            f'{layout}_pslip0{int(p_slip*10)}__rational',
+            f'{layout}_pslip0{int(p_slip*10)}__b00_lam225_etap088_etan10_deltap061_deltan069',
+            f'{layout}_pslip0{int(p_slip*10)}__b00_lam044_etap10_etan088_deltap061_deltan069'
+            # f'{layout}_pslip0{int(p_slip * 10)}__b-02_lam225_etap088_etan10_deltap061_deltan069',
+            #  f'{layout}_pslip0{int(p_slip * 10)}__b-02_lam044_etap10_etan088_deltap061_deltan069'
+            ]
+        for p_slip in PSLIPS
+    ]
 
-        for i,fnames in enumerate(policy_batches):
-            p_slip = PSLIPS[i]
-            mutual_score, ind_scores = run_discriminant(layout, fnames, p_slip)
-            scores.append(mutual_score)
-            RA_scores.append(ind_scores[0])
-            RS_scores.append(ind_scores[1])
+    for i,fnames in enumerate(policy_batches):
+        p_slip = PSLIPS[i]
+        mutual_score, ind_scores = run_discriminant(layout, fnames, p_slip)
+        scores.append(mutual_score)
+        RA_scores.append(ind_scores[0])
+        RS_scores.append(ind_scores[1])
 
-        # make a barchart of scores with PSLIPS as labels
-        # fig, axs = plt.subplots(2,1)
-        # fig, axs = plt.subplots(1, 1,figsize=(5,2))
-        plt.ioff()
-        # ax = axs[0]
-        # ax=axs
-        ax = axs[pltnum]
-        bar_color[np.argmax(scores)] = sel_bar_color
-        ax.bar([f'{p_slip}' for p_slip in PSLIPS], scores,color=bar_color)
-        ax.set_xlabel('$p_\\rho$')
-        ax.set_ylabel('$\sigma$')
-        ax.set_title(f'{"RCR" if layout=="risky_coordination_ring" else "RMP"}')
-        ax.set_ylim(ylim)
-        pltnum+=1
-
-    # ax.text(np.argmax(scores), max(scores), '*', fontsize=12,ha='center')
-    fig.tight_layout()
-    plt.savefig(f"results/Fig_Discriminability.svg", bbox_inches='tight')
+    # make a barchart of scores with PSLIPS as labels
+    fig, axs = plt.subplots(2,1)
+    plt.ioff()
+    ax = axs[0]
+    ax.bar([f'{p_slip}' for p_slip in PSLIPS], scores)
+    ax.set_xlabel('p_slip')
+    ax.set_ylabel('Mutual Disc. Score')
+    ax.set_title(f'{layout}')
 
     # grouped barchart of RA_scores and RS_scores
-    # ax = axs[1]
-    # width = 0.40
-    # x = np.arange(len(PSLIPS))
-    # ax.bar(x - width/2, RA_scores, width,label='Averse')
-    # ax.bar(x + width/2, RS_scores, width,label='Seeking')
-    # ax.legend()
-    # # ax.bar([f'{p_slip}' for p_slip in PSLIPS], scores)
-    # ax.set_xticks(x, [f'{p_slip}' for p_slip in PSLIPS])
-    # ax.set_xlabel('$p_\\rho$')
-    # ax.set_ylabel('KL-Divergence')
-    # # ax.set_title('Discriminability of policies')
-    #
+
+    ax = axs[1]
+    width = 0.40
+    x = np.arange(len(PSLIPS))
+    ax.bar(x - width/2, RA_scores, width,label='Averse')
+    ax.bar(x + width/2, RS_scores, width,label='Seeking')
+    ax.legend()
+    # ax.bar([f'{p_slip}' for p_slip in PSLIPS], scores)
+    ax.set_xticks(x, [f'{p_slip}' for p_slip in PSLIPS])
+    ax.set_xlabel('p_slip')
+    ax.set_ylabel('KL-Divergence')
+    # ax.set_title('Discriminability of policies')
+
     plt.show()
-    # # print(scores)
-    # # assert np.argmax(scores)==0,'Discriminant test failed'
+    # print(scores)
+    # assert np.argmax(scores)==0,'Discriminant test failed'
 if __name__ == "__main__":
     main()

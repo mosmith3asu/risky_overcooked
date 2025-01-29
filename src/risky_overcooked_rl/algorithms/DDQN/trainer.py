@@ -90,7 +90,7 @@ class Trainer:
         # Checkpointing/Saving utils ----------------
         self.checkpoint_score = -999
         # self.min_checkpoint_score = 20 - 0.5 * self.time_cost*self.env.horizon
-        self.checkpoint_mem = 3
+        self.checkpoint_mem = config['checkpoint_mem']
         # self.has_checkpointed = False
         self.train_rewards = deque(maxlen=self.checkpoint_mem)
         self.test_rewards = deque(maxlen=self.checkpoint_mem)
@@ -455,6 +455,7 @@ class Trainer:
             self.traj_visualizer.que_trajectory(state_history)
             self.traj_heatmap.que_trajectory(state_history)
             return True
+        #########################################
         # if len(self.train_rewards) == self.checkpoint_mem:
         #     ave_train = np.mean(self.train_rewards)
         #     ave_test = np.mean(self.test_rewards)
@@ -513,7 +514,7 @@ class Trainer:
 #         config['obs_shape'] = None # defined later
 #         config['device'] = device
 #         config['AGENT'] = model_object.__name__
-#         config['Date'] = datetime.now().strftime("%m_%d_%Y-%H_%M")
+#         config['Date'] = datetime.now().strftime("%m_%d_%Y-%H_%Me")
 #         self.config = config
 #         self.cpt_params = config['cpt_params']
 #         self.timestamp = config['Date']

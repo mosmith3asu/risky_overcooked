@@ -431,12 +431,12 @@ class Curriculum:
         # else: raise ValueError(f"Invalid curriculum test mode status '{status}'. Use 'on' or 'off'")
         pass
 
-    def random_start_state(self):
-        state = self.add_random_start_loc()
-        state = self.add_random_start_pot_state(state)
-        state = self.add_random_held_obj(state)
-        # state = self.add_random_counter_state(state)
-        return state
+    # def random_start_state(self):
+    #     state = self.add_random_start_loc()
+    #     state = self.add_random_start_pot_state(state)
+    #     state = self.add_random_held_obj(state)
+    #     # state = self.add_random_counter_state(state)
+    #     return state
 
     def add_random_start_loc(self):
         random_state = self.mdp.get_random_start_state_fn(random_start_pos=True, rnd_obj_prob_thresh=0.0)()

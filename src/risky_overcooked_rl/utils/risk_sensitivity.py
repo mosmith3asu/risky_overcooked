@@ -20,7 +20,7 @@ class CumulativeProspectTheory(object):
         :param delta_p: probability weighting for positive outcomes
         :param delta_n: probability weighting for negative outcomes
         """
-        assert b==0, "Reference point must be 0"
+        # assert b==0, "Reference point must be 0"
         self.mean_value_ref = False
         self.exp_value_ref = False
         self.exp_rational_value_ref = False
@@ -314,16 +314,18 @@ class CumulativeProspectTheory(object):
         # assert 0<=prob<=1, "prob must be in [0,1]"
         return (prob ** gamma) / (((prob ** gamma) + (1 - prob) ** gamma) ** (1 / gamma))
 
-    def plot_curves(self,with_params=False,get_img=False,neg_lambda=True):
+    def plot_curves(self,with_params=False,get_img=False,neg_lambda=True,scale_fig=0.6,svg_fname=None,axs=None,titles=None,show=True):
         rand_var = '\mathcal{X}' # \\tau
         # c_gain = 'tab:green'
         # c_loss = 'tab:red'
         c_gain = 'royalblue'
         c_loss = 'firebrick'
         if with_params:
-            fig, axs = plt.subplots(1, 3, constrained_layout=True,figsize=(9,3))
+            if axs is None:
+                fig, axs = plt.subplots(1, 3, constrained_layout=True,figsize=(9,3))
         else:
-            fig,axs = plt.subplots(1,2,constrained_layout=True,figsize=(10,5))
+            if axs is None:
+                fig,axs = plt.subplots(1,2,constrained_layout=True,figsize=(10*scale_fig,5*scale_fig))
 
         # Plot utility functions
         v = np.linspace(-10,10,100)
@@ -345,6 +347,8 @@ class CumulativeProspectTheory(object):
         axs[0].set_aspect('equal', adjustable='box')
         axs[0].legend(frameon=False,ncol=1)
         axs[0].set_xlim([-10, 10])
+        axs[0].set_xticks([-10,0,10])
+        axs[0].set_yticks([-10,0,10])
         # axs[0].set_xlim([0,10])
         # axs[0].set_ylim([0, 10])
         # Plot probability weighting functions
@@ -360,6 +364,13 @@ class CumulativeProspectTheory(object):
         axs[1].set_aspect('equal', adjustable='box')
         axs[1].set_ylim([0, 1])
         axs[1].set_xlim([0, 1])
+        axs[1].set_xticks([0, 1])
+        axs[1].set_yticks([0, 1])
+
+        if titles is not None:
+            for i, title in enumerate(titles):
+                axs[i].set_title(title)
+
         if with_params:
             if neg_lambda:
                 param_dict = {
@@ -398,7 +409,14 @@ class CumulativeProspectTheory(object):
             return np.asarray(buf)
 
         else:
-            plt.show()
+            if svg_fname is not None:
+                if '.svg' not in svg_fname:
+                    svg_fname += '.svg'
+                plt.savefig(svg_fname)
+
+            if show:
+                plt.show()
+
 
     @property
     def is_rational(self):
@@ -601,11 +619,33 @@ def main():
     #
     # print(np.sum(values*p_values))
     # CPT.plot_curves()
-    cpt_params = {'b': 0, 'lam': 2.25,
-                  'eta_p': 0.88, 'eta_n': 0.88,
+
+
+    # cpt_params = {'b': 0, 'lam': 2.25,
+    #               'eta_p': 0.88, 'eta_n': 0.88,
+    #               'delta_p': 0.61, 'delta_n': 0.69}
+    # cpt_params = {'b': 0, 'lam': 2.25,
+    #               'eta_p': 0.88, 'eta_n': 1,
+    #               'delta_p': 0.61, 'delta_n': 0.69}
+    # cpt_params = {'b': 0, 'lam': 0.44,
+    #               'eta_p': 1, 'eta_n': 0.88,
+    #               'delta_p': 0.61, 'delta_n': 0.69}
+    # CPT = CumulativeProspectTheory(**cpt_params)
+    # CPT.plot_curves(svg_fname='Fig_Seeking_ProspectCurves.svg')
+    fig, dump_axs = plt.subplots(1, 1, constrained_layout=True, figsize=(10 * 0.6, 5 * 0.6 * 1.3))
+    fig, axs = plt.subplots(1, 3, constrained_layout=True, figsize=(10 * 0.6*1.5, 5 * 0.6))
+
+    averse_params = {'b': 0, 'lam': 2.25,
+                  'eta_p': 0.88, 'eta_n': 1,
                   'delta_p': 0.61, 'delta_n': 0.69}
-    CPT = CumulativeProspectTheory(**cpt_params)
-    CPT.plot_curves()
+    seekin_params = {'b': 0, 'lam': 0.44,
+                  'eta_p': 1, 'eta_n': 0.88,
+                  'delta_p': 0.61, 'delta_n': 0.69}
+    CPT = CumulativeProspectTheory(**seekin_params)
+    CPT.plot_curves(axs=[axs[i] for i in [0,2]],show=False, titles=['Risk-Seeking', 'Risk-Seeking & Averse'])
+    CPT = CumulativeProspectTheory(**averse_params)
+    CPT.plot_curves(svg_fname='Fig_Both_ProspectCurves.svg', axs=[axs[1],dump_axs], show=False, titles=['Risk-Averse', ''])
+    plt.show()
 #########################################################################################
 #########################################################################################
     # values = np.array([0.01073038, 0.01114906])

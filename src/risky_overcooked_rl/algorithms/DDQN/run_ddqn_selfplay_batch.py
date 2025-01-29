@@ -1,12 +1,21 @@
-BATCH ={
-    'LAYOUTS': ['risky_coordination_ring'],
-    'PSLIPS': [0.2,], # 0.3, 0.4, 0.5, 0.6, 0.7
-    'CPT_PARAMS': [
-        {'b': 0.0, 'lam': 2.25, 'eta_p': 0.88, 'eta_n': 1.0, 'delta_p': 0.61, 'delta_n': 0.69},  # risk-averse
-        {'b': 0.0, 'lam': 1.0, 'eta_p': 1.0, 'eta_n': 1.0, 'delta_p': 1.0, 'delta_n': 1.0},  # risk-neutral
-        {'b': 0.0, 'lam': 0.44, 'eta_p': 1.0, 'eta_n': 0.88, 'delta_p': 0.61, 'delta_n': 0.69},  # risk-seeking
-    ]
-}
+# BATCH ={
+#     'LAYOUTS': ['risky_coordination_ring'],
+#     'PSLIPS': [0.2,], # 0.3, 0.4, 0.5, 0.6, 0.7
+#     'CPT_PARAMS': [
+#         {'b': 0.0, 'lam': 2.25, 'eta_p': 0.88, 'eta_n': 1.0, 'delta_p': 0.61, 'delta_n': 0.69},  # risk-averse
+#         {'b': 0.0, 'lam': 1.0, 'eta_p': 1.0, 'eta_n': 1.0, 'delta_p': 1.0, 'delta_n': 1.0},  # risk-neutral
+#         {'b': 0.0, 'lam': 0.44, 'eta_p': 1.0, 'eta_n': 0.88, 'delta_p': 0.61, 'delta_n': 0.69},  # risk-seeking
+#     ]
+# }
+# BATCH ={
+#     'LAYOUTS': ['risky_coordination_ring'],
+#     'PSLIPS': [0.2,0.3, 0.4, 0.5, 0.6, 0.7],
+#     'CPT_PARAMS': [
+#         # {'b': 0.0, 'lam': 2.25, 'eta_p': 0.88, 'eta_n': 1.0, 'delta_p': 0.61, 'delta_n': 0.69},  # risk-averse
+#         # {'b': 0.0, 'lam': 1.0, 'eta_p': 1.0, 'eta_n': 1.0, 'delta_p': 1.0, 'delta_n': 1.0},  # risk-neutral
+#         {'b': 0.0, 'lam': 0.2, 'eta_p': 1.0, 'eta_n': 0.88, 'delta_p': 0.61, 'delta_n': 0.69},  # risk-seeking
+#     ]
+# }
 
 # BATCH ={
 #     'LAYOUTS': ['risky_multipath'],
@@ -17,8 +26,25 @@ BATCH ={
 #         {'b': 0.0, 'lam': 0.44, 'eta_p': 1.0, 'eta_n': 0.88, 'delta_p': 0.61, 'delta_n': 0.69},  # risk-seeking
 #     ]
 # }
-
-
+######## TIME OFFSET REFERENCE #################
+BATCH ={
+    'LAYOUTS': ['risky_coordination_ring'],
+    'PSLIPS': [0.4],
+    'CPT_PARAMS': [
+        {'b': -0.2, 'lam': 2.25, 'eta_p': 0.88, 'eta_n': 1.0, 'delta_p': 0.61, 'delta_n': 0.69},  # risk-averse
+        # {'b': 0.0, 'lam': 1.0, 'eta_p': 1.0, 'eta_n': 1.0, 'delta_p': 1.0, 'delta_n': 1.0},  # risk-neutral
+        {'b': -0.2, 'lam': 0.44, 'eta_p': 1.0, 'eta_n': 0.88, 'delta_p': 0.61, 'delta_n': 0.69},  # risk-seeking
+    ]
+}
+# BATCH ={
+#     'LAYOUTS': ['risky_multipath'],
+#     'PSLIPS': [0.15],
+#     'CPT_PARAMS': [
+#         {'b': -0.2, 'lam': 2.25, 'eta_p': 0.88, 'eta_n': 1.0, 'delta_p': 0.61, 'delta_n': 0.69},  # risk-averse
+#         # {'b': 0.0, 'lam': 1.0, 'eta_p': 1.0, 'eta_n': 1.0, 'delta_p': 1.0, 'delta_n': 1.0},  # risk-neutral
+#         {'b': -0.2, 'lam': 0.44, 'eta_p': 1.0, 'eta_n': 0.88, 'delta_p': 0.61, 'delta_n': 0.69},  # risk-seeking
+#     ]
+# }
 #########################################################################################################
 #########################################################################################################
 #########################################################################################################
@@ -65,7 +91,7 @@ def get_config_search_list(LAYOUTS, PSLIPS, CPT_PARAMS):
     return config_lst
 
 
-def main(N_workers = 3,istart=0):
+def main(N_workers = 6,istart=0):
     if N_workers >= mp.cpu_count():
         warnings.warn(f'N_workers is too high, setting to {mp.cpu_count()-1}')
         N_workers = mp.cpu_count()-1

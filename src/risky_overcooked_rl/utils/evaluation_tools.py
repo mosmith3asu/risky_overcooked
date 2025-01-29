@@ -15,7 +15,7 @@ import itertools
 import torch
 
 class Discriminability():
-    def __init__(self,layout,joint_policies,N_samples = 1000,discount=0.75,debug=False):
+    def __init__(self,layout,joint_policies,N_samples = 5000,discount=0.75,debug=False):
         self.N_samples = N_samples
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.policies = joint_policies
@@ -28,6 +28,8 @@ class Discriminability():
         self.env.reset()
         self.state_manager = StartStateManager(self.mdp)
         self.comparison_idxs = list(itertools.combinations(range(len(self.policies)),2))
+
+        self.kl_rel2first = [[] for _ in range(len(self.policies)-1)]
     def jensen_shannon_divergence(self,P,Q):
         # https://en.wikipedia.org/wiki/Jensen%E2%80%93Shannon_divergence
         # Jensen–Shannon divergence (Symmetrized KL divergence)
@@ -66,14 +68,22 @@ class Discriminability():
 
                     kl = self.jensen_shannon_divergence(pA1,pA2)
                     KL_diverences.append(kl)
+
+                    if idx1==0:
+                        KL = self.KL_divergence(pA1,pA2)
+                        self.kl_rel2first[idx2-1].append(KL)
             distances[i]=self.mutual_distance_metric(KL_diverences)
+
             assert not np.isnan(distances[i]), 'Nan KL divergence detected'
+        self.kl_rel2first= [np.mean(kls) for kls in  self.kl_rel2first]
         return np.mean(distances)
 
     def get_random_state(self):
         return self.state_manager.assign(self.env.state,
-                                          random_loc = True, with_soup=False,
-                                          random_pot = True,random_held=True)
+                                          random_loc = True,
+                                          random_pot = 0.5,# True,
+                                         random_held= 0.7,#True,
+                                         with_soup=False)
 
     def get_actions(self,state):
         obs = self.mdp.get_lossless_encoding_vector_astensor(state, device=self.device).unsqueeze(0)
@@ -245,7 +255,7 @@ class CoordinationFluency():
                 earliest_revisited_state_idx = np.where(repeat_states)[0][0]
                 inactive_states[earliest_revisited_state_idx:t+1] = 1
         # print(f"Player {player} repeated state at t={t}")
-        print(inactive_states)
+        # print(inactive_states)
         return inactive_states
 
     def measures(self,iR=0,iH=1):

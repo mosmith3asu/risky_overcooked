@@ -130,11 +130,29 @@ class StartStateManager:
         # self.random_pot = random_pot
         # self.random_held = random_held
 
+    # def set(self,loc=False,held_obj=False,random_pot=False):
+    #     if loc:
+    #         valid_positions = self.mdp.get_valid_joint_player_positions()
+    #         start_pos = valid_positions[
+    #             np.random.choice(len(valid_positions))
+    #         ]
+    #         start_state = OvercookedState.from_player_positions(
+    #             start_pos)
+    #     # else:
+    #     #     start_pos = self.start_player_positions
+    #
+
     def assign(self,state,random_loc=False, with_soup=False, random_pot = False,random_held=False):
         assert not (with_soup and random_held), "Cannot start with both with_soup and random_held"
         if random_loc:   state = self.random_start_loc(state)
-        if random_pot:   state = self.random_pot_contents(state)
-        if random_held:  state = self.random_held_objects(state)
+        if random_pot:
+            if random_pot==True: state = self.random_pot_contents(state)
+            else: state = self.random_pot_contents(state, rnd_obj_prob_thresh=random_pot)
+            # state = self.random_pot_contents(state)
+        if random_held:
+            if random_held==True: state = self.random_held_objects(state)
+            else: state = self.random_held_objects(state, rnd_obj_prob_thresh=random_held)
+            # state = self.random_held_objects(state)
         if with_soup:    state = self.start_with_soup(state)
         return state
 

@@ -52,6 +52,7 @@ class TrajectoryVisualizer(object):
         image = np.flip(np.rot90(image, 3), 1)
         image = cv2.resize(image, (2 * 528, 2 * 464))
         return image
+
     def update_slider(self,val):
         t = int(self.time_slider.val)
         infos = ["", ""]

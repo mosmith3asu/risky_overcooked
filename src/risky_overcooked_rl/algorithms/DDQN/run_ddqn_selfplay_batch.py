@@ -18,7 +18,7 @@ def train_worker(config):
     # print(config)
 
 def get_config_search_list():
-    warnings.warn(f'Only running odd batches?')
+
     config_lst = []
     def_config = Algorithm.get_default_config()
     def_config["enable_report"] = False
@@ -58,8 +58,8 @@ def get_config_search_list():
                         config['LAYOUT'] = layout
                         config['ibatch']= f'{len(config_lst)+1}/{batch_size}'
                         config_lst.append(config)
-                        print(f'Loading Config: {len(config_lst)}/{batch_size}')
-    # config_lst = config_lst[istart:]
+                        # print(f'Loading Config: {len(config_lst)}/{batch_size}')
+    config_lst = config_lst[istart:]
     return workers, config_lst
 
 

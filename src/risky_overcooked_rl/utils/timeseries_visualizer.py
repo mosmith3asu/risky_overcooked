@@ -53,12 +53,12 @@ class TimeseriesChronograph(StateVisualizer):
         self.alpha_range = [0.1, 1]
         # load policies ---------------------------------------------------------
         policy_fnames = {
-            # 'Rational': f'{layout}_pslip0{int(p_slip * 10)}__rational',
-            # 'Averse':f'{layout}_pslip0{int(p_slip * 10)}__b00_lam225_etap088_etan10_deltap061_deltan069',
-            # 'Seeking':f'{layout}_pslip0{int(p_slip * 10)}__b00_lam044_etap10_etan088_deltap061_deltan069'
-            'Rational': f'{layout}_pslip{f"{p_slip}".replace(".", "")}__rational',
-            'Averse': f'{layout}_pslip{f"{p_slip}".replace(".", "")}__b-02_lam225_etap088_etan10_deltap061_deltan069',
-            'Seeking': f'{layout}_pslip{f"{p_slip}".replace(".", "")}__b-02_lam044_etap10_etan088_deltap061_deltan069'
+            'Rational': f'{layout}_pslip0{int(p_slip * 10)}__rational',
+            'Averse':f'{layout}_pslip0{int(p_slip * 10)}__b00_lam225_etap088_etan10_deltap061_deltan069',
+            'Seeking':f'{layout}_pslip0{int(p_slip * 10)}__b00_lam044_etap10_etan088_deltap061_deltan069'
+            # 'Rational': f'{layout}_pslip{f"{p_slip}".replace(".", "")}__rational',
+            # 'Averse': f'{layout}_pslip{f"{p_slip}".replace(".", "")}__b-02_lam225_etap088_etan10_deltap061_deltan069',
+            # 'Seeking': f'{layout}_pslip{f"{p_slip}".replace(".", "")}__b-02_lam044_etap10_etan088_deltap061_deltan069'
 
         }
         self.policies = {
@@ -201,7 +201,7 @@ class TimeseriesChronograph(StateVisualizer):
         # plt.show()
 
     def preview(self,istate = 5, npast = 5):
-        fig, self.ax = plt.subplots()
+        fig, self.ax = plt.subplots(figsize=(10,10))
         # Add sliders
         fig.subplots_adjust(bottom=0.25)
 
@@ -246,14 +246,14 @@ class TimeseriesChronograph(StateVisualizer):
 
 def main():
     # Settings
-    layout = 'risky_coordination_ring'; p_slip = 0.4
-    # layout = 'risky_multipath'; p_slip = 0.15
+    # layout = 'risky_coordination_ring'; p_slip = 0.4
+    layout = 'risky_multipath'; p_slip = 0.15
 
-    # strategies = ['Averse','Averse'] # ego, partner policy
+    strategies = ['Averse','Averse'] # ego, partner policy
     # strategies = ['Seeking', 'Seeking']  # ego, partner policy
     # strategies = ['Seeking', 'Averse']  # ego, partner policy
     # strategies = ['Rational','Seeking']  # ego, partner policy
-    strategies = ['Rational', 'Averse']  # ego, partner policy
+    # strategies = ['Rational', 'Averse']  # ego, partner policy
 
     # Initialize & Simulate
     visualizer = TimeseriesChronograph(layout=layout,p_slip=p_slip)

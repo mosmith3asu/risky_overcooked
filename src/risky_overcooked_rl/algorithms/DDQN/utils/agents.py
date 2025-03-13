@@ -13,7 +13,7 @@ import itertools
 is_ipython = 'inline' in matplotlib.get_backend()
 if is_ipython:
     from IPython import display
-from risky_overcooked_rl.algorithms.DDQN.memory import ReplayMemory_Prospect,ReplayMemory_Simple
+from risky_overcooked_rl.algorithms.DDQN.utils.memory import ReplayMemory_Prospect,ReplayMemory_Simple
 from risky_overcooked_rl.utils.risk_sensitivity import CumulativeProspectTheory
 from risky_overcooked_rl.utils.model_manager import get_absolute_save_dir
 from risky_overcooked_rl.utils.state_utils import invert_obs, invert_joint_action, invert_prospect

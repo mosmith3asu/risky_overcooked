@@ -170,9 +170,10 @@ if __name__ == "__main__":
     # clors = ['red','blue']
     agents = ['Seeking', 'Averse']
 
-    agent_canidates = ['Seeking', 'Rational', 'Averse']
+    # agent_canidates = ['Seeking', 'Rational', 'Averse']
     # agent_canidates = ['Seeking', 'Averse']
 
+    agent_canidates = ['Seeking', 'Averse','Rational']
     variances = {'Seeking':None, 'Averse':None}
     means = {'Seeking': None, 'Averse': None}
 

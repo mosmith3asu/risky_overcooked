@@ -385,6 +385,11 @@ def predefined():
 def instructions():
     return render_template("instructions.html", layout_conf=LAYOUT_GLOBALS)
 
+@app.route("/consent")
+def consent():
+    return render_template("consent.html")
+
+
 
 @app.route("/tutorial")
 def tutorial():
@@ -659,13 +664,9 @@ def play_game(game: OvercookedGame, fps=6):
 
 
 if __name__ == "__main__":
-
-    # HOST = "0.0.0.0"; PORT = 80 # for docker implementation
-    HOST = "127.0.0.1";   PORT = 8000  # for direct flask app deployment
-
     # Dynamically parse host and port from environment variables (set by docker build)
-    host = os.getenv("HOST", HOST)
-    port = int(os.getenv("PORT", PORT))
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", 80))
 
     # Attach exit handler to ensure graceful shutdown
     atexit.register(on_exit)

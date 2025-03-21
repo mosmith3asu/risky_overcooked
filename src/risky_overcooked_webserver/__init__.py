@@ -1,14 +1,16 @@
-# import numpy as np
-# import matplotlib.pyplot as plt
+import os
+import subprocess
 
 
-def main():
-    pass
+def start_server():
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    os.chdir(dir_path)
+    subprocess.call("./up.sh")
 
 
-def subfun():
-    pass
+def move_agent():
+    from overcooked_demo.server.move_agents import main
 
-
-if __name__ == "__main__":
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    os.chdir(os.path.join(dir_path, "server"))
     main()

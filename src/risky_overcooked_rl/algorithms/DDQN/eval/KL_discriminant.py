@@ -6,11 +6,8 @@ sys.path.append('\\'.join(os.getcwd().split('\\')[:-1]))
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-
 from risky_overcooked_rl.utils.deep_models import SelfPlay_QRE_OSA_CPT
-
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
-
 from risky_overcooked_rl.utils.evaluation_tools import Discriminability
 import risky_overcooked_rl.algorithms.DDQN as Algorithm
 

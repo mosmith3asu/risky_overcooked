@@ -463,7 +463,7 @@ class RLLogger(object):
 
     def add_checkpoint_line(self):
         for key, data in self.logs.items():
-            self.checkpoint_lines[key] = self.axs[key].axvline(x=0, color='g', linestyle='--',lw=1)
+            self.checkpoint_lines[key] = self.axs[key].axvline(x=0, color='g', linestyle='--',lw=1, label='TBD')
 
     def add_lineplot(self, key,
                      xlabel='', ylabel='', title='',
@@ -526,6 +526,18 @@ class RLLogger(object):
         try:
             for key, data in self.checkpoint_lines.items():
                 self.checkpoint_lines[key].set_xdata(iteration)
+                data = self.logs[key]
+                icp =  np.where(data[:, 0]==iteration)[0][0]
+
+                window = data[icp-5:icp+5, 1]
+                m = np.mean(window).round(1)
+                std = np.std(window).round(1)
+                txt = f'R = {m}$\pm${std}'
+
+                self.checkpoint_lines[key].set_label(txt)
+                self.axs[key].legend(loc='upper right', fontsize=6)
+
+
         except:
             print(f'\n\nRLLogger.update_checkpoint_line() exception...')
     def draw(self):
@@ -562,17 +574,7 @@ class RLLogger(object):
                 self.std_patches[key].remove()
                 self.std_patches[key] = self.axs[key].fill_between(x, y - std, y + std, **self.std_settings)
 
-        # # Shaded Region
-        # for key, _ in self.std_patches.items():
-        #     data = self.logs[key]
-        #     x = data[:, 0]
-        #     y = data[:, 1]
-        #     if len(x) > 1:
-        #         y = self.remove_outliers(y)
-        #         if np.size(y) > 2:
-        #             lowerbound = np.mean(y) - np.std(y)
-        #             self.std_patches[key].remove()
-        #             self.std_patches[key] = self.axs[key].fill_between(x, y - np.std(y), y + np.std(y), color='blue', alpha=0.2)
+
         self.plot_fig.canvas.draw()
         self.plot_fig.canvas.flush_events()
 

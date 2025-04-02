@@ -28,3 +28,19 @@ jobs:
   risky_mixed_coordination:
     agents: [ 'averse','neutral','seeking' ]
     p_slips: [0.1, 0.2, 0.3 ]
+
+  risky_tree:
+    agents: [ 'averse','neutral','seeking' ]
+    p_slips: [ 0.4, 0.5, 0.6 ]
+  risky_shortcuts:
+    agents: [ 'averse','neutral','seeking' ]
+    p_slips: [ 0.2, 0.3, 0.4 ]
+  risky_corridor:
+    agents: [ 'averse','neutral','seeking' ]
+    p_slips: [ 0.5 ]
+  risky_spiral:
+    agents: [ 'averse','neutral','seeking' ]
+    p_slips: [ 0.2, 0.3, 0.4 ]
+  risky_passing:
+    agents: [ 'averse','neutral','seeking' ]
+    p_slips: [ 0.1, 0.2, 0.3 ]

@@ -297,6 +297,8 @@ class TrajectoryHeatmap(object):
 
 class RLLogger(object):
     def __init__(self, rows, cols,num_iterations=None, lw=0.5, figsize=(10, 5)):
+        self.max_log_size = 100
+
         self.logs = {}
         self.sig_digs = 4
         self.filter_widows = {}
@@ -359,6 +361,18 @@ class RLLogger(object):
             # return np.convolve(x, np.ones(w) / w, 'same')
         else:
             return x, None
+
+    def down_sample(self):
+        for key, data in self.logs.items():
+            if len(data) >= self.max_log_size:
+                d1 = data[::2]
+                d2 = data[1::2]
+                if len(d1) == len(d2):
+                    self.logs[key] = (d1+d2)/2
+                else:
+                    self.logs[key] = np.vstack([(d1[:-1,:] + d2) / 2, d1[-1,:]])
+                print(f'Down sampling {key} from {len(data)} to {len(self.logs[key])} samples')
+
 
     ###########################################################
     # Status Methods ############################################
@@ -541,6 +555,8 @@ class RLLogger(object):
         except:
             print(f'\n\nRLLogger.update_checkpoint_line() exception...')
     def draw(self):
+        if self.iter_count % 10 == 0:
+            self.down_sample()
 
         # Raw Data Lines
         for key, _ in self.lines.items():
@@ -583,6 +599,7 @@ class RLLogger(object):
     def spin(self):
         self.plot_fig.canvas.flush_events()
 
+
     def wait_for_close(self,enable=True):
         """Stops the program to wait for user input (i.e. save model, save plot, close, ect..)"""
         if enable and not self.is_closed:
@@ -603,7 +620,7 @@ def test_logger():
     def callback(event):
         print('clicked')
 
-    T = 100
+    T = 200
     data = []
     logger = RLLogger(rows = 2,cols = 1,num_iterations=T)
     logger.add_lineplot('test_reward',xlabel='iter',ylabel='$R_{test}$',filter_window=10,display_raw=True,display_std=True,loc = (0,1))

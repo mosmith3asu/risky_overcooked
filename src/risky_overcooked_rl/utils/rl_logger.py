@@ -297,7 +297,7 @@ class TrajectoryHeatmap(object):
 
 class RLLogger(object):
     def __init__(self, rows, cols,num_iterations=None, lw=0.5, figsize=(10, 5)):
-        self.max_log_size = 100
+        self.max_log_size = 1000
 
         self.logs = {}
         self.sig_digs = 4

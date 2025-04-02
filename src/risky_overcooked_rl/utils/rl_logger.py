@@ -303,9 +303,11 @@ class RLLogger(object):
         self.xlabels = {}
         self.ylabels = {}
         self.display_raws = {}
+        self.display_stds = {}
         self.lines = {}
         self.filtered_lines = {}
         self.checkpoint_lines = {}
+        self.std_patches = {}
         self.trackers = {}
         self.interfaces = {}
         self.status = {}
@@ -320,17 +322,6 @@ class RLLogger(object):
         self.last_iteration_time = None
 
         self.root_fig = plt.figure(figsize=figsize, constrained_layout=True)
-
-        # self.subfigs = self.root_fig.subfigures(1, 2, wspace=0.00, width_ratios=[1.5, 1.])
-        # self.plot_fig = self.subfigs[0]
-        # self.settings_fig = self.subfigs[1]
-
-        # self.subfigs = self.root_fig.subfigures(2, 2, wspace=0.07, width_ratios=[1.5, 1.],height_ratios=[5,1])
-        # self.plot_fig = self.subfigs[0,0]
-        # self.settings_fig = self.subfigs[0,1]
-        # self.status_fig = self.subfigs[1, 0]
-        # self.interface_fig = self.subfigs[1, 1]
-
         self.subfigs = self.root_fig.subfigures(1, 2, wspace=0.00, width_ratios=[1.5, 1.])
         self.plot_fig,self.interface_fig = self.subfigs[0].subfigures(2, 1, wspace=0.00, height_ratios=[10, 1])
         self.subfigs =  self.subfigs[1].subfigures(2, 1, wspace=0.00, height_ratios=[10, 1])
@@ -339,23 +330,13 @@ class RLLogger(object):
 
         self.fig_number = self.root_fig.number
 
-
-
-
-
-        # axs0 = self.subfigs[0].subplots(2, 2)
-        # self.interface_fig.set_facecolor('lightgray')
-        # self.status_fig.set_facecolor('lightgray')
-        # self.status_fig.suptitle('Status')
         self.settings_fig.set_facecolor('lightgray')
         self.settings_fig.suptitle('Settings')
-        # self.subfigs[0].suptitle('subfigs[0]\nLeft side')
-        # self.subfigs[0].supxlabel('xlabel for subfigs[0]')
+        self.root_fig.canvas.manager.set_window_title('RLLoger V1.2')
 
-        self.root_fig.canvas.manager.set_window_title('RLLoger V1.1')
-
-        self.raw_settings = {'c': 'k', 'lw': lw}
-        self.filtered_settings = {'c': 'r', 'lw': lw}
+        self.std_settings = {'color':'r','alpha':0.2}
+        self.raw_settings = {'c': 'gray', 'lw': lw}
+        self.filtered_settings = {'c': 'k', 'lw': lw}
     def close_plots(self):
         plt.close(self.root_fig)
     def log(self, **data):
@@ -369,13 +350,15 @@ class RLLogger(object):
         # np.convolve(x, np.ones(window), 'valid') / window
         if len(x) > window:
             f = []
+            std = []
             for i in range(len(x)):
                 w = min(i, window)
                 f.append(np.mean(x[i - w:i]))
-            return f
+                std.append(np.std(x[i - w:i]))
+            return f, std
             # return np.convolve(x, np.ones(w) / w, 'same')
         else:
-            return x
+            return x, None
 
     ###########################################################
     # Status Methods ############################################
@@ -485,7 +468,10 @@ class RLLogger(object):
     def add_lineplot(self, key,
                      xlabel='', ylabel='', title='',
                      loc=None,
-                     filter_window=None, display_raw=True):
+                     filter_window=None,
+                     display_raw=False,
+                     display_std = True
+                     ):
 
         self.iax += 1
         self.logs[key] = np.empty((0, 2))
@@ -493,13 +479,21 @@ class RLLogger(object):
         self.ylabels[key] = ylabel
         self.filter_widows[key] = filter_window
         self.display_raws[key] = display_raw
-        if loc is not None:
-            self.axs[key] = self.plot_fig.add_subplot(self.rows, self.cols, self.cols * loc[0] + loc[1])
-        else:
-            self.axs[key] = self.plot_fig.add_subplot(self.rows, self.cols, self.iax)
-        self.lines[key] = self.axs[key].plot([], [], **self.raw_settings)[0]
+        self.display_stds[key] = display_std
+        if loc is not None: self.axs[key] = self.plot_fig.add_subplot(self.rows, self.cols, self.cols * loc[0] + loc[1])
+        else: self.axs[key] = self.plot_fig.add_subplot(self.rows, self.cols, self.iax)
+
+        if display_raw: self.lines[key] = self.axs[key].plot([], [], **self.raw_settings)[0] # raw data line
+
         if filter_window is not None:
             self.filtered_lines[key] = self.axs[key].plot([], [], **self.filtered_settings)[0]
+
+        if display_std:
+
+            x = []
+            lower_bound = []
+            upper_bound = []
+            self.std_patches[key] = self.axs[key].fill_between(x, lower_bound, upper_bound, **self.std_settings)
         self.axs[key].set_xlabel(xlabel)
         self.axs[key].set_ylabel(ylabel)
         self.axs[key].set_title(title)
@@ -535,7 +529,10 @@ class RLLogger(object):
         except:
             print(f'\n\nRLLogger.update_checkpoint_line() exception...')
     def draw(self):
-        for key, data in self.logs.items():
+
+        # Raw Data Lines
+        for key, _ in self.lines.items():
+            data = self.logs[key]
             x = data[:, 0]
             y = data[:, 1]
 
@@ -550,30 +547,32 @@ class RLLogger(object):
                         self.axs[key].set_ylim([0, 1.1 * np.max(_y + 1e-6)])
                 else:
                     self.axs[key].set_ylim([np.min(y), np.max(y) + 0.1])
-            # self.lines[key].set_data(x, y)
-            # if len(x) > 1:
-            #     self.axs[key].set_xlim([np.min(x), 1.1*np.max(x)])
-            #     # self.axs[key].set_ylim([0, np.max(y)])
-            #     self.axs[key].set_ylim([np.min(y), np.max(y)+0.1])
-            #
-            #
-            # if 'loss' in key.lower():
-            #     # self.lines[key].set_xdata(x)
-            #     _y = self.remove_outliers(y)
-            #     # self.axs[key].set_ylim([np.min(_y), np.max(_y)])
-            #     if np.size(_y) > 2:
-            #         self.axs[key].set_ylim([0, 1.1*np.max(_y+1e-6)])
 
+        # Filter Data Lines
         for key, _ in self.filtered_lines.items():
             data = self.logs[key]
             x = data[:, 0]
             y = data[:, 1]
-            y = self.filter(y, window=self.filter_widows[key])
-            # if 'loss' in key.lower():
-            #     self.axs[key].set_xlim([np.min(x), np.max(x)])
-            #     self.axs[key].set_ylim([np.min(y), np.max(y)])
-
+            y, std = self.filter(y, window=self.filter_widows[key])
             self.filtered_lines[key].set_data(x, y)
+
+            if key in self.std_patches and std is not None:
+                y = np.array(y)
+                std = np.array(std)
+                self.std_patches[key].remove()
+                self.std_patches[key] = self.axs[key].fill_between(x, y - std, y + std, **self.std_settings)
+
+        # # Shaded Region
+        # for key, _ in self.std_patches.items():
+        #     data = self.logs[key]
+        #     x = data[:, 0]
+        #     y = data[:, 1]
+        #     if len(x) > 1:
+        #         y = self.remove_outliers(y)
+        #         if np.size(y) > 2:
+        #             lowerbound = np.mean(y) - np.std(y)
+        #             self.std_patches[key].remove()
+        #             self.std_patches[key] = self.axs[key].fill_between(x, y - np.std(y), y + np.std(y), color='blue', alpha=0.2)
         self.plot_fig.canvas.draw()
         self.plot_fig.canvas.flush_events()
 
@@ -593,7 +592,6 @@ class RLLogger(object):
     def is_closed(self):
         return not plt.fignum_exists(self.fig_number)
 
-
     def save_fig(self,PATH):
         self.root_fig.savefig(PATH)
 
@@ -603,11 +601,11 @@ def test_logger():
     def callback(event):
         print('clicked')
 
-    T = 1000
+    T = 100
     data = []
     logger = RLLogger(rows = 2,cols = 1,num_iterations=T)
-    logger.add_lineplot('test_reward',xlabel='iter',ylabel='$R_{test}$',filter_window=10,display_raw=True,loc = (0,1))
-    logger.add_lineplot('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=10, display_raw=True,loc=(1,1))
+    logger.add_lineplot('test_reward',xlabel='iter',ylabel='$R_{test}$',filter_window=10,display_raw=True,display_std=True,loc = (0,1))
+    logger.add_lineplot('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=10, display_raw=True,display_std=True,loc=(1,1))
     logger.add_table('Params',config)
     logger.add_status()
     logger.add_button('Preview',callback)
@@ -617,15 +615,14 @@ def test_logger():
     for i in range(T):
         logger.start_iteration()
         d = np.random.randint(0,10)
+        noise = np.exp(-2*i/T)*np.random.normal(0,100)
+        d += noise
         logger.log(test_reward=[i,d],train_reward=[i, d+2])
         logger.draw()
-        # data.append(d)
-        # ln.set_ydata(d)
-        # fig.canvas.draw()
-        # fig.canvas.flush_events()
-        time.sleep(0.1)
+
         if i % 10 == 0:
             logger.update_checkpiont_line(i)
+            time.sleep(0.1)
 
         logger.end_iteration()
         print(i)
@@ -657,3 +654,284 @@ class FunctionTimer(object):
 
 if __name__ == '__main__':
     test_logger()
+
+
+# class RLLogger(object):
+#     def __init__(self, rows, cols,num_iterations=None, lw=0.5, figsize=(10, 5)):
+#         self.logs = {}
+#         self.sig_digs = 4
+#         self.filter_widows = {}
+#         self.xlabels = {}
+#         self.ylabels = {}
+#         self.display_raws = {}
+#         self.lines = {}
+#         self.filtered_lines = {}
+#         self.checkpoint_lines = {}
+#         self.trackers = {}
+#         self.interfaces = {}
+#         self.status = {}
+#         self.axs = {}
+#         self.iax = 0  # index counter for plot
+#         self.rows = rows
+#         self.cols = cols
+#         self.num_iterations = num_iterations
+#         self.iter_count = 0 # number of iterations in loop
+#         plt.ion()
+#
+#         self.last_iteration_time = None
+#
+#         self.root_fig = plt.figure(figsize=figsize, constrained_layout=True)
+#         self.subfigs = self.root_fig.subfigures(1, 2, wspace=0.00, width_ratios=[1.5, 1.])
+#         self.plot_fig,self.interface_fig = self.subfigs[0].subfigures(2, 1, wspace=0.00, height_ratios=[10, 1])
+#         self.subfigs =  self.subfigs[1].subfigures(2, 1, wspace=0.00, height_ratios=[10, 1])
+#         self.settings_fig = self.subfigs[0]
+#         self.status_fig = self.subfigs[1]
+#
+#         self.fig_number = self.root_fig.number
+#
+#         self.settings_fig.set_facecolor('lightgray')
+#         self.settings_fig.suptitle('Settings')
+#         self.root_fig.canvas.manager.set_window_title('RLLoger V1.1')
+#
+#         self.raw_settings = {'c': 'k', 'lw': lw}
+#         self.filtered_settings = {'c': 'r', 'lw': lw}
+#     def close_plots(self):
+#         plt.close(self.root_fig)
+#     def log(self, **data):
+#         for key, value in data.items():
+#             assert len(value) == 2, f'Value must be a tuple of length 2. Got {key}:{value}'
+#             self.logs[key] = np.vstack([self.logs[key], np.array(value)])
+#
+#     def filter(self, x, window):
+#         """ apply a window filter to the values. """
+#
+#         # np.convolve(x, np.ones(window), 'valid') / window
+#         if len(x) > window:
+#             f = []
+#             for i in range(len(x)):
+#                 w = min(i, window)
+#                 f.append(np.mean(x[i - w:i]))
+#             return f
+#             # return np.convolve(x, np.ones(w) / w, 'same')
+#         else:
+#             return x
+#
+#     ###########################################################
+#     # Status Methods ############################################
+#     def add_status(self,key='status', iteration_timer=True,progress=True,remaining_time=True,ncols=2,fnt_size=6):
+#         assert self.num_iterations is not None, 'Number of iterations must be set to use status'
+#         self.status['Prog:'] = 0
+#         self.status['S/iter'] = deque([time.time()], maxlen=10)
+#         self.status['Time Left'] = 0
+#         self.axs[key] = self.status_fig.add_subplot(1, 1, 1)
+#         # self.axs[key].set_title('Status')
+#         data_dict = {'Prog':0,'S/iter':0,'Time Left':0}
+#         items = list(data_dict.items())
+#         data = []
+#         nrows = len(data_dict) // ncols
+#         ncols = np.sum([iteration_timer,progress,remaining_time])
+#         for r in range(nrows):
+#             row = []
+#             for c in range(ncols):
+#                 i = r * ncols + c
+#                 k, v = items[i]
+#                 row.append(f'{k}: {v}')
+#             data.append(row)
+#         tbl = self.axs[key].table(cellText=data, fontsize=fnt_size, loc='center', cellLoc='left')
+#         tbl.auto_set_font_size(False)
+#
+#         self.axs[key].axis('off')
+#         self.status['tbl'] = tbl
+#
+#         for key, cell in tbl.get_celld().items():
+#             cell.set_linewidth(0)
+#         tbl.auto_set_column_width([0, 1])
+#
+#     def start_iteration(self):
+#         self.last_iteration_time = time.time()
+#     def end_iteration(self,advance_iteration =True):
+#         dt = time.time() - self.last_iteration_time
+#         self.status['S/iter'].append(dt)
+#         if advance_iteration: self.iter_count += 1
+#     def draw_status(self):
+#         tbl = self.status['tbl']
+#         s_per_iter = np.mean(self.status["S/iter"])
+#         rem_time = (self.num_iterations-self.iter_count)* s_per_iter
+#         # reformat rem_time into hours, minutes, seconds
+#         hours = rem_time // 3600
+#         rem_time = rem_time % 3600
+#         minutes = rem_time // 60
+#         rem_time = rem_time % 60
+#         seconds = rem_time
+#         rem_time = f'{int(hours)}:{int(minutes)}:{int(seconds)}'
+#         tbl.get_celld()[(0, 0)].get_text().set_text(f'Progress: {np.round(100*self.iter_count/self.num_iterations,2)}%')
+#         tbl.get_celld()[(0, 1)].get_text().set_text(f'S/iter: {np.round(s_per_iter,2)}')
+#         tbl.get_celld()[(0, 2)].get_text().set_text(f'Time Left: {rem_time}')
+#
+#
+#
+#     ###########################################################
+#     # Construction ############################################
+#     def add_tracker(self, key, vals, max_iterations,
+#                     xlabel='', ylabel='', title='',
+#                     loc=None, ):
+#         """Used to track paramters over time like exploration rate"""
+#         self.iax += 1
+#         self.xlabels[key] = xlabel
+#         self.ylabels[key] = ylabel
+#         if loc is not None:
+#             self.axs[key] = self.plot_fig.add_subplot(self.rows, self.cols, self.cols * loc[0] + loc[1])
+#         else:
+#             self.axs[key] = self.plot_fig.add_subplot(self.rows, self.cols, self.iax)
+#
+#         xvals = np.linspace(0, max_iterations, len(vals))
+#         self.trackers[key] = self.axs[key].plot(xvals, vals)[0]
+#         self.axs[key].set_xlabel(xlabel)
+#         self.axs[key].set_ylabel(ylabel)
+#         self.axs[key].set_title(title)
+#
+#         raise NotImplementedError
+#
+#     def add_table(self, key, data_dict, loc=None, ncols=1,
+#                   fnt_size=9, sig_digs=4):
+#
+#         # if loc is not None:  self.axs[key] = self.fig.add_subplot(self.rows, self.cols, self.cols * loc[0] + loc[1])
+#         # else:  self.axs[key] = self.fig.add_subplot(self.rows, self.cols, self.iax)
+#         self.axs[key] = self.settings_fig.add_subplot(1, 1, 1)
+#         items = list(data_dict.items())
+#         data = []
+#         nrows = len(data_dict) // ncols
+#         for r in range(nrows):
+#             row = []
+#             for c in range(ncols):
+#                 i = r * ncols + c
+#                 k, v = items[i]
+#                 row.append(f'{k}: {v}')
+#             data.append(row)
+#         tbl = self.axs[key].table(cellText=data, fontsize=fnt_size, loc='center', cellLoc='left')
+#         # df = pd.DataFrame(data)
+#         # df.index.name = None
+#         # pd.plotting.table(self.axs[key], df, loc='center', colWidths=[0.5] * len(data_dict), cellLoc='center',
+#         #                   fontsize=fnt_size)
+#         tbl.auto_set_font_size(False)
+#
+#         self.axs[key].axis('off')
+#
+#     def add_checkpoint_line(self):
+#         for key, data in self.logs.items():
+#             self.checkpoint_lines[key] = self.axs[key].axvline(x=0, color='g', linestyle='--',lw=1)
+#
+#     def add_lineplot(self, key,
+#                      xlabel='', ylabel='', title='',
+#                      loc=None,
+#                      filter_window=None, display_raw=True):
+#
+#         self.iax += 1
+#         self.logs[key] = np.empty((0, 2))
+#         self.xlabels[key] = xlabel
+#         self.ylabels[key] = ylabel
+#         self.filter_widows[key] = filter_window
+#         self.display_raws[key] = display_raw
+#         if loc is not None:
+#             self.axs[key] = self.plot_fig.add_subplot(self.rows, self.cols, self.cols * loc[0] + loc[1])
+#         else:
+#             self.axs[key] = self.plot_fig.add_subplot(self.rows, self.cols, self.iax)
+#         self.lines[key] = self.axs[key].plot([], [], **self.raw_settings)[0]
+#         if filter_window is not None:
+#             self.filtered_lines[key] = self.axs[key].plot([], [], **self.filtered_settings)[0]
+#         self.axs[key].set_xlabel(xlabel)
+#         self.axs[key].set_ylabel(ylabel)
+#         self.axs[key].set_title(title)
+#
+#     def add_button(self,label, callback, group='buttons'):
+#         bname = f'{group}_{label}'
+#         # axprev = self.interface_fig.add_axes([0.7, 0.05, 0.1, 0.075])
+#         n_buttons = len(self.interfaces)
+#         # self.axs[bname] = self.interface_fig.add_subplot(1, n_buttons+1, n_buttons+1)
+#         # self.axs[bname] = self.interface_fig.add_axes([])
+#         self.axs[bname] = self.interface_fig.add_axes([0.05+0.27*n_buttons, 0.1, 0.25, 0.9])
+#         self.interfaces[bname] = Button(self.axs[bname], label)
+#         self.interfaces[bname].on_clicked(callback)
+#
+#     ###########################################################
+#     # Render Utils ############################################
+#     def remove_outliers(self, data, window=0.95):
+#         """Remove the top and bottom 5% of the data"""
+#         if len(data)>3:
+#             mean = np.mean(data)
+#             sd = np.std(data)
+#             final_list = [x for x in data if (x > mean - 2 * sd) and (x < mean + 2 * sd)]
+#             # final_list = [x for x in data if (x > mean - 2 * sd)]
+#             # final_list = [x for x in final_list if (x < mean + 2 * sd)]
+#             return final_list
+#         else:
+#             return data
+#
+#     def update_checkpiont_line(self,iteration):
+#         try:
+#             for key, data in self.checkpoint_lines.items():
+#                 self.checkpoint_lines[key].set_xdata(iteration)
+#         except:
+#             print(f'\n\nRLLogger.update_checkpoint_line() exception...')
+#     def draw(self):
+#         for key, data in self.logs.items():
+#             x = data[:, 0]
+#             y = data[:, 1]
+#
+#             self.lines[key].set_data(x, y)
+#             if len(x) > 1:
+#                 self.axs[key].set_xlim([np.min(x), 1.1 * np.max(x)])
+#
+#                 if 'loss' in key.lower():
+#                     _y = y
+#                     # _y = self.remove_outliers(y)
+#                     if np.size(_y) > 2:
+#                         self.axs[key].set_ylim([0, 1.1 * np.max(_y + 1e-6)])
+#                 else:
+#                     self.axs[key].set_ylim([np.min(y), np.max(y) + 0.1])
+#             # self.lines[key].set_data(x, y)
+#             # if len(x) > 1:
+#             #     self.axs[key].set_xlim([np.min(x), 1.1*np.max(x)])
+#             #     # self.axs[key].set_ylim([0, np.max(y)])
+#             #     self.axs[key].set_ylim([np.min(y), np.max(y)+0.1])
+#             #
+#             #
+#             # if 'loss' in key.lower():
+#             #     # self.lines[key].set_xdata(x)
+#             #     _y = self.remove_outliers(y)
+#             #     # self.axs[key].set_ylim([np.min(_y), np.max(_y)])
+#             #     if np.size(_y) > 2:
+#             #         self.axs[key].set_ylim([0, 1.1*np.max(_y+1e-6)])
+#
+#         for key, _ in self.filtered_lines.items():
+#             data = self.logs[key]
+#             x = data[:, 0]
+#             y = data[:, 1]
+#             y = self.filter(y, window=self.filter_widows[key])
+#             # if 'loss' in key.lower():
+#             #     self.axs[key].set_xlim([np.min(x), np.max(x)])
+#             #     self.axs[key].set_ylim([np.min(y), np.max(y)])
+#
+#             self.filtered_lines[key].set_data(x, y)
+#         self.plot_fig.canvas.draw()
+#         self.plot_fig.canvas.flush_events()
+#
+#         self.draw_status()
+#
+#     def spin(self):
+#         self.plot_fig.canvas.flush_events()
+#
+#     def wait_for_close(self,enable=True):
+#         """Stops the program to wait for user input (i.e. save model, save plot, close, ect..)"""
+#         if enable and not self.is_closed:
+#             print('\nWaiting for plot to close...')
+#             while plt.fignum_exists(self.fig_number):
+#                 self.spin()
+#                 time.sleep(0.1)
+#     @property
+#     def is_closed(self):
+#         return not plt.fignum_exists(self.fig_number)
+#
+#
+#     def save_fig(self,PATH):
+#         self.root_fig.savefig(PATH)

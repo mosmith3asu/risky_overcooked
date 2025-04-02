@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <style>
+      img.center {
+        display: block;
+        margin: 0 auto;
+      }
+      table, td, th {
+        border: 1px solid #ddd;
+        text-align: left;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+
+      th, td {
+        padding: 15px;
+      }
+      tr:nth-child(even) {background-color: #f2f2f2;}
+    </style>
+
+    <title>Instructions</title>
+    <link rel="Favicon" href="static/favicon.ico" />
+
+
+<!--    <script src="static/lib/jquery-min.js" type="text/javascript"> </script>-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+
+  <script>
+      // Persistent network connection that will be used to transmit real-time data
+// var socket = io();
+
+
+/* ###################################################
+################### Game layout ######################
+
+--------------------------------    ------------
+|                              |
+|        Game Window           |
+|        620px X 100%          |       Root
+|                              |     Container
+--------------------------------
+|  Button Window (40px X 100%) |
+________________________________    -----------
+
+######################################################*/
+let currentIndex = 0;
+let pages = [];
+let other_pages = {};
+let nextBtn = null;
+let prevBtn = null;
+let buttonContainer = null;
+
+document.addEventListener("DOMContentLoaded", function () {
+    const game_window_height = "620px";
+    const button_window_height = "40px";
+
+    // Get the root container
+    const rootContainer = document.getElementById("root-container");
+
+    // Create game window div
+    const gameWindow = document.createElement("div");
+    gameWindow.id = "game-window";
+    gameWindow.style.width = "100%";
+    gameWindow.style.height = game_window_height;
+    gameWindow.style.display = "flex";
+    gameWindow.style.alignItems = "center";
+    gameWindow.style.justifyContent = "center";
+    gameWindow.style.backgroundColor = "#ccc";
+    gameWindow.style.padding = "10px"
+    // gameWindow.innerText = "Loading experiment...";
+
+    // Create button container
+    buttonContainer = document.createElement("div");
+    buttonContainer.id = "button-window";
+    buttonContainer.style.padding= "5px";
+    buttonContainer.style.height = button_window_height;
+    buttonContainer.style.width = "100%";
+    buttonContainer.style.display = "flex";
+    buttonContainer.style.justifyContent = "center";
+    buttonContainer.style.gap = "10px";
+    // Create two buttons
+    const button_width = "200px";
+    const button_height = "100%";
+
+    // let prevBtn = document.createElement("button");
+    prevBtn = document.createElement("button");
+    prevBtn.id = "prev-btn";
+    prevBtn.innerText = "prev-btn";
+    prevBtn.innerText = "Previous";
+    prevBtn.style.width = button_width;
+    prevBtn.style.height = button_height;
+
+    // let nextBtn = document.createElement("button");
+    nextBtn = document.createElement("button");
+    nextBtn.id = "next-btn";
+    nextBtn.innerText = "Next";
+    nextBtn.style.width = button_width;
+    nextBtn.style.height = button_height;
+    // nextBtn.style.display = "none";
+
+    // Append elements
+    buttonContainer.appendChild(prevBtn);
+    buttonContainer.appendChild(nextBtn);
+    rootContainer.appendChild(gameWindow);
+    rootContainer.appendChild(buttonContainer);
+
+    // append Page_Consent(gameWindow) to pages
+    pages.push(new Page_Consent(gameWindow));
+    pages.push(new Page_ParticipantInformation(gameWindow));
+    pages.push(new Page_BackgroundSurvey(gameWindow));
+    pages.push(new Page_Washout(gameWindow));
+    pages.push(new Page_Debug(gameWindow));
+
+
+    // Misc pages not in game loop
+    other_pages["unable_to_participate"] = new Page_UnableToParticipate(gameWindow);
+
+
+
+
+    // #################################################################
+    // Set up scrolling through pages with buttons #####################
+    // #################################################################
+
+    prevBtn.addEventListener("click", () => {
+        if (currentIndex > 0) {currentIndex--; updatePage();}
+    });
+    nextBtn.addEventListener("click", () => {
+        if (currentIndex < pages.length - 1) {currentIndex++; updatePage();}
+    });
+
+     pages[0].show();
+
+
+});
+// #################################################################
+// Define Pages ####################################################
+// #################################################################
+class Page_Debug {
+    constructor(parent_container) {
+        // Create Page Container
+        this.container = document.createElement("div");
+        this.container.style.display = "none";
+
+        parent_container.appendChild(this.container);
+        this.text = [
+            `
+                 <h3 class="text-center">Debugging Page</h3>
+                  <p>
+                   End of current pages created
+                  </p>
+            `
+        ];
+        this.container.innerHTML = this.text;
+    }
+    show() {
+        this.container.style.display = "block";
+        // let nextBtn = document.getElementById("next-btn")
+        // let prevBtn = document.getElementById("prev-btn")
+        // change nextBtn to say "Agree"
+        nextBtn.innerText = "Agree";
+        nextBtn.style.display = "block";
+        prevBtn.style.display = "none";
+    }
+    hide() {this.container.style.display = "none";}
+}
+
+class Page_Consent {
+    constructor(parent_container) {
+        // Create Page Container
+        this.container = document.createElement("div");
+        this.container.style.display = "none";
+
+        parent_container.appendChild(this.container);
+        this.text = [
+            `
+                 <h3 class="text-center">Consent</h3>
+                  <p>
+                    I am a graduate student under the direction of Professor Wenlong Zhang in the Ira Fulton Schools of Engineering at Arizona State University.
+                    I am conducting a research study to investigate human-AI interaction in risky settings.
+                    <br> <br>
+                    I am inviting your participation, which will involve playing a series of six games taking an estimated 45 minutes to complete.
+                    The game will be played in your web browser and require both a mouse and keyboard to complete.
+                    You have the right not to answer any question, and to stop participation at any time.
+                    <br> <br>
+                    Your participation in this study is voluntary.
+                    If you choose not to participate or to withdraw from the study at any time, there will be no penalty.
+                    For your participation, you will be compensated up to $15 through the Prolific portal based on performance.
+                    In order to participate, you must be 18 or older.
+                    <br> <br>
+                    Your participation will benefit research in interactive AI for the purpose of improving its ability to model and coordinate with humans in risky settings.
+                    Specifically, your responses to surveys will investigate how human trust in virtual agents developes under different assumptions about behavior.
+                    Also, the actions you take during the game will help validate and improve robotic understanding of humans.
+                    After the experiment is complete, further explanation about how the virtual partner modeled your actions is available if you wish to learn more about how you are contributing to this field.
+                    There are no foreseeable risks or discomforts to your participation.
+                    <br> <br>
+                    Responses to all survey questions, participation date, and the actions you take during the game will be collected.
+                    To protect your privacy, all personal identifiers will be removed from your data and stored on a secure server.
+                    Your data will be confidential and the de-identified data collected as a part of this study will not be shared
+                    with others outside of the research team approved by this study’s IRB or be used for future research purposes or other uses.
+                    The results of this may be used in reports, presentations, or publications but your name will not be used.
+                    <br> <br>
+                    If you have any questions concerning the research study, please contact the research team at: mosmith3@asu.edu.
+                    If you have any questions about your rights as a subject/participant in this research, or if you feel you have been placed at risk, you can contact the Chair of the Human Subjects Institutional Review Board, through the ASU Office of Research Integrity and Assurance, at (480) 965-6788. Please let me know if you wish to be part of the study.
+                  </p>
+            `
+        ];
+        this.container.innerHTML = this.text;
+    }
+    show() {
+        this.container.style.display = "block";
+        // let nextBtn = document.getElementById("next-btn")
+        // let prevBtn = document.getElementById("prev-btn")
+        // change nextBtn to say "Agree"
+        nextBtn.innerText = "Agree";
+        nextBtn.style.display = "block";
+        prevBtn.style.display = "none";
+    }
+    hide() {this.container.style.display = "none";}
+}
+
+class Page_ParticipantInformation {
+    constructor(parent_container) {
+        // Create Page Container
+        this.container = document.createElement("div");
+        this.container.style.display = "none";
+        parent_container.appendChild(this.container);
+        this.text = [
+            `
+              <h3 class="text-center">Study Information</h3>
+              <p>
+                General Information
+                <ul>
+                    <li>Your participation is expected to not exceed 45 minutes</li>
+                    <li>You will be playing a game with a virtual agent using a keyboard</li>
+                    <li>Please ensure you are in a distraction free environment before you begin</li>
+                    <li><b>Your compensation will depend on your performance during these games<b></li>
+                </ul>
+
+                Before the experiment begins:
+                <ul>
+                    <li>Basic background information will be collected</li>
+                    <li>One short surveys about your attitudes towards risk will be given</li>
+                    <li>You will then be instructed on how to play the game</li>
+                    <li>You will then play a practice round to familiarize yourself with the controls</li>
+                </ul>
+
+                During the Experiment
+                <ul>
+                    <li>You will play a series of 5 games with two AI partners (10 total games)</li>
+                    <li>Each games will last a maximum of 1 minute</li>
+                    <li>After each game, you will be given a brief survey</li>
+                </ul>
+
+                After the Experiment
+                <ul>
+                    <li>You take a brief survey comparing the two agents</li>
+                    <li>You will be given a brief description of your contribution to this research</li>
+                    <li>You will be redirected to back to Prolific to receive your compensation</li>
+                </ul>
+              </p>
+            `
+        ];
+        this.container.innerHTML = this.text;
+    }
+    show() {
+        this.container.style.display = "block";
+        nextBtn.innerText = "Next";
+        nextBtn.style.display = "block";
+        prevBtn.style.display = "none";
+    }
+    hide() {this.container.style.display = "none";}
+}
+
+class Page_BackgroundSurvey {
+    constructor(parent_container) {
+        // Create Page Container
+        this.container = document.createElement("div");
+        this.container.style.display = "none";
+        parent_container.appendChild(this.container);
+        this.createForm();
+
+        // Add submit button for custom event
+        this.submitBtn = document.createElement("button");
+        this.submitBtn.id = "background-survey-submit-btn";
+        this.submitBtn.innerText = "Submit";
+        this.submitBtn.style.width = nextBtn.style.width;
+        this.submitBtn.style.height = nextBtn.style.height;
+        this.submitBtn.style.display = "none";
+        this.submitBtn.addEventListener("click", () => {this.submit();});
+        buttonContainer.appendChild(this.submitBtn);
+
+
+    }
+
+    createForm() {
+        const form = document.createElement("form");
+        form.id = "surveyForm";
+
+        // Title
+        const title = document.createElement("h2");
+        title.textContent = "Background Survey";
+        form.appendChild(title);
+
+        // Description
+        const description = document.createElement("p");
+        description.innerHTML = "<strong>To the best of your ability, provide the following information about yourself:</strong>";
+        form.appendChild(description);
+
+        // Age Field
+        const ageLabel = document.createElement("label");
+        ageLabel.textContent = "Age: ";
+        const ageInput = document.createElement("input");
+        ageInput.type = "text";
+        ageInput.name = "age";
+        ageInput.id = "ageInput";
+
+        // Allow only numeric values (0-9)
+        ageInput.addEventListener('input', function(event) {event.target.value = event.target.value.replace(/[^0-9]/g, '');});
+
+        form.appendChild(ageLabel);
+        form.appendChild(ageInput);
+        form.appendChild(document.createElement("br"));
+        form.appendChild(document.createElement("br"));
+
+        // Sex Field (Label and options in the same line)
+        const sexContainer = document.createElement("div");
+        sexContainer.style.display = "flex";
+        sexContainer.style.alignItems = "center";
+
+        const sexLabel = document.createElement("label");
+        sexLabel.textContent = "Sex: ";
+        sexContainer.appendChild(sexLabel);
+
+        const sexOptions = ["Male", "Female"];
+        sexOptions.forEach(option => {
+            const label = document.createElement("label");
+            label.style.marginLeft = "10px";
+
+            const radio = document.createElement("input");
+            radio.type = "radio";
+            radio.name = "sex";  // All radios share the same name, ensuring only one selection
+            radio.classList.add("sexOption");
+            radio.value = option;
+
+            label.appendChild(radio);
+            label.appendChild(document.createTextNode(option));
+            sexContainer.appendChild(label);
+        });
+
+        form.appendChild(sexContainer);
+
+        // Append form to container
+        this.container.appendChild(form);
+    }
+    isFormComplete() {
+        const ageInput = document.getElementById("ageInput").value.trim();
+        const sexOptions = document.querySelectorAll(".sexOption");
+        // const messageContainer = document.getElementById("messageContainer");
+
+        let sexSelected = false;
+        sexOptions.forEach(checkbox => {
+            if (checkbox.checked) {
+                sexSelected = true;
+            }
+        });
+
+        if (ageInput === "" || !sexSelected) {
+            // messageContainer.textContent = "Please fill in all fields before submitting.";
+            // messageContainer.style.color = "red";
+            return false;
+        } else {
+            // messageContainer.textContent = "Form submitted successfully!";
+            // messageContainer.style.color = "green";
+            return true;
+        }
+    }
+    submit() {
+        // get the value of the age field
+        const age = document.getElementById("ageInput").value;
+        const too_old = age>65;
+        const too_young = age<18;
+        if (!this.isFormComplete()) {alert("Please fill out all fields before submitting.");}
+        else if (too_old || too_young) {
+            renderOtherPage("unable_to_participate");
+            nextBtn.style.display = "none";
+            prevBtn.style.display = "none";
+        }
+        else {currentIndex++; updatePage();}
+
+        // console.log("Submitting background survey...");
+        // this.hide();
+        // currentIndex++;
+        // updatePage();
+    }
+    show() {
+        this.container.style.display = "block";
+        this.submitBtn.style.display = "block";
+        nextBtn.style.display = "none";
+        prevBtn.style.display = "none";
+    }
+    hide() {
+        this.container.style.display = "none";
+        this.submitBtn.style.display = "none";
+    }
+}
+
+class Page_UnableToParticipate {
+    constructor(parent_container) {
+        // Create Page Container
+        this.container = document.createElement("div");
+        this.container.style.width = "75%"
+        this.container.style.display = "none";
+        parent_container.appendChild(this.container);
+        this.text = [
+            `
+              <h3 class="text-center">Unable to Participate</h3>
+              <p>
+                Thank you for your interest in this experiment!
+                <br> <br>
+
+                Unfortunately, you are outside of the demographic group approved for this study and you will not be able to participate.
+                We appreciate your time and if you have any questions, please reach out to the research team with the contact information below:
+                <br> <br>
+                Email: mosmith3@asu.edu
+                <br> <br>
+                Please feel free to exit this page or navigate to another site.
+            `
+        ];
+        this.container.innerHTML = this.text;
+    }
+    show() {
+        this.container.style.display = "block";
+        nextBtn.innerText = "Next";
+        nextBtn.style.display = "block";
+        prevBtn.style.display = "none";
+    }
+    hide() {this.container.style.display = "none";}
+}
+
+class Page_Washout {
+    constructor(parent_container) {
+        // Create Page Container
+        this.container = document.createElement("div");
+        this.container.style.display = "none";
+        parent_container.appendChild(this.container);
+        this.text = [
+            `
+              <h3 class="text-center">"You Have a New Partner"</h3>
+
+             <p>You have completed five games with the first of two partners.</p>
+            <p>You are now interacting with <strong>a new partner</strong> with <strong>different capabilities.</strong></p>
+            <p>Do not let any of your judgments about your previous partner affect your evaluation of the next one.</p>
+            <p>Your responses to the questions after the following games should be <strong>made independently</strong> from the previous responses.</p>
+            <hr>
+            <p>Before continuing, please select the answer below that best describes how you should view your second partner:</p>
+
+                <input type="radio" name="partner_view" value="incorrect"> Since we are playing the same game, my new partner will be about the same as my last partner.
+                <input type="radio" name="partner_view" value="correct"> Since my new partner has different capabilities, I should judge them based only on my interactions in the next five games.
+
+            `
+        ];
+        this.container.innerHTML = this.text;
+
+        // Add submit button for custom event
+        this.submitBtn = document.createElement("button");
+        this.submitBtn.id = "washout-submit-btn";
+        this.submitBtn.innerText = "Submit";
+        this.submitBtn.style.width = nextBtn.style.width;
+        this.submitBtn.style.height = nextBtn.style.height;
+        this.submitBtn.style.display = "none";
+        this.submitBtn.addEventListener("click", () => {this.submit();});
+        buttonContainer.appendChild(this.submitBtn);
+    }
+    submit() {
+        // get value of partner_view
+        const washout_val = document.querySelector('input[name="partner_view"]:checked').value;
+        if (washout_val === "correct") {
+            currentIndex++;
+            updatePage();
+        } else {alert("Please re-read the text carefully and select the correct answer.");}
+
+    }
+    show() {
+        this.container.style.display = "block";
+        this.submitBtn.style.display = "block";
+        nextBtn.style.display = "none";
+        prevBtn.style.display = "none";
+    }
+    hide() {this.container.style.display = "none";}
+}
+
+
+// #################################################################
+// Page Event Handlers #############################################
+// #################################################################
+function renderOtherPage(page_name) {
+    // loop through all pages and hide them
+    for (let i = 0; i < pages.length; i++) {pages[i].hide();}
+    other_pages[page_name].show();
+}
+function updatePage() {
+    // loop through all pages and hide them
+    for (let i = 0; i < pages.length; i++) {
+        pages[i].hide();
+    }
+    current_page = pages[currentIndex];
+    current_page.show();
+}
+
+
+  </script>
+  </head>
+  <body>
+      <br> <hr> <br>
+      <div class="container" id="root-container">
+
+      </div>
+     <br> <hr>  <br>
+
+  </body>
+</html>

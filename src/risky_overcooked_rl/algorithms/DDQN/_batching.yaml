@@ -6,6 +6,9 @@ CPT_PARAMS:
   neutral: {'b': 0.0, 'lam': 1.0, 'eta_p': 1.0, 'eta_n': 1.0, 'delta_p': 1.0, 'delta_n': 1.0}
   seeking: { 'b': -0.2, 'lam': 0.44, 'eta_p': 1.0, 'eta_n': 0.88, 'delta_p': 0.61, 'delta_n': 0.69 }
 
+  param1: {'alpha':0.1, intent: 1}
+  param2: {'alpha':0.11, intent: 1}
+
 jobs:
   risky_coordination_ring:
     agents: ['averse','neutral','seeking']

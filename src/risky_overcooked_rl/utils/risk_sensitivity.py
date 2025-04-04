@@ -9,6 +9,83 @@ import imageio
 import random
 
 
+class CumulativeProspectTheory_Lite(object):
+    def __init__(self,b,lam,eta_p,eta_n,delta_p,delta_n):
+        """
+        Instantiates a CPT object that can be used to model human risk-sensitivity.
+        :param b: reference point determining if outcome is gain or loss
+        :param lam: loss-aversion parameter
+        :param eta_p: exponential gain on positive outcomes
+        :param eta_n: exponential loss on negative outcomes
+        :param delta_p: probability weighting for positive outcomes
+        :param delta_n: probability weighting for negative outcomes
+        """
+        # assert b==0, "Reference point must be 0"
+        self.b = b
+        self.lam = lam
+        self.eta_p = eta_p
+        self.eta_n = eta_n
+        self.delta_p = delta_p
+        self.delta_n = delta_n
+
+    def expectation(self,values, p_values):
+        """
+        Applies the CPT-expectation multiple prospects (i.e. a series of value-probability pairs) which can arbitrarily
+        replace the rational expectation operator E[v,p] = Σ(p*v). When dealing with more than two prospects, we must
+        calculate the expectation over the cumulative probability distributions.
+        :param values:
+        :param p_values:
+        :return:
+        """
+
+        # Step 1: arrange all samples in ascending order
+        sorted_idxs = np.argsort(values)
+        sorted_v = values[sorted_idxs]
+        sorted_p = np.array(p_values[sorted_idxs])  # sorted_p = p_values[sorted_idxs]
+
+        # Step 2: Calculate the cumulative liklihoods for gains and losses
+        K = len(sorted_v)  # number of samples
+        l = np.where(sorted_v <= self.b)[0][-1]  # idx of highest loss
+        Fk = [np.sum(sorted_p[0:i + 1], dtype=np.float64) for i in range(l + 1)] + \
+             [np.sum(sorted_p[i:K], dtype=np.float64) for i in range(l + 1, K)]  # cumulative probability
+
+        # Step 3: Calculate biased expectation for gains and losses
+        rho_p = self.perc_util_plus(sorted_v, sorted_p, Fk, l, K)
+        rho_n = self.perc_util_neg(sorted_v, sorted_p, Fk, l, K)
+
+        # Step 3: Add the cumulative expectation and return
+        rho = rho_p - rho_n
+        return rho
+
+    def perc_util_plus(self,sorted_v,sorted_p,Fk,l,K):
+        """Calculates the cumulative expectation of all utilities percieved as gains"""
+        rho_p = 0
+        for i in range(l + 1, K - 1):
+            rho_p += self.u_plus(sorted_v[i]) * (self.w_plus(Fk[i]) - self.w_plus(Fk[i + 1]))
+        rho_p += self.u_plus(sorted_v[K - 1]) * self.w_plus(sorted_p[K - 1])
+        return rho_p
+
+    def perc_util_neg(self,sorted_v,sorted_p,Fk,l,K):
+        """Calculates the cumulative expectation of all utilities percieved as losses"""
+        rho_n = self.u_neg(sorted_v[0]) * self.w_neg(sorted_p[0])
+        for i in range(1, l + 1):
+            rho_n += self.u_neg(sorted_v[i]) * (self.w_neg(Fk[i]) - self.w_neg(Fk[i - 1]))
+        return rho_n
+
+    def u_plus(self,v):
+        """ Weights the values (v) perceived as losses (v>b)"""
+        return np.abs(v-self.b)**self.eta_p
+    def u_neg(self, v):
+        """ Weights the values (v) perceived as gains (v<=b)"""
+        return self.lam * np.abs(v-self.b) ** self.eta_n
+    def w_plus(self, p):
+        """ Weights the probabilities p for probabilities of values perceived as gains  (v>b)"""
+        delta = self.delta_p
+        return p ** delta / ((p ** delta + (1 - p) ** delta) ** (1 / delta))
+    def w_neg(self, p):
+        """ Weights the probabilities p for probabilities of values perceived as losses (v<=b)"""
+        delta = self.delta_n
+        return p ** delta / ((p ** delta + (1 - p) ** delta) ** (1 / delta))
 
 class CumulativeProspectTheory(object):
     def __init__(self,b,lam,eta_p,eta_n,delta_p,delta_n):
@@ -586,7 +663,7 @@ def animation_all():
     imageio.mimsave(f'{fname}.gif', IMGS,loop=0,fps=fps)
 
 def main():
-    # animation_all()
+    animation_all()
     # animation()
     # example from https://engineering.purdue.edu/DELP/education/decision_making_slides/Module_12___Cumulative_Prospect_Theory.pdf
     # values = np.array([80,60,40,20,0])

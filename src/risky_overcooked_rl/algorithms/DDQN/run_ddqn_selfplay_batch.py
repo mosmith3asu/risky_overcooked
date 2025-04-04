@@ -57,6 +57,7 @@ def get_config_search_list():
                         config['p_slip'] = pslip
                         config['LAYOUT'] = layout
                         config['ibatch']= f'{len(config_lst)+1}/{batch_size}'
+                        config['fname_ext'] = f'BATCH{len(config_lst)+1}_'
                         config_lst.append(config)
                         # print(f'Loading Config: {len(config_lst)}/{batch_size}')
     config_lst = config_lst[istart:]

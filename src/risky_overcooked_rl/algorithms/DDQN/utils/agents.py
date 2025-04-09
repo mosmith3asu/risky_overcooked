@@ -24,49 +24,14 @@ import os
 plt.ion()
 
 # if GPU is to be used
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# device = torch.device("cpu")
-
-
-
-class DQN_vector_feature(nn.Module):
-
-    def __init__(self, obs_shape, n_actions,num_hidden_layers,size_hidden_layers,**kwargs):
-        self.num_hidden_layers = num_hidden_layers
-        self.size_hidden_layers = size_hidden_layers
-        self.mlp_activation = nn.LeakyReLU
-
-        super(DQN_vector_feature, self).__init__()
-        self.layer1 = nn.Linear(obs_shape[0], self.size_hidden_layers)
-        self.layer2 = nn.Linear(self.size_hidden_layers, self.size_hidden_layers)
-        self.layer3 = nn.Linear(self.size_hidden_layers, n_actions)
-
-        layer_buffer = [ nn.Linear(obs_shape[0], self.size_hidden_layers),self.mlp_activation()]
-        for i in range(1,self.num_hidden_layers-1):
-            layer_buffer.extend([nn.Linear(self.size_hidden_layers, self.size_hidden_layers),self.mlp_activation()])
-        layer_buffer.extend([nn.Linear(self.size_hidden_layers, n_actions)])
-
-        self.layers = nn.Sequential(*layer_buffer)
-
-
-
-    # Called with either one element to determine next action, or a batch
-    # during optimization. Returns tensor([[left0exp,right0exp]...]).
-    def forward(self, x):
-        for module in self.layers:
-            x = module(x)
-        # x = self.mlp_activation(self.layer1(x))
-        # x = self.mlp_activation(self.layer2(x))
-        # x = self.layer3(x) # linear output layer (action-values)
-        return x
-
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class SelfPlay_QRE_OSA(object):
     @classmethod
-    def from_file(cls,obs_shape, n_actions, config, fname):
+    def from_file(cls,obs_shape, n_actions, agents_config, fname):
 
         # instantiate base class -------------
-        agents = cls(obs_shape, n_actions, config)
+        agents = cls(obs_shape, n_actions, agents_config)
 
         # find saved models absolute dir -------------
         dir = get_absolute_save_dir()
@@ -87,7 +52,7 @@ class SelfPlay_QRE_OSA(object):
         print(f'#########################################\n')
 
         # Load file and update base class ---------
-        loaded_model = torch.load(PATH, weights_only=True, map_location=config['device'])
+        loaded_model = torch.load(PATH, weights_only=True, map_location=agents_config['model']['device'])
         agents.model.load_state_dict(loaded_model)
         agents.target.load_state_dict(loaded_model)
         agents.checkpoint_model.load_state_dict(loaded_model)
@@ -95,29 +60,34 @@ class SelfPlay_QRE_OSA(object):
         #         agents.model.state_dict().keys()])
         return agents
 
-    def __init__(self, obs_shape, n_actions, config,**kwargs):
-        self.clip_grad = config['clip_grad']
-        self.num_hidden_layers = config['num_hidden_layers']
-        self.size_hidden_layers = config['size_hidden_layers']
-        self.learning_rate = config['lr_sched'][1]
-        self.device = config['device']
-        self.gamma = config['gamma']
-        self.tau = config['tau']
-        self.eq_sol = 'QRE'
-        # self.eq_sol = 'Pareto'
-        self.rationality = 10
+    def __init__(self, obs_shape, n_actions, agents_config,**kwargs):
+
+        # Instatiate Base Config -------------
+        self.rationality = agents_config['rationality']
         self.num_agents = 2
-        self.mem_size = config['replay_memory_size']
         self.joint_action_space = list(itertools.product(Action.ALL_ACTIONS, repeat=2))
         self.joint_action_dim = n_actions
         self.player_action_dim = int(np.sqrt(n_actions))
 
+        # Parse Equilibrium Config -------------
+        eq_config = agents_config['equilibrium']
+        self.eq_sol = eq_config['type']
+
+        # Parse NN Model config ---------------
+        model_config = agents_config['model']
+        self.clip_grad = model_config['clip_grad']
+        self.num_hidden_layers = model_config['num_hidden_layers']
+        self.size_hidden_layers = model_config['size_hidden_layers']
+        self.learning_rate = model_config['lr']
+        self.device = model_config['device']
+        self.gamma = model_config['gamma']
+        self.tau = model_config['tau']
+        self.mem_size = model_config['replay_memory_size']
+        self.minibatch_size = model_config['minibatch_size']
+
         # Define Memory
         self._memory = ReplayMemory_Prospect(self.mem_size,self.device)
-        self._memory_batch_size = config['minibatch_size']
-        # self._transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_prospects', 'done'))
-        # self._memory = deque([], maxlen=self.mem_size)
-        # self._memory_batch_size = config['minibatch_size']
+        self._memory_batch_size = self.minibatch_size
 
         # Define Model
         self.model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
@@ -126,17 +96,18 @@ class SelfPlay_QRE_OSA(object):
         self.target.load_state_dict(self.model.state_dict())
         self.checkpoint_model.load_state_dict(self.model.state_dict())
 
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate, amsgrad=True)
 
-        lr_warmup_iter = config['lr_sched'][2]
-        lr_factor = config['lr_sched'][0]/config['lr_sched'][1]
+        # lr_warmup_iter = config['lr_sched'][2]
+        # lr_factor = config['lr_sched'][0]/config['lr_sched'][1]
         # lr_factor = self.lr_warmup_scale
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=lr_factor * self.learning_rate, amsgrad=True)
-        self.scheduler = lr_scheduler.LinearLR(self.optimizer,
-                                               start_factor=1,
-                                               end_factor=1 / lr_factor,
-                                               total_iters=lr_warmup_iter)
-        self.optimistic_value_expectation = False
-        if self.optimistic_value_expectation: warnings.warn("Optimistic value expectation is set to True.")
+        # self.optimizer = optim.AdamW(self.model.parameters(), lr=lr_factor * self.learning_rate, amsgrad=True)
+        # self.scheduler = lr_scheduler.LinearLR(self.optimizer,
+        #                                        start_factor=1,
+        #                                        end_factor=1 / lr_factor,
+        #                                        total_iters=lr_warmup_iter)
+        # self.optimistic_value_expectation = False
+        # if self.optimistic_value_expectation: warnings.warn("Optimistic value expectation is set to True.")
 
     def update_checkpoint(self):
         self.checkpoint_model.load_state_dict(self.model.state_dict())
@@ -216,16 +187,17 @@ class SelfPlay_QRE_OSA(object):
         dist = torch.cat([dist1.unsqueeze(1), dist2.unsqueeze(1)], dim=1)
         # joint_dist_mat = torch.bmm(dist1.unsqueeze(-1), torch.transpose(dist2.unsqueeze(-1), -1, -2))
 
-        if self.optimistic_value_expectation:
-            value = torch.zeros(batch_sz, 2, device=self.device)
-            pareto_vals = nf_games[:, partner, :] + nf_games[:, ego, :]
-            for ib, pval in enumerate(pareto_vals):
-                idx = (pval == torch.max(pval)).nonzero().flatten()
-                value[ib, ego] += nf_games[ib, ego, idx[0], idx[1]]
-                value[ib, partner] += nf_games[ib, partner, idx[0], idx[1]]
-        else: value = self.get_expected_equilibrium_value(nf_games, dist)
-            # value = torch.cat([torch.sum(nf_games[:, ego, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1),
-            #          torch.sum(nf_games[:, partner, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1)],dim=1)
+        value = self.get_expected_equilibrium_value(nf_games, dist)
+        # if self.optimistic_value_expectation:
+        #     value = torch.zeros(batch_sz, 2, device=self.device)
+        #     pareto_vals = nf_games[:, partner, :] + nf_games[:, ego, :]
+        #     for ib, pval in enumerate(pareto_vals):
+        #         idx = (pval == torch.max(pval)).nonzero().flatten()
+        #         value[ib, ego] += nf_games[ib, ego, idx[0], idx[1]]
+        #         value[ib, partner] += nf_games[ib, partner, idx[0], idx[1]]
+        # else: value = self.get_expected_equilibrium_value(nf_games, dist)
+        #     # value = torch.cat([torch.sum(nf_games[:, ego, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1),
+        #     #          torch.sum(nf_games[:, partner, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1)],dim=1)
         return dist, value
 
     def compute_EQ(self, NF_Games, update=False):
@@ -394,9 +366,9 @@ class SelfPlay_QRE_OSA(object):
         return self.target
 
 class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
-    def __init__(self, obs_shape, n_actions, config, **kwargs):
-        super().__init__(obs_shape, n_actions, config, **kwargs)
-        self.CPT = CumulativeProspectTheory(**config['cpt_params'])
+    def __init__(self, obs_shape, n_actions, agents_config, **kwargs):
+        super().__init__(obs_shape, n_actions, agents_config, **kwargs)
+        self.CPT = CumulativeProspectTheory(**agents_config['cpt'])
 
         self.frozen = False
 
@@ -519,6 +491,37 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         expected_td_targets = torch.tensor(expected_td_targets, dtype=torch.float32, device=self.device)
         return expected_td_targets
 
+
+class DQN_vector_feature(nn.Module):
+
+    def __init__(self, obs_shape, n_actions,num_hidden_layers,size_hidden_layers,**kwargs):
+        self.num_hidden_layers = num_hidden_layers
+        self.size_hidden_layers = size_hidden_layers
+        self.mlp_activation = nn.LeakyReLU
+
+        super(DQN_vector_feature, self).__init__()
+        self.layer1 = nn.Linear(obs_shape[0], self.size_hidden_layers)
+        self.layer2 = nn.Linear(self.size_hidden_layers, self.size_hidden_layers)
+        self.layer3 = nn.Linear(self.size_hidden_layers, n_actions)
+
+        layer_buffer = [ nn.Linear(obs_shape[0], self.size_hidden_layers),self.mlp_activation()]
+        for i in range(1,self.num_hidden_layers-1):
+            layer_buffer.extend([nn.Linear(self.size_hidden_layers, self.size_hidden_layers),self.mlp_activation()])
+        layer_buffer.extend([nn.Linear(self.size_hidden_layers, n_actions)])
+
+        self.layers = nn.Sequential(*layer_buffer)
+
+
+
+    # Called with either one element to determine next action, or a batch
+    # during optimization. Returns tensor([[left0exp,right0exp]...]).
+    def forward(self, x):
+        for module in self.layers:
+            x = module(x)
+        # x = self.mlp_activation(self.layer1(x))
+        # x = self.mlp_activation(self.layer2(x))
+        # x = self.layer3(x) # linear output layer (action-values)
+        return x
 
 class ResponseAgent(object):
 

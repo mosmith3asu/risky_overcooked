@@ -1,13 +1,13 @@
-import sys
-import os
+# import sys
+# import os
+# print('\\'.join(os.getcwd().split('\\')[:-1]))
+# sys.path.append('\\'.join(os.getcwd().split('\\')[:-1]))
+
+
 import multiprocessing as mp
 import warnings
-
-print('\\'.join(os.getcwd().split('\\')[:-1]))
-sys.path.append('\\'.join(os.getcwd().split('\\')[:-1]))
 from risky_overcooked_rl.algorithms.DDQN.utils.curriculum import CirriculumTrainer
 from risky_overcooked_rl.algorithms.DDQN.utils.agents import SelfPlay_QRE_OSA_CPT
-# from risky_overcooked_rl.utils.model_manager import parse_args,get_default_config#, ModelManager
 import risky_overcooked_rl.algorithms.DDQN as Algorithm
 
 

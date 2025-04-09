@@ -24,6 +24,7 @@ def get_default_config(path = '\\risky_overcooked_rl\\utils\\_default_config.yam
     # return config
 
 def parse_args(config):
+    raise NotImplementedError('This function is deprecated and no longer used')
 
     parser = argparse.ArgumentParser()
     for key,val in config.items():#parser_args.items():

@@ -1,18 +1,23 @@
-from risky_overcooked_py.mdp.overcooked_mdp import Recipe,OvercookedGridworld,ObjectState,SoupState,OvercookedState
-from risky_overcooked_rl.algorithms.DDQN.trainer import Trainer
+from risky_overcooked_py.mdp.overcooked_mdp import ObjectState,SoupState
+from risky_overcooked_rl.algorithms.DDQN.utils.trainer import Trainer
 import numpy as np
-from risky_overcooked_rl.algorithms.DDQN.utils.agents import device,SelfPlay_QRE_OSA,SelfPlay_QRE_OSA_CPT
-from datetime import datetime
 from risky_overcooked_py.mdp.actions import Action
 from collections import deque
 import math
 import scipy.stats as stats
 debug = False
+
+
 class CirriculumTrainer(Trainer):
-    def __init__(self,model_object,custom_config):
-        super().__init__(model_object,custom_config)
-        self.curriculum = Curriculum(self.env,time_cost=custom_config['time_cost'])
-        self.schedule_decay = 0.7
+    def __init__(self,model_object,master_config):
+        super().__init__(model_object,master_config)
+
+        # Parse Curriculum Config ---------
+        curriculum_config = master_config['trainer']['curriculum']
+        self.schedule_decay = curriculum_config['schedule_decay']
+        self.schedules = master_config['trainer']['schedules']
+        self.curriculum = Curriculum(self.env,curriculum_config)
+
 
     def run(self):
         train_rewards = []
@@ -30,7 +35,7 @@ class CirriculumTrainer(Trainer):
 
             cum_reward, cum_shaped_rewards, rollout_info = \
                 self.curriculum_rollout(cit,
-                                        rationality=self.rationality_sched[cit],
+                                        rationality=self.rationality,
                                         epsilon=self.epsilon_sched[cit],
                                         rshape_scale=self.rshape_sched[cit],
                                         p_rand_start=self.random_start_sched[cit])
@@ -38,11 +43,11 @@ class CirriculumTrainer(Trainer):
 
             did_update = (rollout_info['mean_loss']!=0)
             if did_update:
-                self.model.scheduler.step()  # updates learning rate scheduler
+                # self.model.scheduler.step()  # updates learning rate scheduler
                 self.model.update_target()  # performs soft update of target network
                 next_cirriculum = self.curriculum.step_cirriculum(cum_reward)
                 if next_cirriculum:
-                    self.init_sched(self.config, eps_decay=self.schedule_decay, rshape_decay=self.schedule_decay)
+                    self.init_sched(self.schedules, eps_decay=self.schedule_decay, rshape_decay=self.schedule_decay)
 
             # Report
             if self.enable_report:
@@ -60,7 +65,7 @@ class CirriculumTrainer(Trainer):
                       f" |"
                       f"| mem:{len(self.model._memory)} "
                       f"| rshape:{round(self.rshape_sched[cit], 3)} "
-                      f"| rat:{round(self.rationality_sched[cit], 3)}"
+                      # f"| rat:{round(self.rationality, 3)}"
                       f"| eps:{round(self.epsilon_sched[cit], 3)} "
                       f"| LR={round(self.model.optimizer.param_groups[0]['lr'], 4)}"
                       f"| rstart={round(self.random_start_sched[cit], 3)}"
@@ -109,6 +114,14 @@ class CirriculumTrainer(Trainer):
                 train_rewards = []
                 train_losses = []
                 self.curriculum.eval('off')
+
+            # Close Iteration ########################################
+            # Check if model training is failing and halt -----------
+            if self.curriculum.is_failing(it, self.ITERATIONS):
+                print(f"Model is failing to learn at Curriculum {self.curriculum.name}. Ending training...")
+                self.save(save_model=self.curriculum.save_model_on_fail, save_fig=self.curriculum.save_fig_on_fail)
+                break
+
             self.logger.end_iteration()
 
 
@@ -122,7 +135,7 @@ class CirriculumTrainer(Trainer):
         self.logger.wait_for_close(enable=self.wait_for_close)
         # self.logger.wait_for_close(enable=True)
         self.logger.close_plots()
-        if self.auto_save: self.save()
+        if self.auto_save and self.curriculum.is_failing(it, self.ITERATIONS): self.save()
 
     def curriculum_rollout(self, it, rationality,epsilon,rshape_scale,p_rand_start=0):
         self.model.rationality = rationality
@@ -159,7 +172,7 @@ class CirriculumTrainer(Trainer):
 
         for t in range(self.env.horizon+1):#itertools.count():
             old_state = self.env.state.deepcopy()
-            obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=device).unsqueeze(0)
+            obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=self.device).unsqueeze(0)
             feasible_JAs = self.feasible_action.get_feasible_joint_actions(self.env.state, as_joint_idx=True)
             joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,
                                                                                           epsilon=epsilon,
@@ -167,7 +180,7 @@ class CirriculumTrainer(Trainer):
             next_state, reward, done, info = self.env.step(joint_action, get_mdp_info=True)
             next_state_prospects = self.mdp.one_step_lookahead(old_state, # must be called after step....
                                                                joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
-                                                               as_tensor=True, device=device)
+                                                               as_tensor=True, device=self.device)
 
             for key in rollout_info.keys():
                 if not key == 'mean_loss':
@@ -208,46 +221,55 @@ class CirriculumTrainer(Trainer):
 
 
 class Curriculum:
-    def __init__(self, env, time_cost=0):
+    def __init__(self, env, curriculum_config):
+
+        # Parse Curriculum Config ----------------
+        self.min_iterations_per_cirriculum = curriculum_config['min_iter']
+        self.reward_buffer = deque(maxlen=curriculum_config['curriculum_mem'])
+
+        # Initiate variables and Get meta information ---------------------
+        self.iteration = 0  # iteration for this cirriculum
+        self.default_params = {'n_onions': 3, 'cook_time': 20}
+        self.iteration = 0 #iteration for this cirriculum
+        self.current_cirriculum = 0
+
         self.env = env
         self.mdp = env.mdp
         self.layout = self.mdp.layout_name
-        # self.reward_thresh = reward_thresh
-        self.reward_buffer = deque(maxlen=10)
-        self.iteration = 0 #iteration for this cirriculum
-        self.min_iterations_per_cirriculum = 100
-        self.default_params = {'n_onions': 3, 'cook_time': 20}
 
-        self.current_cirriculum = 0
+        # Set up curriculum advancment thresholds ------------
+        time_cost = self.env.time_cost
+        timecost_offset = self.env.horizon*time_cost
+        soup_reward = 20
+        self.cirriculum_step_threshs = {}
+        for key, num_soups in curriculum_config['subtask_goals'].items():
+            self.cirriculum_step_threshs[key] = soup_reward*num_soups + timecost_offset
         # self.cirriculum_step_threshs = {
-        #     'deliver_soup': 80,
-        #     'pick_up_soup': 80,
-        #     'pick_up_dish': 60,
-        #     'wait_to_cook': 40,
-        #     #'deliver_onion3': 40,
-        #     'pick_up_onion3': 40,
-        #     #'deliver_onion2': 40,
-        #     'pick_up_onion2': 40,
-        #     #'deliver_onion1': 40,
-        #     'full_task': 40
+        #     'deliver_soup': 80 + self.env.horizon*time_cost,
+        #     'pick_up_soup': 80 + self.env.horizon*time_cost,
+        #     'pick_up_dish': 70 + self.env.horizon*time_cost,
+        #     'wait_to_cook': 50 + self.env.horizon*time_cost,
+        #     'deliver_onion3': 50 + self.env.horizon*time_cost,
+        #     'pick_up_onion3': 50 + self.env.horizon*time_cost,
+        #     'deliver_onion2': 40 + self.env.horizon*time_cost,
+        #     'pick_up_onion2': 40 + self.env.horizon*time_cost,
+        #     'deliver_onion1': 40 + self.env.horizon*time_cost,
+        #     'full_task': 999
         # }
-        self.cirriculum_step_threshs = {
-            'deliver_soup': 80 + self.env.horizon*time_cost,
-            'pick_up_soup': 80 + self.env.horizon*time_cost,
-            'pick_up_dish': 70 + self.env.horizon*time_cost,
-            'wait_to_cook': 50 + self.env.horizon*time_cost,
-            'deliver_onion3': 50 + self.env.horizon*time_cost,
-            'pick_up_onion3': 50 + self.env.horizon*time_cost,
-            'deliver_onion2': 40 + self.env.horizon*time_cost,
-            'pick_up_onion2': 40 + self.env.horizon*time_cost,
-            'deliver_onion1': 40 + self.env.horizon*time_cost,
-            'full_task': 999
-        }
-
         self.cirriculums = list(self.cirriculum_step_threshs.keys())
         self.name = self.cirriculums[self.current_cirriculum]
 
+        # Set up failure detection thresholds (used for paramter searching)
+        self.failure_thresh = curriculum_config['failure_checks']
+        self.save_fig_on_fail = curriculum_config['failure_checks']['save_fig']
+        self.save_model_on_fail = curriculum_config['failure_checks']['save_model']
 
+    def is_failing(self,training_iter, total_iter):
+        """ checks if model learning is failing to progress efficiently"""
+        training_prog = training_iter/total_iter
+        if self.failure_thresh['enable']:
+            return (training_prog > self.failure_thresh[self.name])
+        else: return False
 
     def step_cirriculum(self, reward):
         self.reward_buffer.append(reward)
@@ -483,46 +505,46 @@ class Curriculum:
         else:
             player.set_object(ObjectState(obj, player.position))
         return player
-def main():
-    config = {
-        'ALGORITHM': 'Boltzmann_QRE-DDQN-OSA',
-        'Date': datetime.now().strftime("%m_%d_%Y-%H_%M"),
-
-        # Env Params ----------------
-        # 'LAYOUT': "risky_coordination_ring",
-        # 'LAYOUT': "risky_multipath",
-        # 'LAYOUT': "forced_coordination",
-        # 'LAYOUT': "forced_coordination_sanity_check",
-        'LAYOUT': "sanity_check",
-        'HORIZON': 200,
-        'ITERATIONS': 30_000,
-        'AGENT': None,  # name of agent object (computed dynamically)
-        "obs_shape": None,  # computed dynamically based on layout
-        "p_slip": 0.5,
-
-        # Learning Params ----------------
-        "rand_start_sched": [0.1, 0.1, 10_000],  # percentage of ITERATIONS with random start states
-        'epsilon_sched': [0.9, 0.15, 5000],  # epsilon-greedy range (start,end)
-        'rshape_sched': [1, 0, 10_000],  # rationality level range (start,end)
-        'rationality_sched': [5, 5, 10_000],
-        'lr_sched': [1e-4, 1e-4, 1],
-        'gamma': 0.97,  # discount factor
-        'tau': 0.01,  # soft update weight of target network
-        "num_hidden_layers": 5,  # MLP params
-        "size_hidden_layers": 256,  # 32,      # MLP params
-        "device": device,
-        "minibatch_size": 256,  # size of mini-batches
-        "replay_memory_size": 20_000,  # size of replay memory
-        'clip_grad': 100,
-        'monte_carlo': False,
-        'note': 'Cirriculum OSA',
-    }
-
-    # config['LAYOUT'] = 'forced_coordination'; config['rand_start_sched'] = [0,0,1]
-    # config['LAYOUT'] = 'risky_coordination_ring'; config['tau'] = 0.005
-    # config['LAYOUT'] = 'risky_multipath'
-    # config['LAYOUT'] = 'forced_coordination_sanity_check'; config['rand_start_sched'] = [0,0,1]
-    CirriculumTrainer(SelfPlay_QRE_OSA, config).run()
+# def main():
+#     config = {
+#         'ALGORITHM': 'Boltzmann_QRE-DDQN-OSA',
+#         'Date': datetime.now().strftime("%m_%d_%Y-%H_%M"),
+#
+#         # Env Params ----------------
+#         # 'LAYOUT': "risky_coordination_ring",
+#         # 'LAYOUT': "risky_multipath",
+#         # 'LAYOUT': "forced_coordination",
+#         # 'LAYOUT': "forced_coordination_sanity_check",
+#         'LAYOUT': "sanity_check",
+#         'HORIZON': 200,
+#         'ITERATIONS': 30_000,
+#         'AGENT': None,  # name of agent object (computed dynamically)
+#         "obs_shape": None,  # computed dynamically based on layout
+#         "p_slip": 0.5,
+#
+#         # Learning Params ----------------
+#         "rand_start_sched": [0.1, 0.1, 10_000],  # percentage of ITERATIONS with random start states
+#         'epsilon_sched': [0.9, 0.15, 5000],  # epsilon-greedy range (start,end)
+#         'rshape_sched': [1, 0, 10_000],  # rationality level range (start,end)
+#         'rationality_sched': [5, 5, 10_000],
+#         'lr_sched': [1e-4, 1e-4, 1],
+#         'gamma': 0.97,  # discount factor
+#         'tau': 0.01,  # soft update weight of target network
+#         "num_hidden_layers": 5,  # MLP params
+#         "size_hidden_layers": 256,  # 32,      # MLP params
+#         "device": self.device,
+#         "minibatch_size": 256,  # size of mini-batches
+#         "replay_memory_size": 20_000,  # size of replay memory
+#         'clip_grad': 100,
+#         'monte_carlo': False,
+#         'note': 'Cirriculum OSA',
+#     }
+#
+#     # config['LAYOUT'] = 'forced_coordination'; config['rand_start_sched'] = [0,0,1]
+#     # config['LAYOUT'] = 'risky_coordination_ring'; config['tau'] = 0.005
+#     # config['LAYOUT'] = 'risky_multipath'
+#     # config['LAYOUT'] = 'forced_coordination_sanity_check'; config['rand_start_sched'] = [0,0,1]
+#     CirriculumTrainer(SelfPlay_QRE_OSA, config).run()
 
 # class CirriculumTrainer(Trainer):
 #     def __init__(self,model_object,custom_config):
@@ -1042,5 +1064,5 @@ def main():
 #     # config['LAYOUT'] = 'forced_coordination_sanity_check'; config['rand_start_sched'] = [0,0,1]
 #     CirriculumTrainer(SelfPlay_QRE_OSA, config).run()
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()

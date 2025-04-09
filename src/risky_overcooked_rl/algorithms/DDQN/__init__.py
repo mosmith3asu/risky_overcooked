@@ -1,3 +1,8 @@
+import sys
+import os
+print('\\'.join(os.getcwd().split('\\')[:-1]))
+sys.path.append('\\'.join(os.getcwd().split('\\')[:-1]))
+
 
 def get_default_config(path = '\\risky_overcooked_rl\\algorithms\\DDQN\\_config.yaml'):
     import yaml

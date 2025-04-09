@@ -7,8 +7,9 @@ from risky_overcooked_py.mdp.actions import Action, Direction
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
 
 class FeasibleActionManager(object):
-    def __init__(self, env):
+    def __init__(self, env, enable=True):
         self.env = env
+        self.enable = enable
     def is_feasible_move(self,player, action):
         facing = player.orientation
         adj_pos = Action.move_in_direction(player.position, action)
@@ -60,6 +61,10 @@ class FeasibleActionManager(object):
         :param as_idx: returns array of feasible actions
         :return:
         """
+        if not self.enable:
+            feasible_actions = np.ones([2, len(Action.ALL_ACTIONS)])
+            return feasible_actions
+
         feasible_actions = np.ones([2,len(Action.ALL_ACTIONS)])
         for ip, player in enumerate(state.players):
             for ia, action in enumerate(Action.INDEX_TO_ACTION):

@@ -1,45 +1,136 @@
 ---
-  'ALGORITHM': 'DDQN-CPT'
 
-  # Env Params ----------------
-  'LAYOUT': "risky_coordination_ring"
-  'HORIZON': 200
-  'ITERATIONS': 15_000
-  "p_slip": 0.1
-  'loads': ''         # loaded model
+'ALGORITHM': 'DDQN-CPT'
 
-  # Learning Params ----------------
-  "rand_start_sched": [0.0, 0.0, 1]  # percentage of ITERATIONS with random start states
-  'epsilon_sched': [1.0, 0.15, 3_000]      # epsilon-greedy range (start,end, dur)
-  'rshape_sched': [1, 0, 5_000]           # reward shaping decay (start,end, dur)
-  'time_cost': -0.2                      # cost per time step (<0: -0.2 ==> 1soup/100steps)
-  'rationality_sched': [10, 10, 1]   # rationality level range (start,end, dur) (end=test)
-  'lr_sched': [0.0001, 0.0001, 1]         # learning rat schedule (start, end, dur)
-  'warmup_transitions': 20_000       # number of transitions in mem before training starts
-#  'lr_sched': [0.00000000000001, 0.00000000000001, 1_000]         # learning rat schedule (start, end, dur)
+# Env Params ----------------
+env:
+#  'LAYOUT': "risky_coordination_ring"   # layout name
+#  "p_slip": 0.4                         # probability of slipping in puddle
+  'LAYOUT': "risky_multipath"   # layout name
+  "p_slip": 0.15                         # probability of slipping in puddle
+
+  'HORIZON': 200                        # number of time steps per episode
+  'time_cost': -0.2                     # cost per time step (<0: -0.2 ==> 1soup/100steps)
+  'shared_rew': False                  # share reward between agents
+# Learning Params ----------------
+trainer:
+    'ITERATIONS': 15_000                    # total number of training iterations
+    'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
+    'obs_shape': nan                      # Overridden during execution depending on layout
+    'joint_action_shape': 36              # number of joint actions
+    N_tests: 1                          # number of test runs to average over during validation
+    test_interval: 10             # number of iterations between test runs
+    'feasible_actions': True  # constrain random sampling to only feasible actions
+    'seed': 42                              # random seed for reproducibility
+
+    schedules: # Make sure these are scaled to if you are using curriculum or not
+#      rand_start_sched:  [0.0, 0.0, 1]      # % chance episode starts with random state (start,end, dur)
+
+      rand_start_sched: # exponential decay on random start state chance
+        start: 0.0      # starting value
+        end: 0.0        # ending value
+        duration: 1     # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
+        decay: 1.1      # higher values = faster decay
+
+      epsilon_sched:    # exponential decay on exploration rate
+        start: 1        # starting value
+        end: 0.1        # ending value
+#        duration: 3_000 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
+        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+        decay: 1.1      # higher values = faster decay
+
+      rshape_sched:     # linear decay on reward shaping
+        start: 1        # starting value
+        end: 0          # ending value
+        duration: 0.4 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
+
+    curriculum: # TODO: add ALL
+      schedule_decay: 0.9     # gain on starting value in schedules after first curriculum
+      curriculum_mem: 10      # number of iterations to check curriculum over
+#      sampling_decay: 0.5    ######################################################
+      sampling_decay: 0.3     # recursive decay on likelihood of sampling past curriculum
+      p_random_counter_obj: 0 # probability of a random object being on any counter
+      min_iter: 100           # minimum number of iterations to run before checking for curriculum
+
+      subtask_goals:
+        # specifies success threshold to move to next curriculum
+        # average number of soups delivered over curriculum_mem needed to advance
+        deliver_soup: 4.5   # agents starts with cooked soup and must cary to service window
+        pick_up_soup: 4     # agents starts with dish and must pick up soup from pot
+        pick_up_dish: 3.5   # agents starts with nothing and must pick up dish
+        wait_to_cook: 3     # agents starts with nothing and must wait to cook
+        deliver_onion3: 2.5 # agents starts with onion and must deliver to pot
+        pick_up_onion3: 2.5 # agents starts with nothing and must pick up onion
+        deliver_onion2: 2   # agents starts with onion and must deliver to pot
+        pick_up_onion2: 2   # agents starts with nothing and must pick up onion
+        deliver_onion1: 2   # agents starts with onion and must deliver to pot
+        full_task: 999 # pick_up_onion1 = full_task
+
+      failure_checks:
+        #  % of total ITERATIONS a curriculum has to finish before run considered failed
+        # if cant deliver {subtask_goals.X} soups by {early_stopping.X*ITERATIONS} -> stop training
+
+        enable: True           # enable early stopping
+        save_fig: True         # save figure of failed training run
+        save_model: False      # save model of failed training run
+
+        deliver_soup: 0.2
+        pick_up_soup: 0.3
+        pick_up_dish: 0.4
+        wait_to_cook: 0.5
+        deliver_onion3: 0.6
+        pick_up_onion3: 0.7
+        deliver_onion2: 0.8
+        pick_up_onion2: 0.9
+        deliver_onion1: 1.0
+        full_task: 999 # pick_up_onion1 = full_task
+
+agents:
+      'type': 'Not Specified'   # set during runtime depending on what agent model is used
+      'rationality': 10         # rationality level/decision temperature TODO: remove
+
+      model:
+        "num_hidden_layers": 5          # MLP params
+        "size_hidden_layers": 128 #256  # MLP params
+        "activation": "ReLU"            # activation function        TODO: add to config
+        'clip_grad': 0.75               # with norm clip
+        device: nan                     # device to use for training (cpu or cuda)
+        lr: 0.0001                      # learning rate
+        gamma: 0.98                     # discount factor
+        tau: 0.005                      # soft update weight of target network
+        replay_memory_size: 200_000     # size of replay memory
+        minibatch_size: 256             # size of mini-batches
 
 
-  'gamma': 0.95                     # discount factor
-  'tau': 0.005                      # soft update weight of target network
-  "num_hidden_layers": 5            # MLP params
-  "size_hidden_layers": 128 #256         # MLP params
-  "minibatch_size": 256             # size of mini-batches
-  "replay_memory_size": 100_000      # size of replay memory
-#  'clip_grad': 100
-#  'clip_grad': 1 # with norm clip
-  'clip_grad': 0.75 #1.0 #0.5 # with norm clip
-  'cpt_params':   # Default rational CPT parameters
-      'b': 0.0      # reference point
-      'lam': 1.0    # loss aversion
-      'eta_p': 1.0  # diminishing gain sensitivity
-      'eta_n': 1.0  # diminishing loss sensitivity
-      'delta_p': 1.0 # s-shaped probability estimation bias for gains
-      'delta_n': 1.0 # s-shaped probability estimation bias for losses
-  'note': ''  # additional notes'
+      'equilibrium': #using level-k quant response equilibrium
+        'type': 'QRE' # type of equilibrium to use \in {QRE, Pareto}
+        'level-k': 8 # number of recursions in QRE
+        'belief_trick': True # other agent uses  level-(k+1) to avoid recomputing in QRE
 
-  'fname_ext': '' # additional filename extension
-  'save_dir': '\\risky_overcooked_rl\\models\\'
-  'wait_for_close': True
-  'auto_save': False
-  'enable_report': True
-  'checkpoint_mem': 10
+      'cpt':   # Default rational CPT parameters
+          'b': 0.0      # reference point
+          'lam': 1.0    # loss aversion
+          'eta_p': 1.0  # diminishing gain sensitivity
+          'eta_n': 1.0  # diminishing loss sensitivity
+          'delta_p': 1.0 # s-shaped probability estimation bias for gains
+          'delta_n': 1.0 # s-shaped probability estimation bias for losses
+
+
+
+logger:
+    'enable_report': True # enables command line reporting
+    'note': ''  # additional notes presented in RL-Logger
+
+
+save:
+    'loads': ''             # loaded model
+    'fname_ext': ''         # filename extension added during runtime
+    'wait_for_close': False  # halt execution after done training until user closes the window
+    'auto_save': False      # automatically save the model after training + logger closed
+    'checkpoint_mem': 10    # number of iterations to average checkpoint check over (keeps latest)
+    'date': nan             # date of training run
+
+    'fname_fmt': '{algorithm}{val}_{env}{val}_{pslip}{val}_{rshape}{val}_{epsilon}{val}_{lr}_{note}_{fname_ext'#TODO: add?
+    'save_dir': '\\risky_overcooked_rl\\models\\'
+
+

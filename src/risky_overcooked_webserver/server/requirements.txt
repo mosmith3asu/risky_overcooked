@@ -4,7 +4,8 @@ dnspython==1.16.0
 dill==0.3.2
 Flask==2.1.0
 Flask-SocketIO==4.3.0
-greenlet==0.4.16
+# greenlet==0.4.16
+greenlet==2.0.2
 itsdangerous==2.0
 Jinja2==3.1.0
 MarkupSafe==2.0
@@ -13,6 +14,6 @@ python-engineio==3.13.0
 python-socketio==4.6.0
 six==1.15.0
 Werkzeug==2.0.3
-tensorflow==2.0.3
+# tensorflow==2.0.3
 requests==2.23.0
 protobuf==3.19

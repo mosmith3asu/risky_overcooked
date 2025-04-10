@@ -38,7 +38,8 @@ setup(
     },
     install_requires=[
         "dill",
-        "numpy<2.0.0",
+        # "numpy<2.0.0",
+        "numpy=1.24.3",
         "scipy",
         "tqdm",
         "gymnasium",
@@ -59,10 +60,10 @@ setup(
             "pymongo",
             "matplotlib",
             "requests",
-            "seaborn==0.9.0",
-            "ray[rllib]>=2.5.0",
+            # "seaborn==0.9.0",
+            # "ray[rllib]>=2.5.0",
             "protobuf",
-            "tensorflow>=2.14.0",
+            # "tensorflow>=2.14.0",
         ]
     },
     entry_points={

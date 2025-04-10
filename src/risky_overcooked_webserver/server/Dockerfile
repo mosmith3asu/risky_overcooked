@@ -14,13 +14,15 @@ RUN pip install -r requirements.txt
 RUN if [ "$BUILD_ENV" = "production" ] ; then pip install eventlet ; fi
 
 # Clone chai code
-RUN git clone --recursive https://github.com/HumanCompatibleAI/overcooked_ai.git --branch $OVERCOOKED_BRANCH --single-branch /overcooked_ai
+#RUN git clone --recursive https://github.com/HumanCompatibleAI/overcooked_ai.git --branch $OVERCOOKED_BRANCH --single-branch /overcooked_ai
+RUN git clone --recursive https://github.com/mosmith3asu/risky_overcooked.git --branch $OVERCOOKED_BRANCH --single-branch /risky_overcooked
 
 # Dummy data_dir so things don't break
-RUN echo "import os; DATA_DIR=os.path.abspath('.')" >> /overcooked_ai/src/human_aware_rl/data_dir.py
+RUN echo "import os; DATA_DIR=os.path.abspath('.')" >> /risky_overcooked/src/risky_overcooked_rl/data_dir.py
 
 # Install chai dependencies
-RUN pip install -e '/overcooked_ai[harl]'
+#RUN pip install -e '/overcooked_ai[harl]'
+RUN pip install -e '/risky_overcooked[harl]'
 
 RUN apt-get -y update
 RUN apt-get install -y libgl1-mesa-dev

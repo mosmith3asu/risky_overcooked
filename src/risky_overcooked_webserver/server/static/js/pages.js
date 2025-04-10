@@ -1,44 +1,6 @@
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+// var socket = io();
 
-    <!-- Bootstrap CSS -->
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
-    <style>
-      img.center {
-        display: block;
-        margin: 0 auto;
-      }
-      table, td, th {
-        border: 1px solid #ddd;
-        text-align: left;
-      }
-
-      table {
-        border-collapse: collapse;
-        width: 100%;
-      }
-
-      th, td {
-        padding: 15px;
-      }
-      tr:nth-child(even) {background-color: #f2f2f2;}
-    </style>
-
-    <title>Instructions</title>
-    <link rel="Favicon" href="static/favicon.ico" />
-
-
-<!--    <script src="static/lib/jquery-min.js" type="text/javascript"> </script>-->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
-
-  <script>
-      // var socket = io();
-
-      // Persistent network connection that will be used to transmit real-time data
+// Persistent network connection that will be used to transmit real-time data
 
 /* ###################################################
 ################### Game layout ######################
@@ -82,7 +44,9 @@ document.addEventListener("DOMContentLoaded", function () {
     gameWindow.style.justifyContent = "center";
     // gameWindow.style.backgroundColor = "#ccc";
     gameWindow.style.padding = "10px"
-    if(debug_mode){gameWindow.style.border = "2px solid red";}
+    if (debug_mode) {
+        gameWindow.style.border = "2px solid red";
+    }
     // gameWindow.innerText = "Loading experiment...";
 
     // Create button container
@@ -160,23 +124,23 @@ function initialize_pages(gameWindow) {
     pages.push(new Page_RiskPropensityScale(gameWindow))
     //
     // // Instructions
-    pages.push(new Page_Section(gameWindow,"Instructions"));
+    pages.push(new Page_Section(gameWindow, "Instructions"));
     //
     //
 
     let game_num = 1;
     //  Game Loop: Partner 1
-    pages.push(new Page_Section(gameWindow,"Experiment Start"));
+    pages.push(new Page_Section(gameWindow, "Experiment Start"));
 
-    pages.push(new Page_GameInstructions(gameWindow,game_num));
-    pages.push(new Page_GamePlay(gameWindow,game_num));
+    pages.push(new Page_GameInstructions(gameWindow, game_num));
+    pages.push(new Page_GamePlay(gameWindow, game_num));
     pages.push(new Page_TrustSurvey(gameWindow, game_num))
     game_num++;
     //
     // // Game Loop : Partner 2
     pages.push(new Page_Washout(gameWindow));
-    pages.push(new Page_GameInstructions(gameWindow,game_num));
-    pages.push(new Page_GamePlay(gameWindow,game_num));
+    pages.push(new Page_GameInstructions(gameWindow, game_num));
+    pages.push(new Page_GamePlay(gameWindow, game_num));
     pages.push(new Page_TrustSurvey(gameWindow, game_num))
     game_num++;
 
@@ -634,7 +598,10 @@ class Page_BackgroundSurvey {
     }
 
     isFormComplete() {
-        if (debug_mode){return true;};
+        if (debug_mode) {
+            return true;
+        }
+        ;
         const ageInput = document.getElementById("ageInput").value.trim();
         const sexOptions = document.querySelectorAll(".sexOption");
         // const messageContainer = document.getElementById("messageContainer");
@@ -657,8 +624,11 @@ class Page_BackgroundSurvey {
         }
     }
 
-    isExcluded(){
-        if (debug_mode){return false;};
+    isExcluded() {
+        if (debug_mode) {
+            return false;
+        }
+        ;
         const age = document.getElementById("ageInput").value;
         const too_old = age > 65;
         const too_young = age < 18;
@@ -666,6 +636,7 @@ class Page_BackgroundSurvey {
 
 
     }
+
     submit() {
         // get the value of the age field
 
@@ -827,7 +798,10 @@ class Page_RiskPropensityScale {
     }
 
     isFormComplete() {
-        if (debug_mode){return true;};
+        if (debug_mode) {
+            return true;
+        }
+        ;
         // verify that each question is answered
         const allQuestions = this.container.querySelectorAll(".question-row");
         let allAnswered = true;
@@ -1040,7 +1014,10 @@ class Page_TrustSurvey {
     }
 
     isFormComplete() {
-        if (debug_mode){return true;};
+        if (debug_mode) {
+            return true;
+        }
+        ;
         // verify that each question is answered
         const allQuestions = this.container.querySelectorAll(".question-row");
         let allAnswered = true;
@@ -1106,7 +1083,7 @@ class Page_TrustSurvey {
 }
 
 class Page_GameInstructions {
-    constructor(parent_container,num) {
+    constructor(parent_container, num) {
         this.ID = `game_instructions_${num}`;
         this.header = `Game ${num}/${total_games}`
         this.info_div_width = "50%"
@@ -1128,7 +1105,9 @@ class Page_GameInstructions {
         this.container.style.margin = "0 auto";
         this.container.style.padding = "0px";
 
-        if (debug_mode) {this.container.style.border = "2px solid blue";}
+        if (debug_mode) {
+            this.container.style.border = "2px solid blue";
+        }
         parent_container.appendChild(this.container);
 
         // Create game meta-data requested from server
@@ -1137,6 +1116,7 @@ class Page_GameInstructions {
 
         this.add_submit_button('Begin Game');
     }
+
     render() {
         // render game instructions
         const header = document.createElement("h3");
@@ -1158,7 +1138,7 @@ class Page_GameInstructions {
         const info_div = document.createElement("div");
         info_div.style.width = this.info_div_width;
         info_div.style.margin = "0 auto";
-        info_div.style.padding = this.content_padding ;
+        info_div.style.padding = this.content_padding;
 
 
         const info_pslip = document.createElement("p");
@@ -1218,7 +1198,9 @@ class Page_GameInstructions {
         layout_div.style.width = this.layout_display_div;
         layout_div.style.padding = this.content_padding;
         layout_div.style.margin = "0 auto";
-        if(debug_mode) {layout_div.style.border = "2px solid red";}
+        if (debug_mode) {
+            layout_div.style.border = "2px solid red";
+        }
         // layout_div.style.margin = "0 auto";
         this.render_layout(layout_div)
 
@@ -1227,34 +1209,44 @@ class Page_GameInstructions {
 
 
     };
+
     render_layout(container) {
         container.style.backgroundColor = "gray";
         container.style.innerHTML = "Game Layout Picture";
         alert("ERROR: ADD LAYOUT QUERY HERE");
     }
+
     emit_game_query() {
         console.log("Game query");
     }
+
     emit_responses(response) {
         // sends priming response to server
         console.log(response);
     }
+
     isFormComplete() {
-        if(debug_mode){return true;};
+        if (debug_mode) {
+            return true;
+        }
+        ;
         // verify that a radio option is selected
         const selected = document.querySelector(`input[name="priming_${this.layout}"]:checked`);
         return selected;
     }
+
     collectResponses() {
         // get the values of the radio button questions
         const responses = {"ID": this.ID};
-        if(debug_mode){responses["priming"] = "debug";}
-        else{
+        if (debug_mode) {
+            responses["priming"] = "debug";
+        } else {
             const selected = document.querySelector(`input[name="priming_${this.layout}"]:checked`);
             responses["priming"] = selected.value;
         }
         return responses;
     }
+
     add_submit_button(txt) {
         // Add submit button for custom event
         this.submitBtn = document.createElement("button");
@@ -1268,6 +1260,7 @@ class Page_GameInstructions {
         });
         buttonContainer.appendChild(this.submitBtn);
     }
+
     submit() {
         if (!this.isFormComplete()) {
             alert("Please answer all questions before submitting.");
@@ -1290,24 +1283,29 @@ class Page_GameInstructions {
         prevBtn.style.display = "none";
         this.render()
     }
+
     hide() {
         this.container.style.display = "none";
         this.submitBtn.style.display = "none";
         // this.destroy()
     }
+
     destroy() {
         // destroys game to save on memory
         // alert("ERROR: ADD DESTROY GAME QUERY HERE");
         this.container.innerHTML = "";
     }
 }
+
 class Page_GamePlay {
-    constructor(parent_container,num) {
+    constructor(parent_container, num) {
         // Create Page Container
         this.container = document.createElement("div");
         this.container.style.display = "none";
         this.container.id = `game_play_${num}`;
-        if (debug_mode) {this.container.style.border = "2px solid red";}
+        if (debug_mode) {
+            this.container.style.border = "2px solid red";
+        }
         parent_container.appendChild(this.container);
 
         // Create game meta-data requested from server
@@ -1317,27 +1315,32 @@ class Page_GamePlay {
 
         this.add_submit_button('Continue')
     }
-    render(){
+
+    render() {
         const header = document.createElement("h3");
         header.innerText = `Rendering layout ${this.layout}`
         header.style.textAlign = "center";
         header.style.margin = "20px";
         this.container.appendChild(header);
     }
+
     emit_game_query() {
         // asks for what game to play
         alert("ERROR: ADD GAME QUERY HERE");
     }
+
     emit_human_action(action) {
         // sends action to server
         alert("ERROR: ADD HUMAN ACTION QUERY HERE");
     }
+
     close_game() {
         this.submitBtn.style.display = "block";
         // closes game
         alert("ERROR: ADD CLOSE GAME QUERY HERE");
     }
-       submit() {
+
+    submit() {
         if (!this.isFormComplete()) {
             alert("Please answer all questions before submitting.");
             return;
@@ -1350,6 +1353,7 @@ class Page_GamePlay {
         // this.destroy()
 
     };
+
     add_submit_button(txt) {
         // Add submit button for custom event
         this.submitBtn = document.createElement("button");
@@ -1363,6 +1367,7 @@ class Page_GamePlay {
         });
         buttonContainer.appendChild(this.submitBtn);
     }
+
     submit() {
         this.destroy()
         currentIndex++;
@@ -1374,18 +1379,23 @@ class Page_GamePlay {
         this.container.style.display = "block";
         nextBtn.style.display = "none";
         prevBtn.style.display = "none";
-        if(debug_mode){this.submitBtn.style.display = "block";}
+        if (debug_mode) {
+            this.submitBtn.style.display = "block";
+        }
     }
+
     hide() {
         this.container.style.display = "none";
         this.submitBtn.style.display = "none";
     }
+
     destroy() {
         // destroys game to save on memory
         // alert("ERROR: ADD DESTROY GAME QUERY HERE");
         this.container.innerHTML = "";
     }
 }
+
 // #################################################################
 // Page Event Handlers #############################################
 // #################################################################
@@ -1406,15 +1416,3 @@ function updatePage() {
     current_page.show();
 }
 
-
-  </script>
-  </head>
-  <body>
-      <br> <hr> <br>
-      <div class="container" id="root-container">
-
-      </div>
-     <br> <hr>  <br>
-
-  </body>
-</html>

@@ -389,6 +389,9 @@ def instructions():
 def consent():
     return render_template("consent.html")
 
+@app.route("/experiment")
+def experiment():
+    return render_template("experiment.html")
 
 
 @app.route("/tutorial")

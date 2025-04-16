@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="viewport" id="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
@@ -18,7 +18,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
     <script src="//cdn.jsdelivr.net/npm/phaser@3.23.0/dist/phaser.min.js"></script>
 
+     <script src="static/js/graphics.js", type="text/javascript"></script>
     <script src="static/js/pages.js", type="text/javascript"></script>
+
 <!--    <script src="static/js/graphics.js", type="text/javascript"></script>-->
     <!-- <script src="static/js/dummy_graphics.js", type="text/javascript"></script> -->
 <!--    <script src="static/js/index.js" type="text/javascript"></script>-->
@@ -27,6 +29,7 @@
     <link rel="stylesheet" href="static/css/style.css" type="text/css" />
   </head>
   <body>
+    <div id="tutorial_config" style="display:none;">{{tutorial_config}}</div>
     <br> <hr> <br>
       <div class="container" id="root-container">
 

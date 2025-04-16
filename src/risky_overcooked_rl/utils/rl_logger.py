@@ -371,7 +371,7 @@ class RLLogger(object):
                     self.logs[key] = (d1+d2)/2
                 else:
                     self.logs[key] = np.vstack([(d1[:-1,:] + d2) / 2, d1[-1,:]])
-                print(f'Down sampling {key} from {len(data)} to {len(self.logs[key])} samples')
+                # print(f'Down sampling {key} from {len(data)} to {len(self.logs[key])} samples')
 
 
     ###########################################################
@@ -550,10 +550,9 @@ class RLLogger(object):
 
                 self.checkpoint_lines[key].set_label(txt)
                 self.axs[key].legend(loc='upper right', fontsize=6)
-
-
         except:
-            print(f'\n\nRLLogger.update_checkpoint_line() exception...')
+            pass
+            # print(f'\n\nRLLogger.update_checkpoint_line() exception...')
     def draw(self):
         if self.iter_count % 10 == 0:
             self.down_sample()

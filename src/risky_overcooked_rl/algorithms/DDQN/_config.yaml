@@ -47,8 +47,8 @@ trainer:
     curriculum: # TODO: add ALL
       schedule_decay: 0.9     # gain on starting value in schedules after first curriculum
       curriculum_mem: 10      # number of iterations to check curriculum over
-#      sampling_decay: 0.5    ######################################################
-      sampling_decay: 0.3     # recursive decay on likelihood of sampling past curriculum
+      sampling_decay: 0.5    # ######################################################
+#      sampling_decay: 0.3     # recursive decay on likelihood of sampling past curriculum
       p_random_counter_obj: 0 # probability of a random object being on any counter
       min_iter: 100           # minimum number of iterations to run before checking for curriculum
 
@@ -90,13 +90,13 @@ agents:
       'rationality': 10         # rationality level/decision temperature TODO: remove
 
       model:
-        "num_hidden_layers": 5          # MLP params
-        "size_hidden_layers": 128 #256  # MLP params
+        "num_hidden_layers": 6          # MLP params
+        "size_hidden_layers": 256   # MLP params
         "activation": "ReLU"            # activation function        TODO: add to config
-        'clip_grad': 0.75               # with norm clip
+        'clip_grad': 0.85 #0.75               # with norm clip
         device: nan                     # device to use for training (cpu or cuda)
         lr: 0.0001                      # learning rate
-        gamma: 0.98                     # discount factor
+        gamma: 0.97                     # discount factor
         tau: 0.005                      # soft update weight of target network
         replay_memory_size: 200_000     # size of replay memory
         minibatch_size: 256             # size of mini-batches
@@ -118,7 +118,7 @@ agents:
 
 
 logger:
-    'enable_report': True # enables command line reporting
+    'enable_report': False # enables command line reporting
     'note': ''  # additional notes presented in RL-Logger
 
 
@@ -131,6 +131,6 @@ save:
     'date': nan             # date of training run
 
     'fname_fmt': '{algorithm}{val}_{env}{val}_{pslip}{val}_{rshape}{val}_{epsilon}{val}_{lr}_{note}_{fname_ext'#TODO: add?
-    'save_dir': '\\risky_overcooked_rl\\models\\'
+    'save_dir': '\\risky_overcooked_rl\\algorithms\\DDQN\\models\\'
 
 

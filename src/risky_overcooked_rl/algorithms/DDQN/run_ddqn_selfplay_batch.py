@@ -53,11 +53,11 @@ def get_config_search_list():
         for i, pslip in enumerate(job_configs['p_slips']):
             for j, agent_type in enumerate(job_configs['agents']):
                         config = deepcopy(def_config)
-                        config['cpt_params'] = batching['CPT_PARAMS'][agent_type]
-                        config['p_slip'] = pslip
-                        config['LAYOUT'] = layout
+                        config['agents']['cpt'] = batching['CPT_PARAMS'][agent_type]
+                        config['env']['p_slip'] = pslip
+                        config['env']['LAYOUT'] = layout
                         config['ibatch']= f'{len(config_lst)+1}/{batch_size}'
-                        config['fname_ext'] = f'BATCH{len(config_lst)+1}_'
+                        config['save']['fname_ext'] = f'BATCH{len(config_lst)+1}_'
                         config_lst.append(config)
                         # print(f'Loading Config: {len(config_lst)}/{batch_size}')
     config_lst = config_lst[istart:]

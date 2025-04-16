@@ -7,14 +7,23 @@ from queue import Empty, Full, LifoQueue, Queue
 from threading import Lock, Thread
 from time import time
 
-import ray
-from utils import DOCKER_VOLUME, create_dirs
 
-from human_aware_rl.rllib.rllib import load_agent
-from overcooked_ai_py.mdp.actions import Action, Direction
-from overcooked_ai_py.mdp.overcooked_env import OvercookedEnv
-from overcooked_ai_py.mdp.overcooked_mdp import OvercookedGridworld
-from overcooked_ai_py.planning.planners import (
+from utils import DOCKER_VOLUME, create_dirs
+# import ray
+# from human_aware_rl.rllib.rllib import load_agent
+# from overcooked_ai_py.mdp.actions import Action, Direction
+# from overcooked_ai_py.mdp.overcooked_env import OvercookedEnv
+# from overcooked_ai_py.mdp.overcooked_mdp import OvercookedGridworld
+# from overcooked_ai_py.planning.planners import (
+#     NO_COUNTERS_PARAMS,
+#     MotionPlanner,
+# )
+# from human_aware_rl.rllib.rllib import load_agent
+
+from risky_overcooked_py.mdp.actions import Action, Direction
+from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
+from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
+from risky_overcooked_py.planning.planners import (
     NO_COUNTERS_PARAMS,
     MotionPlanner,
 )
@@ -95,6 +104,7 @@ class Game(ABC):
         self.id = kwargs.get("id", id(self))
         self.lock = Lock()
         self._is_active = False
+
 
     @abstractmethod
     def is_full(self):
@@ -464,10 +474,12 @@ class OvercookedGame(Game):
                 playerOne, idx=1
             )
             self.npc_state_queues[player_one_id] = LifoQueue()
+
+
         # Always kill ray after loading agent, otherwise, ray will crash once process exits
         # Only kill ray after loading both agents to avoid having to restart ray during loading
-        if ray.is_initialized():
-            ray.shutdown()
+        # if ray.is_initialized():
+        #     ray.shutdown()
 
         if kwargs["dataCollection"]:
             self.write_data = True
@@ -747,6 +759,8 @@ class OvercookedTutorial(OvercookedGame):
         # we don't collect tutorial data
         self.write_data = False
 
+
+
     @property
     def reset_timeout(self):
         return 1
@@ -761,14 +775,16 @@ class OvercookedTutorial(OvercookedGame):
         return False
 
     def is_finished(self):
-        return not self.layouts and self.score >= float("inf")
+        # return not self.layouts and self.score >= float("inf")
+        return self.score > 0
 
     def reset(self):
         super(OvercookedTutorial, self).reset()
         self.curr_phase += 1
 
     def get_policy(self, *args, **kwargs):
-        return TutorialAI()
+        tutorial_num = int(self.layouts[0].split("_")[-1])
+        return TutorialAI(tutorial_phase = tutorial_num)
 
     def apply_actions(self):
         """
@@ -866,92 +882,379 @@ class StayAI:
 
 
 class TutorialAI:
-    COOK_SOUP_LOOP = [
-        # Grab first onion
-        Direction.WEST,
-        Direction.WEST,
-        Direction.WEST,
-        Action.INTERACT,
-        # Place onion in pot
-        Direction.EAST,
-        Direction.NORTH,
-        Action.INTERACT,
-        # Grab second onion
-        Direction.WEST,
-        Action.INTERACT,
-        # Place onion in pot
-        Direction.EAST,
-        Direction.NORTH,
-        Action.INTERACT,
-        # Grab third onion
-        Direction.WEST,
-        Action.INTERACT,
-        # Place onion in pot
-        Direction.EAST,
-        Direction.NORTH,
-        Action.INTERACT,
-        # Cook soup
-        Action.INTERACT,
-        # Grab plate
-        Direction.EAST,
-        Direction.SOUTH,
-        Action.INTERACT,
-        Direction.WEST,
-        Direction.NORTH,
-        # Deliver soup
-        Action.INTERACT,
-        Direction.EAST,
-        Direction.EAST,
-        Direction.EAST,
-        Action.INTERACT,
-        Direction.WEST,
-    ]
-
-    COOK_SOUP_COOP_LOOP = [
-        # Grab first onion
-        Direction.WEST,
-        Direction.WEST,
-        Direction.WEST,
-        Action.INTERACT,
-        # Place onion in pot
-        Direction.EAST,
-        Direction.SOUTH,
-        Action.INTERACT,
-        # Move to start so this loops
-        Direction.EAST,
-        Direction.EAST,
-        # Pause to make cooperation more real time
-        Action.STAY,
-        Action.STAY,
-        Action.STAY,
-        Action.STAY,
-        Action.STAY,
-        Action.STAY,
-        Action.STAY,
-        Action.STAY,
-        Action.STAY,
-    ]
-
-    def __init__(self):
+    def __init__(self,tutorial_phase):
+        self.tutorial_phase = tutorial_phase
         self.curr_phase = -1
         self.curr_tick = -1
 
+        # Routing Commands
+        self.start2onion = [Direction.WEST for _ in range(1)]  # start to onion
+        self.obj2pot = [Direction.EAST for _ in range(6)] + [Direction.NORTH]  # both onion and dish
+        self.pot2onion = [Direction.WEST for _ in range(6)]
+        self.onion2dish = [Direction.SOUTH for _ in range(1)]
+        self.pot2service = [Direction.EAST for _ in range(1)]
+        self.service2start = [Direction.WEST for _ in range(5)]
+
+        self.puddle2onion = [Action.STAY] + [Direction.WEST for _ in range(4)]
+        self.puddle2dish = [Action.STAY] + [Direction.WEST for _ in range(4)] + [Direction.SOUTH]
+
+        self.obj2pot_detour = [Direction.EAST for _ in range(2)] + \
+                              [Direction.SOUTH,Direction.EAST,Direction.EAST,Direction.NORTH ]+ \
+                              [Direction.EAST for _ in range(2)] + [Direction.NORTH]  # both onion and dish
+        # self.pot2onion_detour = self.obj2pot_detour = [Direction.WEST for _ in range(2)] + \
+        #                       [Direction.SOUTH,Direction.WEST,Direction.WEST,Direction.NORTH ]+ \
+        #                       [Direction.WEST for _ in range(2)] + [Direction.NORTH]  # both onion and dish
+        # self.service2start_detour = self.obj2pot_detour = [Direction.WEST for _ in range(1)] + \
+        #                       [Direction.SOUTH,Direction.WEST,Direction.WEST,Direction.NORTH ]+ \
+        #                       [Direction.WEST for _ in range(2)] + [Direction.NORTH]  # both onion and dish
+        # Routing Sequences
+
+
+
+        self.start2pass = [Direction.WEST,Direction.WEST,Direction.WEST,Direction.SOUTH ]  # start to passing
+        self.pass2pot = [Direction.NORTH,Direction.EAST,Direction.EAST,Direction.EAST,Direction.NORTH]  # start to passing
+        self.pot2pass = [Direction.WEST,Direction.WEST,Direction.WEST,Direction.SOUTH]  # start to passing
+        self.pass2dump = [Action.STAY,Action.INTERACT,Direction.NORTH] + [Direction.WEST for _ in range(2)]  + \
+                         [Direction.EAST for _ in range(2)]  +[Direction.SOUTH] # start to passing
+
+        # Select Policy
+        if tutorial_phase == 0:
+            self.policy = self.policy_0()
+        elif tutorial_phase == 1:
+            self.route_sequence = [self.start2onion]
+            for _ in range(3):  # bring 3 onions
+                self.route_sequence.append([Action.INTERACT] + self.obj2pot + [Action.INTERACT] + self.pot2onion)
+            self.route_sequence.append(
+                self.onion2dish + [Action.INTERACT] + self.obj2pot)  # +[Action.INTERACT] calced based on soup tick
+            self.route_sequence.append(self.pot2service + [Action.INTERACT])
+            self.route_sequence.append(self.service2start)
+
+            self.route_idx = 0
+            self.checkpoint_tick = 0
+            self.slipped_route = None
+            self.policy = self.policy_1
+        elif tutorial_phase == 2:
+            self.policy = self.policy_2()
+
+
+        elif tutorial_phase == 3:
+            self.route_sequence = []
+            self.route_sequence.append([Action.STAY for _ in range(3)])
+            self.route_sequence.append(self.start2pass)
+            for _ in range(3):
+                self.route_sequence.append(['wait4onion'])
+                self.route_sequence.append([Action.STAY for i in range(2)]+[Action.INTERACT] + self.pass2pot + [Action.INTERACT] + self.pot2pass)
+            self.route_sequence.append(['wait4dish'])
+            self.route_sequence.append([Action.STAY for i in range(2)] + [Action.INTERACT] + self.pass2pot)
+            self.route_sequence.append(['wait4soup'])
+            self.route_sequence.append([Direction.WEST] + self.pot2pass + [Action.INTERACT]) # unknown error requires adding extra west
+            self.route_sequence.append(['stay'])
+            self.dumping_route = None
+
+            self.route_idx = 0
+            self.checkpoint_tick = 0
+            self.policy = self.policy_3
+        else:
+            raise ValueError("Invalid tutorial phase")
+
     def action(self, state):
         self.curr_tick += 1
-        if self.curr_phase == 0:
-            return (
-                self.COOK_SOUP_LOOP[self.curr_tick % len(self.COOK_SOUP_LOOP)],
-                None,
-            )
-        elif self.curr_phase == 2:
-            return (
-                self.COOK_SOUP_COOP_LOOP[
-                    self.curr_tick % len(self.COOK_SOUP_COOP_LOOP)
-                ],
-                None,
-            )
+        if self.tutorial_phase == 0:
+            return (self.policy[self.curr_tick % len(self.policy)], None)
+        elif self.tutorial_phase == 1:
+            return (self.policy(state), None)
+        elif self.tutorial_phase == 2:
+            return (self.policy[self.curr_tick % len(self.policy)], None)
+        elif self.tutorial_phase == 3:
+            return (self.policy(state), None)
+
         return Action.STAY, None
+
+    def get_AI_soup(self, state):
+        """ Returns the number of onions in the AI's pot """
+        all_soups = state.unowned_objects_by_type['soup']
+        if len(all_soups) == 0:
+            raise ValueError("IWas expecting soup")
+        elif len(all_soups) == 1:
+            AI_soup = all_soups[0]
+            return AI_soup
+        elif len(all_soups) > 1:
+            y_coords = [soup.position[1] for soup in all_soups]
+            idx = int(y_coords[0]>y_coords[1]) #index of AI soup
+            AI_soup = all_soups[idx]
+            return AI_soup
+        else:
+            raise ValueError("Invalid number of soups in pot")
+
+    @property
+    def route_tick(self):
+        return self.curr_tick - self.checkpoint_tick
+
+    def policy_1(self,state):
+        route = self.route_sequence[self.route_idx]
+
+
+        AI = state.players[1]  # get AI player
+
+        # Advance Route
+        if self.route_tick >= len(route):
+            if AI.has_object():
+                if AI.get_object().name == 'dish':
+                    soup = self.get_AI_soup(state)
+                    if soup.is_ready: return Action.INTERACT
+                    else: return Action.STAY
+
+            self.route_idx += 1
+            self.route_idx %= len(self.route_sequence)  # loops routes
+            self.checkpoint_tick = self.curr_tick
+            route = self.route_sequence[self.route_idx]
+
+        # check if slipped
+
+        if AI.dropped_obj == 'onion':
+            self.checkpoint_tick = self.curr_tick
+            self.slipped_route = self.puddle2onion + [Action.INTERACT]
+        elif AI.dropped_obj == 'dish':
+            self.checkpoint_tick = self.curr_tick
+            self.slipped_route = self.puddle2dish + [Action.INTERACT]
+        # elif AI.dropped_obj != 'none':
+        #     print(f'Dropped unknown object: {AI.dropped_obj}')
+
+        # Reroute if slipped
+        if self.slipped_route is not None:
+            action = self.slipped_route[self.route_tick]
+            if self.route_tick >= len(self.slipped_route)-1: # slipped_rout complete
+                self.slipped_route = None
+                self.checkpoint_tick = self.curr_tick
+
+        # Otherwise continue on main route
+        else:
+            action = route[self.route_tick]
+
+        return action
+
+    def policy_2(self):
+        # Form Main Loop
+        loop = []
+        loop += self.start2onion
+
+        for _ in range(3):  # bring 3 onions
+            loop += [Action.INTERACT]
+            loop += self.obj2pot_detour
+            loop += [Action.INTERACT]
+            loop += self.pot2onion
+        loop += self.onion2dish
+        loop += [Action.INTERACT]
+        loop += self.obj2pot_detour
+        loop += [Action.STAY for _ in range(4)]  # plates soup
+        loop += [Action.INTERACT]  # plates soup
+        loop += self.pot2service
+        loop += [Action.INTERACT]  # deliver soup
+        loop += self.service2start
+
+        return loop
+
+
+    def policy_0(self):
+        # Form Main Loop
+        loop = []
+        loop += self.start2onion
+
+        for _ in range(3): # bring 3 onions
+            loop += [Action.INTERACT]
+            loop += self.obj2pot
+            loop += [Action.INTERACT]
+            loop += self.pot2onion
+        loop += self.onion2dish
+        loop += [Action.INTERACT]
+        loop += self.obj2pot
+        loop += [Action.STAY for _ in range(5)] # plates soup
+        loop += [Action.INTERACT] # plates soup
+        loop += self.pot2service
+        loop += [Action.INTERACT] # deliver soup
+        loop += self.service2start
+
+        return loop
+
+    def policy_3(self, state):
+        route = self.route_sequence[self.route_idx]
+        AI = state.players[1]  # get AI player
+
+        if self.dumping_route is not None:
+            # print('dumping route')
+            action = self.dumping_route[self.route_tick]
+            if self.route_tick >= len(self.dumping_route) - 1:  # slipped_rout complete
+                self.dumping_route = None
+                self.checkpoint_tick = self.curr_tick
+            return action
+        elif 'stay' in route:
+            if AI.has_object():
+                if AI.get_object().name == 'soup':
+                    return Action.INTERACT
+            return Action.STAY
+        elif 'wait4onion' in route:
+            # print('wait4onion route')
+            pass_pos = (AI.position[0] + Direction.SOUTH[0], AI.position[1] + Direction.SOUTH[1])
+            # print(pass_pos,state.has_object(pass_pos))
+            if state.has_object(pass_pos):
+                counter_obj = state.get_object(pass_pos)
+                if counter_obj.name == 'onion':
+                    self.route_idx += 1
+                    self.route_idx %= len(self.route_sequence)
+                    self.checkpoint_tick = self.curr_tick
+                    route = self.route_sequence[self.route_idx]
+                    action = route[self.route_tick]
+                    return action
+                elif counter_obj.name == 'dish':
+                    print('dumping dish')
+                    self.dumping_route =  self.pass2dump
+                    self.checkpoint_tick = self.curr_tick
+                    return Action.STAY
+            else: return Action.STAY
+
+        elif 'wait4dish' in route:
+            # print('wait4dish route')
+            pass_pos = (AI.position[0] + Direction.SOUTH[0], AI.position[1] + Direction.SOUTH[1])
+            if state.has_object(pass_pos):
+                counter_obj = state.get_object(pass_pos)
+
+                if counter_obj.name == 'dish':
+                    self.route_idx += 1
+                    self.route_idx %= len(self.route_sequence)
+                    self.checkpoint_tick = self.curr_tick
+                    route = self.route_sequence[self.route_idx]
+                    action = route[self.route_tick]
+                    return action
+                elif counter_obj.name == 'onion':
+                    self.dumping_route = self.pass2dump
+                    self.checkpoint_tick = self.curr_tick
+                    return Action.STAY
+            else: return Action.STAY
+        elif 'wait4soup' in route:
+            # print('wait4soup route')
+            if AI.has_object():
+                if AI.get_object().name == 'dish':
+                    soup = self.get_AI_soup(state)
+                    if soup.is_ready:
+                        self.route_idx += 1
+                        self.route_idx %= len(self.route_sequence)
+                        self.checkpoint_tick = self.curr_tick
+
+                        print(self.route_sequence[self.route_idx],self.route_tick)
+                        return Action.INTERACT
+                    else:
+                        return Action.STAY
+            else: raise ValueError("Expecting dish in hand")
+        else:
+            # print('standard route')
+            # Advance Route
+            if self.route_tick >= len(route):
+                self.route_idx += 1
+                self.route_idx %= len(self.route_sequence)  # loops routes
+                self.checkpoint_tick = self.curr_tick
+                # route = self.route_sequence[self.route_idx]
+                return Action.STAY
+
+            action = route[self.route_tick]
+            return action
+
+
+
 
     def reset(self):
         self.curr_tick = -1
         self.curr_phase += 1
+
+
+#
+#
+# class TutorialAI:
+#     COOK_SOUP_LOOP = [
+#         # Grab first onion
+#         Direction.WEST,
+#         Direction.WEST,
+#         Direction.WEST,
+#         Action.INTERACT,
+#         # Place onion in pot
+#         Direction.EAST,
+#         Direction.NORTH,
+#         Action.INTERACT,
+#         # Grab second onion
+#         Direction.WEST,
+#         Action.INTERACT,
+#         # Place onion in pot
+#         Direction.EAST,
+#         Direction.NORTH,
+#         Action.INTERACT,
+#         # Grab third onion
+#         Direction.WEST,
+#         Action.INTERACT,
+#         # Place onion in pot
+#         Direction.EAST,
+#         Direction.NORTH,
+#         Action.INTERACT,
+#         # Cook soup
+#         Action.INTERACT,
+#         # Grab plate
+#         Direction.EAST,
+#         Direction.SOUTH,
+#         Action.INTERACT,
+#         Direction.WEST,
+#         Direction.NORTH,
+#         # Deliver soup
+#         Action.INTERACT,
+#         Direction.EAST,
+#         Direction.EAST,
+#         Direction.EAST,
+#         Action.INTERACT,
+#         Direction.WEST,
+#     ]
+#
+#     COOK_SOUP_COOP_LOOP = [
+#         # Grab first onion
+#         Direction.WEST,
+#         Direction.WEST,
+#         Direction.WEST,
+#         Action.INTERACT,
+#         # Place onion in pot
+#         Direction.EAST,
+#         Direction.SOUTH,
+#         Action.INTERACT,
+#         # Move to start so this loops
+#         Direction.EAST,
+#         Direction.EAST,
+#         # Pause to make cooperation more real time
+#         Action.STAY,
+#         Action.STAY,
+#         Action.STAY,
+#         Action.STAY,
+#         Action.STAY,
+#         Action.STAY,
+#         Action.STAY,
+#         Action.STAY,
+#         Action.STAY,
+#     ]
+#
+#     def __init__(self):
+#         self.curr_phase = -1
+#         self.curr_tick = -1
+#
+#     def action(self, state):
+#         self.curr_tick += 1
+#         if self.curr_phase == 0:
+#             return (
+#                 self.COOK_SOUP_LOOP[self.curr_tick % len(self.COOK_SOUP_LOOP)],
+#                 None,
+#             )
+#         elif self.curr_phase == 2:
+#             return (
+#                 self.COOK_SOUP_COOP_LOOP[
+#                     self.curr_tick % len(self.COOK_SOUP_COOP_LOOP)
+#                 ],
+#                 None,
+#             )
+#         return Action.STAY, None
+#
+#     def reset(self):
+#         self.curr_tick = -1
+#         self.curr_phase += 1

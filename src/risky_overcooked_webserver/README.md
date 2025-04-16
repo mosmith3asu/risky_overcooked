@@ -1,3 +1,10 @@
+# Devel
+To run local server with Flask (no docker image)
+```bash
+python ./server/app.py
+```
+
+
 # Docker Scripts
 
 Force recreate
@@ -9,3 +16,6 @@ Delete all build records
 docker buildx history rm --all
 docker buildx prune --all
 ```
+
+# Notes
+- may have to remove `graphics.js` from `static/js/` when using docker. this was added manually

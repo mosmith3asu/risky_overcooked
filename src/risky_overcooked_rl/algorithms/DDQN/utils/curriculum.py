@@ -133,9 +133,9 @@ class CirriculumTrainer(Trainer):
 
 
         self.logger.wait_for_close(enable=self.wait_for_close)
-        # self.logger.wait_for_close(enable=True)
         self.logger.close_plots()
-        if self.auto_save and self.curriculum.is_failing(it, self.ITERATIONS): self.save()
+        if self.auto_save and not self.curriculum.is_failing(it, self.ITERATIONS):
+            self.save(save_model=True, save_fig=True)
 
     def curriculum_rollout(self, it, rationality,epsilon,rshape_scale,p_rand_start=0):
         self.model.rationality = rationality
@@ -452,13 +452,6 @@ class Curriculum:
         # elif status.lower() == 'off':  self.set_cirriculum(**self.cirriculums[self.current_cirriculum])
         # else: raise ValueError(f"Invalid curriculum test mode status '{status}'. Use 'on' or 'off'")
         pass
-
-    # def random_start_state(self):
-    #     state = self.add_random_start_loc()
-    #     state = self.add_random_start_pot_state(state)
-    #     state = self.add_random_held_obj(state)
-    #     # state = self.add_random_counter_state(state)
-    #     return state
 
     def add_random_start_loc(self):
         random_state = self.mdp.get_random_start_state_fn(random_start_pos=True, rnd_obj_prob_thresh=0.0)()

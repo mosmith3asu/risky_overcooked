@@ -134,6 +134,11 @@ def try_create_game(game_name, **kwargs):
         - Runtime error if server is at max game capacity
         - Propogate any error that occured in game __init__ function
     """
+    # curr_id = FREE_IDS.get(block=False)
+    # assert FREE_MAP[curr_id], "Current id is already in use"
+    # game_cls = GAME_NAME_TO_CLS.get(game_name, OvercookedGame)
+    # print(game_cls.__name__, kwargs)
+    # game = game_cls(id=curr_id, **kwargs)
     try:
         curr_id = FREE_IDS.get(block=False)
         assert FREE_MAP[curr_id], "Current id is already in use"
@@ -391,11 +396,12 @@ def consent():
 
 @app.route("/experiment")
 def experiment():
-    return render_template("experiment.html")
+    return render_template("experiment.html",  tutorial_config=TUTORIAL_CONFIG)
 
 
 @app.route("/tutorial")
 def tutorial():
+    # print(TUTORIAL_CONFIG)
     return render_template("tutorial.html", config=TUTORIAL_CONFIG)
 
 
@@ -589,6 +595,7 @@ def on_connect():
         return
 
     USERS[user_id] = Lock()
+    print(user_id)
 
 
 @socketio.on("disconnect")

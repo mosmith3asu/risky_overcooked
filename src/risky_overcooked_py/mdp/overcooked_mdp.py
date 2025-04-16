@@ -714,6 +714,7 @@ class PlayerState(object):
         self.orientation = tuple(orientation)
         self.held_object = held_object
         self.idx = idx
+        self.dropped_obj = 'none'
 
         assert self.orientation in Direction.ALL_DIRECTIONS
         if self.held_object is not None:
@@ -776,6 +777,7 @@ class PlayerState(object):
         return {
             "position": self.position,
             "orientation": self.orientation,
+            "dropped_obj": self.dropped_obj,
             "held_object": self.held_object.to_dict()
             if self.held_object is not None
             else None,
@@ -789,94 +791,6 @@ class PlayerState(object):
             player_dict["held_object"] = SoupState.from_dict(held_obj)
         return PlayerState(**player_dict)
 
-#
-# class PlayerState(object):
-#     """
-#     State of a player in OvercookedGridworld.
-#
-#     position: (x, y) tuple representing the player's location.
-#     orientation: Direction.NORTH/SOUTH/EAST/WEST representing orientation.
-#     held_object: ObjectState representing the object held by the player, or
-#                  None if there is no such object.
-#     """
-#
-#     def __init__(self, position, orientation,held_object=None):
-#         self.position = tuple(position)
-#         self.orientation = tuple(orientation)
-#         self.held_object = held_object
-#
-#         assert self.orientation in Direction.ALL_DIRECTIONS
-#         if self.held_object is not None:
-#             assert isinstance(self.held_object, ObjectState)
-#             assert self.held_object.position == self.position
-#
-#     @property
-#     def pos_and_or(self):
-#         return (self.position, self.orientation)
-#
-#     def has_object(self):
-#         return self.held_object is not None
-#
-#     def get_object(self):
-#         assert self.has_object()
-#         return self.held_object
-#
-#     def set_object(self, obj):
-#         assert not self.has_object()
-#         # obj.player_interacts = [False, False]
-#         obj.position = self.position
-#         self.held_object = obj
-#
-#     def remove_object(self):
-#         assert self.has_object()
-#         obj = self.held_object
-#         self.held_object = None
-#         return obj
-#
-#     def update_pos_and_or(self, new_position, new_orientation):
-#         self.position = new_position
-#         self.orientation = new_orientation
-#         if self.has_object():
-#             self.get_object().position = new_position
-#
-#     def deepcopy(self):
-#         new_obj = (
-#             None if self.held_object is None else self.held_object.deepcopy()
-#         )
-#         return PlayerState(self.position, self.orientation, new_obj)
-#
-#     def __eq__(self, other):
-#         return (
-#             isinstance(other, PlayerState)
-#             and self.position == other.position
-#             and self.orientation == other.orientation
-#             and self.held_object == other.held_object
-#         )
-#
-#     def __hash__(self):
-#         return hash((self.position, self.orientation, self.held_object))
-#
-#     def __repr__(self):
-#         return "{} facing {} holding {}".format(
-#             self.position, self.orientation, str(self.held_object)
-#         )
-#
-#     def to_dict(self):
-#         return {
-#             "position": self.position,
-#             "orientation": self.orientation,
-#             "held_object": self.held_object.to_dict()
-#             if self.held_object is not None
-#             else None,
-#         }
-#
-#     @staticmethod
-#     def from_dict(player_dict):
-#         player_dict = copy.deepcopy(player_dict)
-#         held_obj = player_dict.get("held_object", None)
-#         if held_obj is not None:
-#             player_dict["held_object"] = SoupState.from_dict(held_obj)
-#         return PlayerState(**player_dict)
 
 
 class OvercookedState(object):
@@ -1793,6 +1707,10 @@ class OvercookedGridworld(object):
                     obj = new_player.remove_object() # remove item from players hand and the environment
                     dropped_reward_by_player[player_idx] = self.dropped_object_rewards[obj.name]
                     self.log_object_slip(events_infos, obj.name, player_idx) # add event flag for later animation update
+                    new_player.dropped_obj = obj.name
+                else:
+                    new_player.dropped_obj = 'none'
+
 
         return dropped_reward_by_player
 

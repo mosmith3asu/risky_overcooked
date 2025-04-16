@@ -18,7 +18,7 @@
     },
     "tutorial" : {
         "tutorialParams" : {
-            "layouts" : ["tutorial_3", "tutorial_2", "tutorial_1", "tutorial_0"],
+            "layouts" : ["risky_tutorial_0", "risky_tutorial_1", "risky_tutorial_2", "risky_tutorial_3" ],
             "playerZero" : "human",
             "playerOne" : "TutorialAI",
             "phaseTwoScore" : 34

@@ -134,8 +134,6 @@ class Trainer:
         if self.enable_report: self.print_config(master_config)
 
 
-
-
     @property
     def fname(self):
         if (self.cpt_params['b'] == 0
@@ -179,8 +177,9 @@ class Trainer:
         # data['test_interval'] = master_config['trainer']['test_interval']
         # data['shared_rew'] = master_config['trainer']['shared_rew']
         data['feasible_actions'] = master_config['trainer']['feasible_actions']
+        data['Auto Save'] = master_config['save']['auto_save']
 
-        data['SCHEDULES'] = '================================'
+        # data['SCHEDULES'] = '================================'
         data['epsilon'] = list(master_config['trainer']['schedules']['epsilon_sched'].values())
         data['random start'] = list(master_config['trainer']['schedules']['rand_start_sched'].values())
         data['rew shaping'] = list(master_config['trainer']['schedules']['rshape_sched'].values())

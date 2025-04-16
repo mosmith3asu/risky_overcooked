@@ -14,8 +14,7 @@ env:
   'shared_rew': False                  # share reward between agents
 # Learning Params ----------------
 trainer:
-#    'ITERATIONS': 15_000                    # total number of training iterations
-    'ITERATIONS': 20                    # total number of training iterations
+    'ITERATIONS': 15_000                    # total number of training iterations
     'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
     'obs_shape': nan                      # Overridden during execution depending on layout
     'joint_action_shape': 36              # number of joint actions
@@ -73,7 +72,7 @@ trainer:
 
         enable: True           # enable early stopping
         save_fig: True         # save figure of failed training run
-        save_model: False      # save model of failed training run
+        save_model: True      # save model of failed training run
 
         deliver_soup: 0.2
         pick_up_soup: 0.3

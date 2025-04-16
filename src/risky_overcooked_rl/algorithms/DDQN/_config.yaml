@@ -14,7 +14,7 @@ env:
   'shared_rew': False                  # share reward between agents
 # Learning Params ----------------
 trainer:
-    'ITERATIONS': 15_000                    # total number of training iterations
+    'ITERATIONS': 20                    # total number of training iterations
     'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
     'obs_shape': nan                      # Overridden during execution depending on layout
     'joint_action_shape': 36              # number of joint actions

@@ -15,16 +15,16 @@ jobs:
 #    p_slips: [0.15]
 #  risky_handoff:
 #    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [0.0, 0.2, 0.4]
+#    p_slips: [0.2]
 #  risky_roundabout:
 #    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [0.1, 0.3, 0.5 ]
+#    p_slips: [0.4 ]
 #  risky_forced_coordination:
 #    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [0.1, 0.15, 0.2 ]
+#    p_slips: [0.2]
 #  risky_mixed_coordination:
 #    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [0.1, 0.2, 0.3 ]
+#    p_slips: [0.2]
 
   risky_tree:
     agents: [ 'averse','neutral','seeking' ]

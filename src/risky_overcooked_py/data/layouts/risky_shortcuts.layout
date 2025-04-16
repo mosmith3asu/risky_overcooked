@@ -6,8 +6,7 @@
                 X  W XX X
                 X12X    X
                 D  X    X
-                XOOXXXXXX
-                """,
+                XOOXXXXXX""",
     "start_bonus_orders": [],
     "start_all_orders" : [
         { "ingredients" : ["onion", "onion", "onion"]}

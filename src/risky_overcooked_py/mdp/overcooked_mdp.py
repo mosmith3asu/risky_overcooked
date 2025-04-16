@@ -2231,7 +2231,7 @@ class OvercookedGridworld(object):
         width = len(grid[0])
 
         # Make sure the grid is not ragged
-        assert all(len(row) == width for row in grid), "Ragged grid"
+        assert all(len(row) == width for row in grid), 'Ragged grid' + ''.join(["\n"+str(r) for r in grid])
 
         # Borders must not be free spaces
         def is_not_free(c):
@@ -2257,20 +2257,20 @@ class OvercookedGridworld(object):
         assert all(
             # c in "XOPDST123456789 " for c in all_elements
             c in "XWOPDST123456789 " for c in all_elements
-        ), "Invalid character in grid"
-        assert all_elements.count("1") == 1, "'1' must be present exactly once"
+        ), "Invalid character in grid" + ''.join(["\n"+str(r) for r in grid])
+        assert all_elements.count("1") == 1, "'1' must be present exactly once" + ''.join(["\n"+str(r) for r in grid])
         assert (
             all_elements.count("D") >= 1
-        ), "'D' must be present at least once"
+        ), "'D' must be present at least once" + ''.join(["\n"+str(r) for r in grid])
         assert (
             all_elements.count("S") >= 1
-        ), "'S' must be present at least once"
+        ), "'S' must be present at least once" + ''.join(["\n"+str(r) for r in grid])
         assert (
             all_elements.count("P") >= 1
-        ), "'P' must be present at least once"
+        ), "'P' must be present at least once" + ''.join(["\n"+str(r) for r in grid])
         assert (
             all_elements.count("O") >= 1 or all_elements.count("T") >= 1
-        ), "'O' or 'T' must be present at least once"
+        ), "'O' or 'T' must be present at least once" + ''.join(["\n"+str(r) for r in grid])
 
     ################################
     # EVENT LOGGING HELPER METHODS #

@@ -14,7 +14,8 @@ env:
   'shared_rew': False                  # share reward between agents
 # Learning Params ----------------
 trainer:
-    'ITERATIONS': 15_000                    # total number of training iterations
+#    'ITERATIONS': 15_000                    # total number of training iterations
+    'ITERATIONS': 20                    # total number of training iterations
     'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
     'obs_shape': nan                      # Overridden during execution depending on layout
     'joint_action_shape': 36              # number of joint actions
@@ -126,7 +127,7 @@ save:
     'loads': ''             # loaded model
     'fname_ext': ''         # filename extension added during runtime
     'wait_for_close': False  # halt execution after done training until user closes the window
-    'auto_save': False      # automatically save the model after training + logger closed
+    'auto_save': True      # automatically save the model after training + logger closed
     'checkpoint_mem': 10    # number of iterations to average checkpoint check over (keeps latest)
     'date': nan             # date of training run
 

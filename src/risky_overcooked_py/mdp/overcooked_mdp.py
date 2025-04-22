@@ -1133,6 +1133,7 @@ class OvercookedGridworld(object):
         order_bonus=2,
         start_state=None,
         old_dynamics=True, # old_dynamics=False,
+        p_slip = None,
         **kwargs
     ):
         """
@@ -1189,11 +1190,13 @@ class OvercookedGridworld(object):
 
         # ADDED
         self.reachable_counters = self.get_reachable_counters()
-        self.p_slip = 0.25
+
+        if "W" in terrain: assert p_slip!= None, "p_slip must be specified if there are puddles in the terrain"
+        self.p_slip = p_slip
+        # self.p_slip = kwargs.get("p_slip",0.0)
         self.old_reward_shaping = False # False uses shaped reward that keeps track of handoffs between agents
         self.shared_reward_split = False # when both agents contribute to shaped reward {True: each receive half| False: each receive full}
         self.dropped_object_rewards = {
-            # 'onion': -1, 'dish': -2, 'soup': -5
             'onion': 0, 'dish': 0, 'soup': 0
         }
     @staticmethod
@@ -1292,6 +1295,7 @@ class OvercookedGridworld(object):
             and self.start_all_orders == other.start_all_orders
             and self.reward_shaping_params == other.reward_shaping_params
             and self.layout_name == other.layout_name
+            and self.p_slip == other.p_slip
         )
 
     def copy(self):
@@ -1302,6 +1306,7 @@ class OvercookedGridworld(object):
             rew_shaping_params=copy.deepcopy(self.reward_shaping_params),
             layout_name=self.layout_name,
             start_all_orders=self.start_all_orders,
+            p_slip=self.p_slip
         )
 
     @property
@@ -1313,6 +1318,7 @@ class OvercookedGridworld(object):
             "start_bonus_orders": self.start_bonus_orders,
             "rew_shaping_params": copy.deepcopy(self.reward_shaping_params),
             "start_all_orders": self.start_all_orders,
+            "p_slip": 0.15
         }
 
     ##############

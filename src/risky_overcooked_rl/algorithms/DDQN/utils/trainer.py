@@ -71,8 +71,10 @@ class Trainer:
         p_slip = env_config['p_slip']
         horizon = env_config['HORIZON']
 
-        self.mdp = OvercookedGridworld.from_layout_name(layout)
-        self.mdp.p_slip = p_slip
+        overwrite = {}
+        if p_slip != 'default' and p_slip != 'def':
+            overwrite['p_slip'] = p_slip
+        self.mdp = OvercookedGridworld.from_layout_name(layout,**overwrite)
         self.env = OvercookedEnv.from_mdp(self.mdp, horizon=horizon,time_cost=time_cost)
         obs_shape = self.mdp.get_lossless_encoding_vector_shape()
         master_config['trainer']['obs_shape'] = obs_shape

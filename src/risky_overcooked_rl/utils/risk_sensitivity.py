@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import deque
 from matplotlib.backends.backend_agg import FigureCanvasAgg
-import imageio
+
 import random
 
 
@@ -508,6 +508,7 @@ class CumulativeProspectTheory(object):
         return Fk
 
 def animation():
+    import imageio
     fps = 10
     fname = 'CPT_animation'
     IMGS = []

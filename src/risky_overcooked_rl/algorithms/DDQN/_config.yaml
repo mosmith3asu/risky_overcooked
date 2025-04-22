@@ -6,8 +6,8 @@
 env:
 #  'LAYOUT': "risky_coordination_ring"   # layout name
 #  "p_slip": 0.4                         # probability of slipping in puddle
-  'LAYOUT': "risky_multipath"   # layout name
-  "p_slip": 0.15                         # probability of slipping in puddle
+  'LAYOUT': "risky_multipath"           # layout name
+  "p_slip": 'default'                    # probability of slipping in puddle (= default uses p_slip specified in *.layout)
 
   'HORIZON': 200                        # number of time steps per episode
   'time_cost': -0.2                     # cost per time step (<0: -0.2 ==> 1soup/100steps)

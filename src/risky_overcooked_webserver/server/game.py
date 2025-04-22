@@ -7,19 +7,9 @@ from queue import Empty, Full, LifoQueue, Queue
 from threading import Lock, Thread
 from time import time
 
-
+import numpy as np
+import torch
 from utils import DOCKER_VOLUME, create_dirs
-# import ray
-# from human_aware_rl.rllib.rllib import load_agent
-# from overcooked_ai_py.mdp.actions import Action, Direction
-# from overcooked_ai_py.mdp.overcooked_env import OvercookedEnv
-# from overcooked_ai_py.mdp.overcooked_mdp import OvercookedGridworld
-# from overcooked_ai_py.planning.planners import (
-#     NO_COUNTERS_PARAMS,
-#     MotionPlanner,
-# )
-# from human_aware_rl.rllib.rllib import load_agent
-
 from risky_overcooked_py.mdp.actions import Action, Direction
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
@@ -27,7 +17,8 @@ from risky_overcooked_py.planning.planners import (
     NO_COUNTERS_PARAMS,
     MotionPlanner,
 )
-
+from risky_overcooked_rl.utils.belief_update import BayesianBeliefUpdate
+from risky_overcooked_rl.algorithms.DDQN.utils.agents import DQN_vector_feature
 # Relative path to where all static pre-trained agents are stored on server
 AGENT_DIR = None
 
@@ -180,6 +171,7 @@ class Game(ABC):
         """
         Restarts the game while keeping all active players by resetting game stats and temporarily disabling `tick`
         """
+
         if not self.is_active:
             raise ValueError("Inactive Games cannot be reset")
         if self.is_finished():
@@ -437,6 +429,13 @@ class OvercookedGame(Game):
         self.layouts = layouts
         self.max_players = int(num_players)
         self.mdp = None
+
+        self.debug = True
+
+        # self.mdp_params["p_slip"] = kwargs.get("p_slips", [0.0])[0]
+        # self.mdp = OvercookedGridworld.from_layout_name(
+        #     layouts[0], **self.mdp_params
+        # )
         self.mp = None
         self.score = 0
         self.phi = 0
@@ -455,6 +454,8 @@ class OvercookedGame(Game):
         self.curr_tick = 0
         self.human_players = set()
         self.npc_players = set()
+
+        self.client_ready = True
 
         if randomized:
             random.shuffle(self.layouts)
@@ -493,6 +494,7 @@ class OvercookedGame(Game):
         return time() - self.start_time >= self.max_time
 
     def needs_reset(self):
+        # return False
         return self._curr_game_over() and not self.is_finished()
 
     def add_player(self, player_id, idx=None, buff_size=-1, is_human=True):
@@ -543,6 +545,8 @@ class OvercookedGame(Game):
         """
         Game is ready to be activated if there are a sufficient number of players and at least one human (spectator or player)
         """
+        # server_ready = super(OvercookedGame, self).is_ready() and not self.is_empty()
+        # return  server_ready and self.client_ready
         return super(OvercookedGame, self).is_ready() and not self.is_empty()
 
     def apply_action(self, player_id, action):
@@ -634,6 +638,24 @@ class OvercookedGame(Game):
         self.mdp = OvercookedGridworld.from_layout_name(
             self.curr_layout, **self.mdp_params
         )
+
+        if self.debug:
+            print(f'\n\nActivating OvercookedGame...')
+            print("\tLayout: {}".format(self.curr_layout))
+            print("\tp_slip: {}".format(self.mdp.p_slip))
+            print("\tWrite data: {}".format(self.write_data))
+
+        for key,val in self.npc_policies.items():
+            if isinstance(val, ToMAI):
+                self.npc_policies[key].activate(self.mdp)
+
+                if self.debug:
+                    print("\tCanidates...")
+                    for can_fname in self.npc_policies[key].candidate_fnames:
+                        print("\t\t{}".format(can_fname))
+
+
+
         if self.show_potential:
             self.mp = MotionPlanner.from_pickle_or_compute(
                 self.mdp, counter_goals=NO_COUNTERS_PARAMS
@@ -666,6 +688,7 @@ class OvercookedGame(Game):
 
         # Clear all action queues
         self.clear_pending_actions()
+        # self.client_ready = False
 
     def get_state(self):
         state_dict = {}
@@ -684,17 +707,28 @@ class OvercookedGame(Game):
         return obj_dict
 
     def get_policy(self, npc_id, idx=0):
-        if npc_id.lower().startswith("rllib"):
-            try:
-                # Loading rllib agents requires additional helpers
-                fpath = os.path.join(AGENT_DIR, npc_id, "agent")
-                fix_bc_path(fpath)
-                agent = load_agent(fpath, agent_index=idx)
-                return agent
-            except Exception as e:
-                raise IOError(
-                    "Error loading Rllib Agent\n{}".format(e.__repr__())
-                )
+        # print("Loading agent {}".format(npc_id))
+        if npc_id.lower() == "rs-tom":
+            # print("Loading agent {}".format(npc_id))
+            # Load the RS-TOM agent
+            try: return ToMAI(['averse','neutral','seeking'])
+            except Exception as e:  raise IOError("Error loading Rllib Agent\n{}".format(e.__repr__()))
+        elif npc_id.lower() == "rational":
+            try: return ToMAI(['neutral'])
+
+            except Exception as e: raise IOError("Error loading Rllib Agent\n{}".format(e.__repr__()))
+
+        # elif npc_id.lower().startswith("rllib"):
+        #     try:
+        #         # Loading rllib agents requires additional helpers
+        #         fpath = os.path.join(AGENT_DIR, npc_id, "agent")
+        #         fix_bc_path(fpath)
+        #         agent = load_agent(fpath, agent_index=idx)
+        #         return agent
+        #     except Exception as e:
+        #         raise IOError(
+        #             "Error loading Rllib Agent\n{}".format(e.__repr__())
+        #         )
         else:
             try:
                 fpath = os.path.join(AGENT_DIR, npc_id, "agent.pickle")
@@ -718,6 +752,7 @@ class OvercookedGame(Game):
             # create necessary dirs
             data_path = create_dirs(configs, self.curr_layout)
             # the 3-layer-directory structure should be able to uniquely define any experiment
+            print("Writing data to {}".format(data_path))
             with open(os.path.join(data_path, "result.pkl"), "wb") as f:
                 pickle.dump(data, f)
         return data
@@ -1054,7 +1089,6 @@ class TutorialAI:
 
         return loop
 
-
     def policy_0(self):
         # Form Main Loop
         loop = []
@@ -1158,12 +1192,266 @@ class TutorialAI:
             action = route[self.route_tick]
             return action
 
-
-
-
     def reset(self):
         self.curr_tick = -1
         self.curr_phase += 1
+
+
+
+class ToMAI:
+    """
+    AI that is used for the ToM agent. It is a simple AI that follows a set of instructions to complete the game.
+    It is used to test the ToM agent and its ability to predict the actions of the AI.
+    """
+
+    def __init__(self, candidates, device = 'cpu' ):
+        """
+        :param layout: layout for which to load model
+        :param candidates: used as fname extension while loading eg: RS-ToM=['averse','neutral','rational']
+        """
+        # Parse args
+        self.mdp = None
+        self.layout = None
+        self.p_slip = None
+        self.device = device
+
+        # Load Policies
+        self.candidates = candidates
+        self.candidate_fnames = None
+        self.policies = None
+        self.n_candidates = None
+
+        # Instantiate Belief Updater
+        self.belief = None
+
+
+    def activate(self,mdp):
+        """ Activates when the game is activated. This is used to load the policies and instantiate the belief updater."""
+        self.mdp = mdp
+        self.layout = mdp.layout_name
+        self.p_slip = mdp.p_slip
+
+        # Load Policies
+        self.candidate_fnames = [f'{self.layout}_pslip{str(self.p_slip).replace(".", "")}__{candidate}.pt' for candidate
+                                 in self.candidates]
+        self.policies = self.load_policies(self.candidate_fnames)
+        self.n_candidates = len(self.policies)
+
+        # Instantiate Belief Updater
+        self.belief = BayesianBeliefUpdate(self.policies, self.policies, names=self.candidates)
+        self.belief.reset_prior()
+
+
+    def load_policies(self, candidate_fnames):
+        """
+        Loads the policies for the AI. This is used to test the ToM agent and its ability to predict the actions of the AI.
+        """
+        # print(f"All fnames {candidate_fnames}")
+        policies = []
+        for fname in candidate_fnames:
+            PATH = AGENT_DIR+ f'/RiskSensitiveAI/{fname}'
+            if not os.path.exists(PATH):
+                raise ValueError(f"Policy file {PATH} does not exist")
+            try:
+                policies.append(TorchPolicy(PATH,self.device))
+            except Exception as e:
+                raise print(f"Error loading policy from {PATH}\n{e}")
+        return policies
+
+
+    def observe(self,state,partner_action,ego_action):
+        """
+        :param obs: encoded state vector compliant with the ToM agent's models
+        :param joint_action:
+        :return:
+        """
+        if self.n_candidates >1:
+            obs = self.env.mdp.get_lossless_encoding_vector_astensor(state, device=self.device).unsqueeze(0)
+
+            # Calc Joint Action
+            partner_iA = Action.ACTION_TO_INDEX[partner_action]
+            ego_iA = Action.ACTION_TO_INDEX[ego_action]
+            action_idxs = (ego_iA, partner_iA)
+            joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
+            self.belief.update_belief(obs, joint_action_idx)
+
+    def action(self, state):
+        obs = self.mdp.get_lossless_encoding_vector_astensor(state, device=self.device).unsqueeze(0)
+        ego_policy = self.belief.best_response  if self.n_candidates >1 else self.policies[0]
+        action = ego_policy.action(obs)
+        return action, None
+
+    def reset(self):
+        pass
+
+class TorchPolicy:
+    """Handles Torch.NN interface and action selection.
+    Is lightweight version of SelfPlay_QRE_OSA agent
+    """
+    def __init__(self,PATH, device, action_selection='softmax',ego_idx = 1,
+                 num_hidden_layers=5,  size_hidden_layers=128
+                 ):
+        # print(f"TorchPolicy: Loading policy from {PATH}")
+        self.PATH = PATH
+        self.device = device
+        assert action_selection in ['greedy', 'softmax'], "Action selection must be either greedy or softmax"
+        self.action_selection = action_selection
+        self.ego_idx = ego_idx
+        self.num_hidden_layers = num_hidden_layers
+        self.size_hidden_layers = size_hidden_layers
+
+
+        self.player_action_dim = len(Action.ALL_ACTIONS)
+        self.joint_action_dim = len(Action.ALL_JOINT_ACTIONS)
+        self.joint_action_space = Action.ALL_JOINT_ACTIONS
+        self.num_agents = 2
+        self.rationality = 10
+        self.model = self.load_model(PATH)
+        self.eq_sol = "QRE"
+
+
+
+
+    def load_model(self, PATH):
+        loaded_model = torch.load(PATH, weights_only=True, map_location=self.device)
+        # print(f'Geting model data')
+        obs_shape = (loaded_model['layer1.weight'].size()[1],)
+        # size_hidden_layers = loaded_model['layer1.weight'].size()[0]
+        # for key,val in loaded_model.items():
+        #     print(key, "\t", val.size())
+
+        n_actions = self.joint_action_dim
+        model = DQN_vector_feature(obs_shape, n_actions, self.num_hidden_layers, self.size_hidden_layers).to(self.device)
+        model.load_state_dict(loaded_model)
+        return model
+
+    def action(self, obs):
+        with torch.no_grad():
+            NF_Game = self.get_normal_form_game(obs)
+            joint_pA = self.compute_EQ(NF_Game)
+            ego_pA = joint_pA[0,self.ego_idx].detach().cpu().numpy()
+            if self.action_selection == 'greedy':
+                ego_action = Action.INDEX_TO_ACTION[np.argmax(ego_pA)]
+            elif self.action_selection == 'softmax':
+                ia = np.random.choice(np.arange(len(ego_pA)), p=ego_pA)
+                ego_action = Action.INDEX_TO_ACTION[ia]
+        return ego_action
+
+    def choose_joint_action(self, obs, epsilon=0.0, feasible_JAs= None, debug=False):
+        sample = random.random()
+
+        # Explore -------------------------------------
+        if sample < epsilon:
+            action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
+            if feasible_JAs is not None:
+                action_probs = feasible_JAs*action_probs
+                action_probs = action_probs/np.sum(action_probs)
+            joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
+            joint_action = self.joint_action_space[joint_action_idx]
+
+        # Exploit -------------------------------------
+        else:
+            with torch.no_grad():
+                NF_Game = self.get_normal_form_game(obs)
+                joint_action_idx, dists, ne_vs = self.compute_EQ(NF_Game)
+                joint_action_idx = joint_action_idx[0]
+                joint_action = self.joint_action_space[joint_action_idx]
+                action_probs = dists
+
+        return joint_action, joint_action_idx, action_probs
+
+    def compute_EQ(self, NF_Games):
+        NF_Games = NF_Games.reshape(-1, self.num_agents, self.player_action_dim, self.player_action_dim)
+        # Compute equilibrium for each game
+        if self.eq_sol == 'QRE': all_dists = self.level_k_qunatal(NF_Games)
+        # elif self.eq_sol == 'Pareto': all_dists,all_ne_values = self.pareto(NF_Games)
+        # elif self.eq_sol == 'Nash': raise NotImplementedError # not feasible for gen. sum. game
+        else: raise ValueError(f"Invalid EQ solution:{self.eq_sol}")
+        return all_dists
+
+    def level_k_qunatal(self,nf_games, sophistication=4, belief_trick=True):
+        """Implementes a k-bounded QRE computation
+        https://en.wikipedia.org/wiki/Quantal_response_equilibrium
+        as reationality -> infty, QRE -> Nash Equilibrium
+        """
+        rationality = self.rationality
+        batch_sz = nf_games.shape[0]
+        player_action_dim = nf_games.shape[2]
+        uniform_dist = (torch.ones(batch_sz, player_action_dim,device=self.device)) / player_action_dim
+        ego, partner = 0, 1
+
+        def invert_game(g):
+            "inverts perspective of the game"
+            return torch.cat([torch.transpose(g[:, partner, :, :], -1, -2).unsqueeze(1),
+                              torch.transpose(g[:, ego, :, :], -1, -2).unsqueeze(1)], dim=1)
+
+        def softmax(x):
+            return torch.softmax(x,dim=1)
+
+        def step_QRE(game, k):
+            if k == 0:  partner_dist = uniform_dist
+            else:  partner_dist = step_QRE(invert_game(game), k - 1)
+
+            Exp_qAi = torch.bmm(game[:, ego, :, :], partner_dist.unsqueeze(-1)).squeeze(-1)
+            return softmax(rationality * Exp_qAi)
+
+        dist1 = step_QRE(nf_games, sophistication)
+        if belief_trick:
+            # uses dist1 as partner belief prior for +1 sophistication
+            Exp_qAi = torch.bmm(invert_game(nf_games)[:, ego, :, :],dist1.unsqueeze(-1)).squeeze(-1)
+            dist2 = softmax(rationality * Exp_qAi)
+        else: # recomputes dist2 from scratch
+            dist2 = step_QRE(invert_game(nf_games), sophistication)
+        dist = torch.cat([dist1.unsqueeze(1), dist2.unsqueeze(1)], dim=1)
+        # joint_dist_mat = torch.bmm(dist1.unsqueeze(-1), torch.transpose(dist2.unsqueeze(-1), -1, -2))
+
+        # value = self.get_expected_equilibrium_value(nf_games, dist)
+        # if self.optimistic_value_expectation:
+        #     value = torch.zeros(batch_sz, 2, device=self.device)
+        #     pareto_vals = nf_games[:, partner, :] + nf_games[:, ego, :]
+        #     for ib, pval in enumerate(pareto_vals):
+        #         idx = (pval == torch.max(pval)).nonzero().flatten()
+        #         value[ib, ego] += nf_games[ib, ego, idx[0], idx[1]]
+        #         value[ib, partner] += nf_games[ib, partner, idx[0], idx[1]]
+        # else: value = self.get_expected_equilibrium_value(nf_games, dist)
+        #     # value = torch.cat([torch.sum(nf_games[:, ego, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1),
+        #     #          torch.sum(nf_games[:, partner, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1)],dim=1)
+        return dist
+
+
+    def get_normal_form_game(self, obs):
+        """ Batch compute the NF games for each observation"""
+        batch_size = obs.shape[0]
+        all_games = torch.zeros([batch_size, self.num_agents, self.player_action_dim, self.player_action_dim],
+                                device=self.device)
+        for i in range(self.num_agents):
+            if i == 1: obs = self.invert_obs(obs)
+            q_values = self.model(obs).detach()
+            q_values = q_values.reshape(batch_size, self.player_action_dim, self.player_action_dim)
+            all_games[:, i, :, :] = q_values if i == 0 else torch.transpose(q_values, -1, -2)
+        return all_games
+
+    def invert_obs(self,obs,N_PLAYER_FEAT = 9):
+        if isinstance(obs, np.ndarray):
+            _obs = np.concatenate([obs[N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+                                   obs[:N_PLAYER_FEAT],
+                                   obs[2 * N_PLAYER_FEAT:]])
+        elif isinstance(obs, torch.Tensor):
+            n_dim = len(obs.shape)
+            if n_dim == 1:
+                _obs = torch.cat([obs[N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+                                  obs[:N_PLAYER_FEAT],
+                                  obs[2 * N_PLAYER_FEAT:]])
+            elif n_dim == 2:
+                _obs = torch.cat([obs[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+                                  obs[:, :N_PLAYER_FEAT],
+                                  obs[:, 2 * N_PLAYER_FEAT:]], dim=1)
+            else:
+                raise ValueError("Invalid obs dimension")
+        else:
+            raise ValueError("Invalid obs type")
+        return _obs
+
 
 
 #

@@ -32,6 +32,7 @@ from utils import ThreadSafeDict, ThreadSafeSet
 ###########
 # Globals #
 ###########
+DEBUG = True
 
 # Read in global config
 CONF_PATH = os.getenv("CONF_PATH", "config.json")
@@ -94,6 +95,7 @@ USER_ROOMS = ThreadSafeDict()
 
 # Mapping of string game names to corresponding classes
 GAME_NAME_TO_CLS = {
+    # "overcooked": CustomOvercookedGame,
     "overcooked": OvercookedGame,
     "tutorial": OvercookedTutorial,
 }
@@ -275,6 +277,7 @@ def _create_game(user_id, game_name, params={}):
     if not game:
         emit("creation_failed", {"error": err.__repr__()})
         return
+
     spectating = True
     with game.lock:
         if not game.is_full():
@@ -285,18 +288,23 @@ def _create_game(user_id, game_name, params={}):
             game.add_spectator(user_id)
         join_room(game.id)
         set_curr_room(user_id, game.id)
-        if game.is_ready():
-            game.activate()
-            ACTIVE_GAMES.add(game.id)
-            emit(
-                "start_game",
-                {"spectating": spectating, "start_info": game.to_json()},
-                room=game.id,
-            )
-            socketio.start_background_task(play_game, game, fps=6)
-        else:
-            WAITING_GAMES.put(game.id)
-            emit("waiting", {"in_game": True}, room=game.id)
+
+        WAITING_GAMES.put(game.id)
+        emit("waiting", {"in_game": True}, room=game.id)
+
+
+        # if game.is_ready():
+        #     game.activate()
+        #     ACTIVE_GAMES.add(game.id)
+        #     emit(
+        #         "start_game",
+        #         {"spectating": spectating, "start_info": game.to_json()},
+        #         room=game.id,
+        #     )
+        #     socketio.start_background_task(play_game, game, fps=6)
+        # else:
+        #     WAITING_GAMES.put(game.id)
+        #     emit("waiting", {"in_game": True}, room=game.id)
 
 
 #####################
@@ -384,7 +392,6 @@ def predefined():
         config=PREDEFINED_CONFIG,
         num_layouts=num_layouts,
     )
-
 
 @app.route("/instructions")
 def instructions():
@@ -498,6 +505,7 @@ def creation_params(params):
 
 @socketio.on("create")
 def on_create(data):
+    if DEBUG: print("create triggered")
     user_id = request.sid
     with USERS[user_id]:
         # Retrieve current game if one exists
@@ -516,6 +524,7 @@ def on_create(data):
 
 @socketio.on("join")
 def on_join(data):
+    if DEBUG: print("join triggered")
     user_id = request.sid
     with USERS[user_id]:
         create_if_not_found = data.get("create_if_not_found", True)
@@ -532,6 +541,7 @@ def on_join(data):
         if not game and create_if_not_found:
             # No available game was found so create a game
             params = data.get("params", {})
+            print("params", params)
             creation_params(params)
             game_name = data.get("game_name", "overcooked")
             _create_game(user_id, game_name, params)
@@ -541,6 +551,7 @@ def on_join(data):
             # No available game was found so start waiting to join one
             emit("waiting", {"in_game": False})
         else:
+            print("found game", game.id)
             # Game was found so join it
             with game.lock:
                 join_room(game.id)
@@ -561,6 +572,51 @@ def on_join(data):
                     # Still need to keep waiting for players
                     WAITING_GAMES.put(game.id)
                     emit("waiting", {"in_game": True}, room=game.id)
+
+
+@socketio.on("client_ready")
+def on_client_ready(data):
+    if DEBUG: print("client_ready triggered")
+    user_id = request.sid
+    with USERS[user_id]:
+        curr_game = get_curr_game(user_id)
+        curr_game.client_ready = True
+
+        curr_game = get_curr_game(user_id)
+        if curr_game:
+            if curr_game.is_ready():
+                curr_game.activate()
+                ACTIVE_GAMES.add(curr_game.id)
+                emit(
+                    "start_game",
+                    {"start_info": curr_game.to_json()},
+                    # room=game.id,
+                )
+                socketio.start_background_task(play_game, curr_game, fps=6)
+            else:
+                print('Game not ready')
+        else:
+            print('User {} not in game'.format(user_id))
+
+        # game = get_waiting_game()
+
+
+
+
+
+
+
+
+
+
+
+
+    # else:
+    #     WAITING_GAMES.put(game.id)
+    #     emit("waiting", {"in_game": True}, room=game.id)
+
+
+
 
 
 @socketio.on("leave")
@@ -643,6 +699,8 @@ def play_game(game: OvercookedGame, fps=6):
     while status != Game.Status.DONE and status != Game.Status.INACTIVE:
         with game.lock:
             status = game.tick()
+
+        # if status == Game.Status.RESET:
         if status == Game.Status.RESET:
             with game.lock:
                 data = game.get_data()

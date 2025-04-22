@@ -63,6 +63,7 @@ setup(
             # "seaborn==0.9.0",
             # "ray[rllib]>=2.5.0",
             "protobuf",
+            # "torch==2.3.1+cu118"
             # "tensorflow>=2.14.0",
         ]
     },

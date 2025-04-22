@@ -25,7 +25,7 @@ let other_pages = {};
 let nextBtn = null;
 let prevBtn = null;
 let buttonContainer = null;
-const debug_mode = true; // set to true to show debug page
+const debug_mode = false; // set to true to show debug page
 const compensation_amount = 15;
 const condition = 0; // 0: model risk-sensitivity, 1: assume rationality first
 const total_games = 10; // total number of games played
@@ -34,6 +34,7 @@ const table_row_bg = ['#F5FBFF','white'];
 
 const LAYOUTS = ['risky_coordination_ring','risky_multipath'];
 const PSLIPS = [0.4,0.15];
+const AI_agents = ['RS-ToM','Rational'];
 
 const prolific_data = parse_prolific_data();
 
@@ -152,8 +153,8 @@ function initialize_pages(gameWindow) {
     // pages.push(new Page_RiskPropensityScale(gameWindow))
 
     // Instructions
-    pages.push(new Page_Section(gameWindow, "Instructions"));
-    pages.push(new Page_Tutorials(gameWindow, 0));
+    // pages.push(new Page_Section(gameWindow, "Instructions"));
+    // pages.push(new Page_Tutorials(gameWindow, 0));
     // pages.push(new Page_Tutorials(gameWindow, 1));
     // pages.push(new Page_Tutorials(gameWindow, 2));
     // pages.push(new Page_Tutorials(gameWindow, 3));
@@ -161,19 +162,28 @@ function initialize_pages(gameWindow) {
 
     pages.push(new Page_Section(gameWindow, "Experiment Start"));
 
-    let game_num = 0;
-    //  Game Loop: Partner 1
-    pages.push(new Page_GameInstructions(gameWindow, game_num));
-    pages.push(new Page_GamePlay(gameWindow, game_num));
-    pages.push(new Page_TrustSurvey(gameWindow, game_num))
-    game_num++;
+    let game_num = 0
+    let multigame = new Page_MultiGamePlay(gameWindow);
 
-    // Game Loop : Partner 2
-    pages.push(new Page_Washout(gameWindow));
-    pages.push(new Page_GameInstructions(gameWindow, game_num));
-    pages.push(new Page_GamePlay(gameWindow, game_num));
-    pages.push(new Page_TrustSurvey(gameWindow, game_num))
-    game_num++;
+    //  Game Loop: Partner 1
+    pages.push(multigame.add_game('risky_coordination_ring','RS-ToM')); game_num++;
+    pages.push(multigame.add_game('risky_coordination_ring','RS-ToM')); game_num++;
+    pages.push(multigame.add_game('risky_coordination_ring','RS-ToM')); game_num++;
+
+
+
+    // //  Game Loop: Partner 1
+    // pages.push(new Page_GameInstructions(gameWindow, game_num));
+    // pages.push(new Page_GamePlay(gameWindow, game_num));
+    // pages.push(new Page_TrustSurvey(gameWindow, game_num))
+    // game_num++;
+    //
+    // // Game Loop : Partner 2
+    // pages.push(new Page_Washout(gameWindow));
+    // pages.push(new Page_GameInstructions(gameWindow, game_num));
+    // pages.push(new Page_GamePlay(gameWindow, game_num));
+    // pages.push(new Page_TrustSurvey(gameWindow, game_num))
+    // game_num++;
 
     // Debrief
     pages.push(new Page_Section(gameWindow, "Post-Experiment Survey"));
@@ -1349,12 +1359,12 @@ class GamePlayTemplate {
         // Must be initialized in child class
         this.ID = null;
         this.layout = null;
-        this.p_slip = null;
         this.header = null;
         this.player0_name = null; // human agent
         this.player1_name = null; // AI agent
         this.overcooked_id = null; // ID of overcooked div
         this.game_type = null; // type of game (tutorial/overcooked)
+        this.data_collection = "off"; // "on/off"
 
 
 
@@ -1379,18 +1389,45 @@ class GamePlayTemplate {
         if (this.ID === null) {console.error(`Unspecified game param ${this.ID}`)};
         // if (this.num === num) {console.error(`Unspecified game param ${this.num}`)};
         if (this.layout === null) {console.error(`Unspecified game param ${this.layout}`)};
-        if (this.p_slip === null) {console.error(`Unspecified game param ${this.p_slip}`)};
         if (this.header === null) {console.error(`Unspecified game param ${this.header}`)};
         if (this.player0_name === null) {console.error(`Unspecified game param ${this.player0_name}`)}; // human agent
         if (this.player1_name === null) {console.error(`Unspecified game param ${this.player1_name}`)}; // AI agent
         if (this.overcooked_id === null) {console.error(`Unspecified game param ${this.overcooked_id}`)}; // ID of overcooked div
         if (this.game_type === null) {console.error(`Unspecified game param ${this.game_type}`)}; // type of game (tutorial/overcooked)
+        if (this.data_collection === null) {console.error(`Unspecified game param ${this.game_type}`)}; // type of game (tutorial/overcooked)
 
     }
+
+    draw_finished_overlay() {
+        // Draw start overlay
+        this.finished_overlay = document.createElement("div");
+        this.finished_overlay.style.display = "flex";
+        this.finished_overlay.style.position = "absolute";
+        // get the top of the this.overcooked_id container
+        const overcooked = document.getElementById(this.overcooked_id);
+        const rect = overcooked.getBoundingClientRect();
+        this.finished_overlay.style.top = `${rect.top}px`;
+        this.finished_overlay.style.left = `${rect.left}px`;
+        this.finished_overlay.style.position = "absolute";
+        // overlay.style.zIndex = "9999";
+        this.finished_overlay.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+        this.finished_overlay.style.width = `${rect.width}px`;
+        this.finished_overlay.style.height = `${rect.height}px`;
+        this.finished_overlay.style.display = "flex";
+        this.finished_overlay.style.alignItems = "center";
+        this.finished_overlay.style.justifyContent = "center";
+        this.finished_overlay.style.fontSize = "24px";
+        this.finished_overlay.style.color = "white";
+        this.finished_overlay.style.fontWeight = "bold";
+        this.finished_overlay.style.textAlign = "center";
+        this.finished_overlay.innerHTML = "Game Finished";
+        this.container.appendChild(overlay);
+    }
     game_finished() {
-        alert("ERROR: ADD GAME FINISHED QUERY HERE");
+        // alert("ERROR: ADD GAME FINISHED QUERY HERE");
         graphics_end();
         disable_key_listener();
+        // this.draw_finished_overlay();
         // socket.emit('leave');
         this.submitBtn.style.display = "block";
     }
@@ -1437,7 +1474,8 @@ class GamePlayTemplate {
             'layouts': [this.layout],
             phaseTwoScore: tutorial_config['tutorialParams']['phaseTwoScore'],
             playerOne: this.player1_name,
-            playerZero: this.player0_name
+            playerZero: this.player0_name,
+            dataCollection: this.data_collection
         }
         const data = {
             "params" : params,
@@ -1473,14 +1511,16 @@ class GamePlayTemplate {
     hide() {
         this.container.style.display = "none";
         this.submitBtn.style.display = "none";
+        // this.finished_overlay.style.display = "none";
     }
 
     destroy() {
         // destroys game to save on memory
         this.container.innerHTML = "";
-        if (debug_mode) {
-            socket.emit('leave', {})
-        }
+        socket.emit('leave', {})
+        // if (debug_mode) {
+        //     socket.emit('leave', {})
+        // }
     }
 }
 
@@ -1494,15 +1534,177 @@ class Page_GamePlay extends GamePlayTemplate {
         this.p_slip = PSLIPS[num];
         this.header = `Game ${num}/${total_games}`
         this.player0_name = 'human'; // human agent
-        this.player1_name = 'StayAI'; // AI agent
+        // this.player1_name = 'StayAI'; // AI agent
+        this.player1_name = AI_agents[num]; // AI agent
         this.overcooked_id = `${this.ID}_gameplay`; // ID of overcooked div
         this.game_type = 'overcooked'; // type of game (tutorial/overcooked)
+        this.data_collection = "on"; // "on/off"
 
         this.render();
         this.verify();
     }
 }
 
+
+class Page_MultiGamePlay {
+    // This is a template for the game play pages
+    constructor(parent_container) {
+        // Must be initialized in child class
+
+        this.ID = 'multi_game_container';
+        this.curr_game = 0;
+        this.layouts = [];
+        this.player0_name = []; // human agent
+        this.player1_name = []; // AI agent
+        this.overcooked_id = `${this.ID}_gameplay`; // ID of overcooked div
+        this.game_type = 'overcooked'; // type of game (tutorial/overcooked)
+        this.is_created = false;
+
+        // Create Page Container
+        this.container = document.createElement("div");
+        this.container.style.minWidth = '500px';
+        this.container.style.minHeight = '500px';
+        this.container.style.maxWidth = '800px';
+        this.container.style.maxHeight = '800px';
+        this.container.style.height = "95%";
+        this.container.style.display = "none";
+        if (debug_mode) {
+            this.container.style.border = "2px solid red";
+        }
+        parent_container.appendChild(this.container);
+        this.render();
+        this.add_submit_button('Continue')
+
+    }
+    add_game(layout, AI_type) {
+        this.layouts.push(layout);
+        this.player0_name.push('human'); // human agent
+        this.player1_name.push(AI_type); // AI agent
+        return this
+    }
+
+    game_finished() {
+        // alert("ERROR: ADD GAME FINISHED QUERY HERE");
+        graphics_end();
+        disable_key_listener();
+        ++this.curr_game;
+
+        // this.draw_finished_overlay();
+        socket.emit('leave',{});
+        this.submitBtn.style.display = "block";
+    }
+
+    render() {
+        this.header = document.createElement("h3");
+        this.header.innerText = 'TBD';
+        this.header.style.textAlign = "center";
+        this.header.style.margin = "0";
+        // header.style.marginTop = "20px";
+        this.header.style.width = "100%";
+        this.header.style.height = "10%";
+        this.container.appendChild(this.header);
+
+        const overcooked = document.createElement("div");
+        // cetner items horizontally and vertically in div
+        overcooked.style.display = "flex";
+        overcooked.style.justifyContent = "center";
+        overcooked.id = this.overcooked_id ;
+        overcooked.style.width = "100%";
+        overcooked.style.height = "70%";
+        overcooked.style.margin = "0 auto";
+        overcooked.style.padding = "0";
+        this.container.appendChild(overcooked);
+
+    }
+
+    add_submit_button(txt) {
+        // Add submit button for custom event
+        this.submitBtn = document.createElement("button");
+        this.submitBtn.id = `${this.ID}-btn`;
+        this.submitBtn.innerText = txt;
+        this.submitBtn.style.width = nextBtn.style.width;
+        this.submitBtn.style.height = nextBtn.style.height;
+        this.submitBtn.style.display = "none";
+        this.submitBtn.addEventListener("click", () => {
+            this.submit();
+        });
+        buttonContainer.appendChild(this.submitBtn);
+    }
+
+    create_game(){
+        this.is_created = true;
+         const params = {
+            'layouts': this.layouts,
+            // phaseTwoScore: tutorial_config['tutorialParams']['phaseTwoScore'],
+            playerOne: this.player1_name[this.curr_game],
+            playerZero: this.player0_name[this.curr_game]
+        }
+        const data = {
+            "params" : params,
+            "game_name" : this.game_type,
+            'prolific_id': prolific_data['prolific_id']
+        };
+        // create (or join if it exists) new game
+        socket.emit("create", data);
+    }
+    join_game() {
+        socket.emit("client_ready", {});
+        // socke
+        // // const params = {
+        // //     'layouts': [this.layout],
+        // //     phaseTwoScore: tutorial_config['tutorialParams']['phaseTwoScore'],
+        // //     playerOne: this.player1_name,
+        // //     playerZero: this.player0_name
+        // // }
+        // const data = {
+        //     // "params" : params,
+        //     // "game_name" : this.game_type,
+        //     'prolific_id': prolific_data['prolific_id']
+        // };
+        // // create (or join if it exists) new game
+        // socket.emit("join", data);
+    }
+
+    submit() {
+        // this.destroy()
+        currentIndex++;
+        updatePage();
+    };
+
+    show() {
+        if (!this.is_created){this.create_game();}
+        this.join_game();
+
+        // this.emit_game_query();
+        // make items in this.container alighn horizontally and stack vertically
+        // this.container.style.display = "block";
+        this.header.innerText = `Game ${this.curr_game+1}/${this.layouts.length}`;
+        this.container.style.display = "flex";
+        this.container.style.flexDirection = "column";
+        this.container.style.alignItems = "center";
+        this.container.style.justifyContent = "center";
+
+        // this.container.style.display = "flex";
+        nextBtn.style.display = "none";
+        prevBtn.style.display = "none";
+        this.submitBtn.style.display = "none";
+        if (debug_mode) { this.submitBtn.style.display = "block"; }
+    }
+
+    hide() {
+        this.container.style.display = "none";
+        this.submitBtn.style.display = "none";
+        // this.finished_overlay.style.display = "none";
+    }
+
+    destroy() {
+        // destroys game to save on memory
+        this.container.innerHTML = "";
+        if (debug_mode) {
+            socket.emit('leave', {})
+        }
+    }
+}
 
 class Page_GameInstructions extends GamePlayTemplate {
     constructor(parent_container, num) {
@@ -1666,6 +1868,21 @@ class Page_GameInstructions extends GamePlayTemplate {
         return responses;
     }
 
+    show() {
+        this.emit_game_query();
+        // make items in this.container alighn horizontally and stack vertically
+        // this.container.style.display = "block";
+        this.container.style.display = "flex";
+        this.container.style.flexDirection = "column";
+        this.container.style.alignItems = "center";
+        this.container.style.justifyContent = "center";
+
+        // this.container.style.display = "flex";
+        nextBtn.style.display = "none";
+        prevBtn.style.display = "none";
+        this.submitBtn.style.display = "block";
+        // if (debug_mode) { this.submitBtn.style.display = "block"; }
+    }
 }
 
 class Page_Tutorials extends GamePlayTemplate {
@@ -1815,7 +2032,7 @@ socket.on('start_game', function(data) {
         container_id : current_page.overcooked_id,
         start_info : data.start_info
     };
-    $("#overcooked").empty();
+    // $("#overcooked").empty();
     // $('#game-over').hide();
     // $('#try-again').hide();
     // $('#try-again').attr('disabled', true)
@@ -1832,7 +2049,7 @@ socket.on('start_game', function(data) {
 
 socket.on('reset_game', function(data) {
      // alert("Game reset");
-    // alert("Resetting game deprecated");
+    alert("Resetting game deprecated");
     // curr_tutorial_phase++;
     // graphics_end();
     disable_key_listener();
@@ -1864,19 +2081,7 @@ socket.on('state_pong', function(data) {
 
 socket.on('end_game', function(data) {
     // alert("Game ended");
-    // Hide game data and display game-over html
     current_page.game_finished()
-    // graphics_end(); # moved to gam_finished for easier debugging
-    // disable_key_listener();
-
-    // $('#game-title').hide();
-    // $('#instructions-wrapper').hide();
-    // $('#hint-wrapper').hide();
-    // $('#show-hint').hide();
-    // $('#game-over').show();
-    // $('#quit').hide();
-    // pages[currentIndex].game_finished()
-
     if (data.status === 'inactive') {
         // Game ended unexpectedly
         $('#error-exit').show();
@@ -1887,7 +2092,6 @@ socket.on('end_game', function(data) {
         window.top.postMessage({ name : "tutorial-done" }, "*");
     }
 
-    // $('#finish').show();
 });
 
 

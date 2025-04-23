@@ -339,6 +339,8 @@ class RLLogger(object):
         self.std_settings = {'color':'r','alpha':0.2}
         self.raw_settings = {'c': 'gray', 'lw': lw}
         self.filtered_settings = {'c': 'k', 'lw': lw}
+
+        self.epsilon = 0
     def close_plots(self):
         plt.close(self.root_fig)
     def log(self, **data):
@@ -376,18 +378,51 @@ class RLLogger(object):
 
     ###########################################################
     # Status Methods ############################################
-    def add_status(self,key='status', iteration_timer=True,progress=True,remaining_time=True,ncols=2,fnt_size=6):
+    # def add_status(self,key='status', iteration_timer=True,progress=True,remaining_time=True,
+    #                epsilon = True,
+    #                ncols=2,fnt_size=6):
+    #     assert self.num_iterations is not None, 'Number of iterations must be set to use status'
+    #     self.status['Prog:'] = 0
+    #     self.status['S/iter'] = deque([time.time()], maxlen=10)
+    #     self.status['Time Left'] = 0
+    #     self.axs[key] = self.status_fig.add_subplot(1, 1, 1)
+    #     # self.axs[key].set_title('Status')
+    #     data_dict = {'Prog':0,'S/iter':0,'Time Left':0}
+    #     items = list(data_dict.items())
+    #     data = []
+    #     nrows = len(data_dict) // ncols
+    #     ncols = np.sum([iteration_timer,progress,remaining_time])
+    #     for r in range(nrows):
+    #         row = []
+    #         for c in range(ncols):
+    #             i = r * ncols + c
+    #             k, v = items[i]
+    #             row.append(f'{k}: {v}')
+    #         data.append(row)
+    #     tbl = self.axs[key].table(cellText=data, fontsize=fnt_size, loc='center', cellLoc='left')
+    #     tbl.auto_set_font_size(False)
+    #
+    #     self.axs[key].axis('off')
+    #     self.status['tbl'] = tbl
+    #
+    #     for key, cell in tbl.get_celld().items():
+    #         cell.set_linewidth(0)
+    #     tbl.auto_set_column_width([0, 1])
+    def add_status(self,key='status', iteration_timer=True,progress=True,remaining_time=True,
+                   epsilon = True,
+                   ncols=2,fnt_size=4):
         assert self.num_iterations is not None, 'Number of iterations must be set to use status'
+        self.status['Eps:'] = 0
         self.status['Prog:'] = 0
         self.status['S/iter'] = deque([time.time()], maxlen=10)
         self.status['Time Left'] = 0
         self.axs[key] = self.status_fig.add_subplot(1, 1, 1)
         # self.axs[key].set_title('Status')
-        data_dict = {'Prog':0,'S/iter':0,'Time Left':0}
+        data_dict = {'Prog':0,'S/iter':0,'Time Left':0,'eps':0}
         items = list(data_dict.items())
         data = []
-        nrows = len(data_dict) // ncols
-        ncols = np.sum([iteration_timer,progress,remaining_time])
+        nrows = 1  #len(data_dict) // ncols
+        ncols = np.sum([iteration_timer,progress,remaining_time,epsilon])
         for r in range(nrows):
             row = []
             for c in range(ncols):
@@ -422,9 +457,10 @@ class RLLogger(object):
         rem_time = rem_time % 60
         seconds = rem_time
         rem_time = f'{int(hours)}:{int(minutes)}:{int(seconds)}'
-        tbl.get_celld()[(0, 0)].get_text().set_text(f'Progress: {np.round(100*self.iter_count/self.num_iterations,2)}%')
-        tbl.get_celld()[(0, 1)].get_text().set_text(f'S/iter: {np.round(s_per_iter,2)}')
-        tbl.get_celld()[(0, 2)].get_text().set_text(f'Time Left: {rem_time}')
+        tbl.get_celld()[(0, 0)].get_text().set_text(f'Prog: {np.round(100*self.iter_count/self.num_iterations)}%')
+        tbl.get_celld()[(0, 1)].get_text().set_text(f'S/it: {np.round(s_per_iter,1)}')
+        tbl.get_celld()[(0, 2)].get_text().set_text(f'Rem: {rem_time}')
+        tbl.get_celld()[(0, 3)].get_text().set_text(f'eps: {round(self.epsilon,2)}')
 
 
 

@@ -4,17 +4,18 @@
 
 # Env Params ----------------
 env:
-#  'LAYOUT': "risky_coordination_ring"   # layout name
-#  "p_slip": 0.4                         # probability of slipping in puddle
-  'LAYOUT': "risky_multipath"           # layout name
-  "p_slip": 'default'                    # probability of slipping in puddle (= default uses p_slip specified in *.layout)
+  'LAYOUT': "risky_coordination_ring"   # layout name
+  "p_slip": 0.4                         # probability of slipping in puddle
+#  'LAYOUT': "risky_multipath"           # layout name
+#  "p_slip": 'default'                    # probability of slipping in puddle (= default uses p_slip specified in *.layout)
 
   'HORIZON': 200                        # number of time steps per episode
   'time_cost': -0.2                     # cost per time step (<0: -0.2 ==> 1soup/100steps)
   'shared_rew': False                  # share reward between agents
 # Learning Params ----------------
 trainer:
-    'ITERATIONS': 15_000                    # total number of training iterations
+#    'ITERATIONS': 15_000                    # total number of training iterations
+    'ITERATIONS': 20_000                    # total number of training iterations
     'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
     'obs_shape': nan                      # Overridden during execution depending on layout
     'joint_action_shape': 36              # number of joint actions
@@ -35,20 +36,22 @@ trainer:
       epsilon_sched:    # exponential decay on exploration rate
         start: 1        # starting value
         end: 0.1        # ending value
-#        duration: 3_000 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
-        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
-        decay: 1.1      # higher values = faster decay
+#       duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+#        duration: 2_000 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+        duration: 2_500 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+        decay: 1.0      # higher values = faster decay
 
       rshape_sched:     # linear decay on reward shaping
         start: 1        # starting value
-        end: 0          # ending value
+#        end: 0          # ending value
+        end: 1          # ending value
         duration: 0.4 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
 
     curriculum: # TODO: add ALL
-      schedule_decay: 0.9     # gain on starting value in schedules after first curriculum
+      schedule_decay: 0.99     # gain on starting value in schedules after first curriculum
       curriculum_mem: 10      # number of iterations to check curriculum over
-      sampling_decay: 0.5    # ######################################################
-#      sampling_decay: 0.3     # recursive decay on likelihood of sampling past curriculum
+      sampling_decay: 0.1    # ######################################################
+#      sampling_decay: 0.5     # recursive decay on likelihood of sampling past curriculum
       p_random_counter_obj: 0 # probability of a random object being on any counter
       min_iter: 100           # minimum number of iterations to run before checking for curriculum
 
@@ -70,18 +73,18 @@ trainer:
         #  % of total ITERATIONS a curriculum has to finish before run considered failed
         # if cant deliver {subtask_goals.X} soups by {early_stopping.X*ITERATIONS} -> stop training
 
-        enable: True           # enable early stopping
+        enable: False           # enable early stopping
         save_fig: True         # save figure of failed training run
         save_model: True      # save model of failed training run
 
         deliver_soup: 0.2
         pick_up_soup: 0.3
-        pick_up_dish: 0.4
-        wait_to_cook: 0.5
-        deliver_onion3: 0.6
-        pick_up_onion3: 0.7
-        deliver_onion2: 0.8
-        pick_up_onion2: 0.9
+        pick_up_dish: 0.5
+        wait_to_cook: 0.6
+        deliver_onion3: 0.7
+        pick_up_onion3: 0.8
+        deliver_onion2: 0.9
+        pick_up_onion2: 1.0
         deliver_onion1: 1.0
         full_task: 999 # pick_up_onion1 = full_task
 
@@ -131,6 +134,7 @@ save:
     'date': nan             # date of training run
 
     'fname_fmt': '{algorithm}{val}_{env}{val}_{pslip}{val}_{rshape}{val}_{epsilon}{val}_{lr}_{note}_{fname_ext'#TODO: add?
-    'save_dir': '\\risky_overcooked_rl\\algorithms\\DDQN\\models\\'
+#    'save_dir': '\\risky_overcooked_rl\\algorithms\\DDQN\\models\\'
+    'save_dir': '\risky_overcooked_rl\algorithms\DDQN\models\'
 
 

@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import torch
 import random
 from risky_overcooked_rl.utils.model_manager import get_default_config
-from risky_overcooked_rl.utils.deep_models import SelfPlay_QRE_OSA_CPT
+from risky_overcooked_rl.utils.deep_models import SelfPlay_QRE_OSA_CPT,SelfPlay_QRE_OSA
 from risky_overcooked_rl.utils.belief_update import BayesianBeliefUpdate
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
@@ -24,19 +24,20 @@ class PolicyHeatmap():
 
         # Parse Config ---------------------------------------------------------
         config = Algorithm.get_default_config()
-        config["device"] = 'cuda' if torch.cuda.is_available() else 'cpu'
-        config["LAYOUT"] = layout
         config["ALGORITHM"] = 'Evaluate-' + config['ALGORITHM']
-        config['p_slip'] = p_slip
-        config['HORIZON'] = horizon
-        config['time_cost'] = time_cost
+        config['env']["LAYOUT"] = layout
+        config['env']['p_slip'] = p_slip
+        config['env']['HORIZON'] = horizon
+        config['env']['time_cost'] = time_cost
+        config['agents']['model']["device"] = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 
         # set up env ---------------------------------------------------------
-        mdp = OvercookedGridworld.from_layout_name(config['LAYOUT'])
-        mdp.p_slip = config['p_slip']
+        mdp = OvercookedGridworld.from_layout_name(config['env']['LAYOUT'])
+        mdp.p_slip = config['env']['p_slip']
         obs_shape = mdp.get_lossless_encoding_vector_shape()
         n_actions = 36
-        self.env = OvercookedEnv.from_mdp(mdp, horizon=config['HORIZON'], time_cost=config['time_cost'])
+        self.env = OvercookedEnv.from_mdp(mdp, horizon=config['env']['HORIZON'], time_cost=config['env']['time_cost'])
 
         # load policies ---------------------------------------------------------
 
@@ -62,10 +63,13 @@ class PolicyHeatmap():
             'Seeking': f'{layout}_pslip{f"{p_slip}".replace(".","")}__b-02_lam044_etap10_etan088_deltap061_deltan069'
             # 'Seeking': f'{layout}_pslip{f"{p_slip}".replace(".","")}__b-02_lam02_etap10_etan088_deltap061_deltan069'
         }
+        self.policy_fnames = policy_fnames
+
+        config['agents']['save_dir'] = config['save']['save_dir']
         self.policies = {
-            'Rational': SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config, policy_fnames['Rational']),
-            'Averse': SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config,  policy_fnames['Averse']),
-            'Seeking': SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config,  policy_fnames['Seeking'])
+            'Rational': SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config['agents'], policy_fnames['Rational']),
+            'Averse': SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config['agents'],  policy_fnames['Averse']),
+            'Seeking': SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config['agents'],  policy_fnames['Seeking'])
         }
         for p in self.policies.keys():
             self.policies['Rational'].rationality = rationality

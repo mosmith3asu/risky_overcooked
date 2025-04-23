@@ -7,6 +7,7 @@ import argparse
 import json
 
 def get_absolute_save_dir(path = '\\risky_overcooked_rl\\models\\'):
+    # raise NotImplementedError('This function is deprecated. ')
     dirs = os.getcwd().split('\\')
     src_idx = dirs.index('src') # find index of src directory
     return '\\'.join(dirs[:src_idx+1]) + path

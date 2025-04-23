@@ -557,7 +557,7 @@ class Simulator():
         self.data = loaded_dict
 
 if __name__ == "__main__":
-    # sim = Simulator('risky_coordination_ring',0.4)
+    sim = Simulator('risky_coordination_ring',0.4)
     # sim = Simulator('risky_multipath', 0.15)
     # #
     sim.run()

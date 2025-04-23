@@ -119,7 +119,7 @@ class SelfPlay_QRE_OSA(object):
         agents = cls(obs_shape, n_actions, config)
 
         # find saved models absolute dir -------------
-        dir = get_absolute_save_dir()
+        dir = get_absolute_save_dir(path=config['save_dir'])
 
         # select file to load ---------------
         files = os.listdir(dir)
@@ -137,7 +137,7 @@ class SelfPlay_QRE_OSA(object):
         print(f'#########################################\n')
 
         # Load file and update base class ---------
-        loaded_model = torch.load(PATH, weights_only=True, map_location=config['device'])
+        loaded_model = torch.load(PATH, weights_only=True, map_location=config['model']['device'])
         agents.model.load_state_dict(loaded_model)
         agents.target.load_state_dict(loaded_model)
         agents.checkpoint_model.load_state_dict(loaded_model)
@@ -146,18 +146,25 @@ class SelfPlay_QRE_OSA(object):
         return agents
 
     def __init__(self, obs_shape, n_actions, config,**kwargs):
-        self.clip_grad = config['clip_grad']
-        self.num_hidden_layers = config['num_hidden_layers']
-        self.size_hidden_layers = config['size_hidden_layers']
-        self.learning_rate = config['lr_sched'][1]
-        self.device = config['device']
-        self.gamma = config['gamma']
-        self.tau = config['tau']
-        self.eq_sol = 'QRE'
+        if 'agents' in config.keys():
+            agent_config = config['agents']
+            model_config = config['agents']['model']
+        else:
+            agent_config = config
+            model_config = config['model']
+
+        self.clip_grad = model_config['clip_grad']
+        self.num_hidden_layers = model_config['num_hidden_layers']
+        self.size_hidden_layers = model_config['size_hidden_layers']
+        self.learning_rate = model_config['lr']
+        self.device = model_config['device']
+        self.gamma = model_config['gamma']
+        self.tau = model_config['tau']
+        self.eq_sol = agent_config['equilibrium']['type']
         # self.eq_sol = 'Pareto'
-        self.rationality = 10
+        self.rationality = agent_config['rationality']
         self.num_agents = 2
-        self.mem_size = config['replay_memory_size']
+        self.mem_size = model_config['replay_memory_size']
         self.joint_action_space = list(itertools.product(Action.ALL_ACTIONS, repeat=2))
         self.joint_action_dim = n_actions
         self.player_action_dim = int(np.sqrt(n_actions))
@@ -165,7 +172,7 @@ class SelfPlay_QRE_OSA(object):
         # Define Memory
         self._transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_prospects', 'done'))
         self._memory = deque([], maxlen=self.mem_size)
-        self._memory_batch_size = config['minibatch_size']
+        self._memory_batch_size = model_config['minibatch_size']
 
         # Define Model
         self.model = DQN_vector_feature(obs_shape, n_actions,self.num_hidden_layers, self.size_hidden_layers).to(self.device)
@@ -175,14 +182,14 @@ class SelfPlay_QRE_OSA(object):
         self.checkpoint_model.load_state_dict(self.model.state_dict())
 
 
-        lr_warmup_iter = config['lr_sched'][2]
-        lr_factor = config['lr_sched'][0]/config['lr_sched'][1]
+        # lr_warmup_iter = config['lr_sched'][2]
+        # lr_factor = config['lr_sched'][0]/config['lr_sched'][1]
         # lr_factor = self.lr_warmup_scale
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=lr_factor * self.learning_rate, amsgrad=True)
-        self.scheduler = lr_scheduler.LinearLR(self.optimizer,
-                                               start_factor=1,
-                                               end_factor=1 / lr_factor,
-                                               total_iters=lr_warmup_iter)
+        # self.optimizer = optim.AdamW(self.model.parameters(), lr=lr_factor * self.learning_rate, amsgrad=True)
+        # self.scheduler = lr_scheduler.LinearLR(self.optimizer,
+        #                                        start_factor=1,
+        #                                        end_factor=1 / lr_factor,
+        #                                        total_iters=lr_warmup_iter)
         self.optimistic_value_expectation = False
         if self.optimistic_value_expectation: warnings.warn("Optimistic value expectation is set to True.")
 
@@ -507,7 +514,8 @@ class SelfPlay_QRE_OSA(object):
 class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
     def __init__(self, obs_shape, n_actions, config, **kwargs):
         super().__init__(obs_shape, n_actions, config, **kwargs)
-        self.CPT = CumulativeProspectTheory(**config['cpt_params'])
+        # self.CPT = CumulativeProspectTheory(**config['cpt_params'])
+        self.CPT = CumulativeProspectTheory(**config['cpt'])
 
         # Define Memory
         self._transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_prospects', 'done'))

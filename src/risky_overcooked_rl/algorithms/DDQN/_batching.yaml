@@ -28,16 +28,17 @@ jobs:
 
   risky_tree:
     agents: [ 'averse','neutral','seeking' ]
+#    agents: [ 'averse','seeking' ]
     p_slips: [ 0.2]
-  risky_shortcuts:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [ 0.2]
-  risky_corridor:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [ 0.5 ]
-  risky_spiral:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [ 0.3 ]
-  risky_passing:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [ 0.3 ]
+#  risky_shortcuts:
+#    agents: [ 'averse','neutral','seeking' ]
+#    p_slips: [ 0.2]
+##  risky_corridor:
+##    agents: [ 'averse','neutral','seeking' ]
+##    p_slips: [ 0.5 ]
+#  risky_spiral:
+#    agents: [ 'averse','neutral','seeking' ]
+#    p_slips: [ 0.2 ]
+#  risky_passing:
+#    agents: [ 'averse','neutral','seeking' ]
+#    p_slips: [ 0.2 ]

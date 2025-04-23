@@ -142,6 +142,8 @@ class CirriculumTrainer(Trainer):
         self.env.reset()
         self.env.state = self.curriculum.sample_cirriculum_state()
 
+        self.logger.epsilon = epsilon
+
         losses = []
         cum_reward = 0
         cum_shaped_reward = np.zeros(2)

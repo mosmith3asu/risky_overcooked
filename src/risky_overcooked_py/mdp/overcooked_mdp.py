@@ -1189,8 +1189,10 @@ class OvercookedGridworld(object):
         self.old_dynamics = old_dynamics
 
         # ADDED
+        self.neglect_boarders = kwargs.get('neglect_boarders',False)
+        self.neglected_counters = []
+        self.reachable_counters = self.get_reachable_counters()
 
-        self.reachable_counters = self.get_reachable_counters(neglect_boarders=False)
 
         if "W" in terrain: assert p_slip!= None, "p_slip must be specified if there are puddles in the terrain"
         self.p_slip = p_slip
@@ -1986,18 +1988,7 @@ class OvercookedGridworld(object):
 
         return pots_states_dict
 
-    def get_reachable_counters(self, neglect_boarders=False, valid_terrain = (" ","W", "1","2")):
-        # reachable_counters = []
-        # counter_locations = self.get_counter_locations()
-        # for pos in counter_locations:
-        #     for d in Direction.ALL_DIRECTIONS:
-        #         adj_pos = Action.move_in_direction(pos, d)
-        #         try:
-        #             tile = self.get_terrain_type_at_pos(adj_pos)
-        #             if tile in valid_terrain:
-        #                 reachable_counters.append(pos)
-        #                 break
-        #         except: pass
+    def get_reachable_counters(self, valid_terrain = (" ","W", "1","2")):
         reachable_counters = []
         counter_locations = self.get_counter_locations()
 
@@ -2005,8 +1996,9 @@ class OvercookedGridworld(object):
         for pos in counter_locations:
             for d in Direction.ALL_DIRECTIONS:
 
-                if neglect_boarders:
+                if self.neglect_boarders:
                     if pos[0] in (0, terr_shape[0]-1) or pos[1] in (0, terr_shape[1]-1):
+                        self.neglected_counters.append(pos)
                         continue
 
                 adj_pos = Action.move_in_direction(pos, d)
@@ -2773,9 +2765,10 @@ class OvercookedGridworld(object):
         counter_indicator_arr = torch.zeros([len(counter_locs), len(IDX_TO_OBJ)],device=device)
         counter_objs = self.get_counter_objects_dict(overcooked_state)  # dictionary of pos:objects
         for counter_obj, counter_loc in counter_objs.items():
-            iobj = OBJ_TO_IDX[counter_obj]
-            icounter = counter_locs.index(counter_loc[0])
-            counter_indicator_arr[icounter, iobj] = 1
+            if not counter_loc[0] in self.neglected_counters:
+                iobj = OBJ_TO_IDX[counter_obj]
+                icounter = counter_locs.index(counter_loc[0])
+                counter_indicator_arr[icounter, iobj] = 1
         feature_vector[_i:_i + n_counter_feat] = counter_indicator_arr.flatten()
         _i += n_counter_feat
 

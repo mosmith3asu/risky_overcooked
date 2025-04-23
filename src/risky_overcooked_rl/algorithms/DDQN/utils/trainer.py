@@ -70,10 +70,11 @@ class Trainer:
         time_cost = env_config['time_cost']
         p_slip = env_config['p_slip']
         horizon = env_config['HORIZON']
-
+        neglect_boarders = env_config['neglect_boarders']
         overwrite = {}
         if p_slip != 'default' and p_slip != 'def':
             overwrite['p_slip'] = p_slip
+        overwrite['neglect_boarders'] = neglect_boarders
         self.mdp = OvercookedGridworld.from_layout_name(layout,**overwrite)
         self.env = OvercookedEnv.from_mdp(self.mdp, horizon=horizon,time_cost=time_cost)
         obs_shape = self.mdp.get_lossless_encoding_vector_shape()
@@ -170,6 +171,7 @@ class Trainer:
         data['layout'] = master_config['env']['LAYOUT']
         data['p_slip'] = master_config['env']['p_slip']
         # data['shared_rew'] = master_config['env']['shared_rew']
+        data['neglect boarder'] = master_config['env']['neglect_boarders']
 
         data['TRAINER'] = '================================'
         data['ITERATIONS'] = master_config['trainer']['ITERATIONS']
@@ -188,6 +190,7 @@ class Trainer:
 
         data['AGENTS'] = '================================'
         data['type'] = master_config['agents']['type']
+        data['device'] = master_config['agents']['model']['device']
         data['rationality'] = master_config['agents']['rationality']
         data['lr'] = master_config['agents']['model']['lr']
         data['gamma'] = master_config['agents']['model']['gamma']

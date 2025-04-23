@@ -6,7 +6,7 @@ import os
 
 class CompiledModelPreview:
     def __init__(self, layout, p_slip,n_trials=5,seed=42):
-
+        fig_sz = (12, 12)
         self.layout = layout
         self.p_slip = p_slip
         self.items = ('onion','dish')
@@ -30,7 +30,7 @@ class CompiledModelPreview:
         # Create a figure and axis
 
         print(f'Plotting {layout} with p_slip={p_slip}')
-        fig, axs = plt.subplots(3, 3, figsize=(15, 15))
+        fig, axs = plt.subplots(3, 3, figsize=fig_sz)
         for r, human_type in enumerate(list(hms.keys())):
             titles = self.items if r == 0 else ['' for _ in range(len(self.items))]
             hms[human_type].plot(axs=list(axs[r, 1:3]), items=self.items, titles=titles)
@@ -61,7 +61,7 @@ class CompiledModelPreview:
         PATH = self.dir + loads_fname
 
         img = plt.imread(PATH)
-        # img = img[0:430, 0:600, :] # crop image
+        img = img[0:430, 0:600, :] # crop image
 
         # Display the image
         ax.imshow(img)
@@ -83,7 +83,10 @@ class CompiledModelPreview:
 
 
 def main():
-    CMP = CompiledModelPreview(layout='risky_tree2', p_slip=0.2)
+    # CMP = CompiledModelPreview(layout='risky_tree2', p_slip=0.2)
+    # CMP = CompiledModelPreview(layout='risky_coordination_ring', p_slip=0.4)
+    # CMP = CompiledModelPreview(layout='risky_mixed_coordination', p_slip=0.2)
+    CMP = CompiledModelPreview(layout='risky_roundabout', p_slip=0.4)
     plt.ioff()
     plt.show()
 

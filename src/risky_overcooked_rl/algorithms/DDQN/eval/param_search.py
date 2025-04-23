@@ -29,6 +29,8 @@ def get_config_search_list(search_dict,layout='risky_tree',p_slip=0.2):
     def_config['env']["LAYOUT"] = layout
     def_config['env']["p_slip"] = p_slip
     def_config['save']["auto_save"] = True
+    def_config['save']["wait_for_close"] = False
+    def_config['logger']['enable_report'] =False
     def_config['save']['save_dir'] = '\\risky_overcooked_rl\\algorithms\\DDQN\\eval\\param_search\\'
     # def_config['save']["wait_for_close"] = False
     def_config['logger']['enable_report'] =False

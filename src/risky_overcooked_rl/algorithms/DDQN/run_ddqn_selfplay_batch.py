@@ -21,10 +21,10 @@ def get_config_search_list():
 
     config_lst = []
     def_config = Algorithm.get_default_config()
-    def_config["enable_report"] = False
-    def_config["auto_save"] = True
-    def_config["wait_for_close"] = False
-    def_config['enable_report'] =False
+    def_config['save']["auto_save"] = True
+    def_config['save']["wait_for_close"] = False
+    def_config['logger']['enable_report'] =False
+
 
     # def_config['ITERATIONS'] = 20
     # def_config['rshape_sched'] = [1, 0, 20]

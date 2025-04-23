@@ -12,6 +12,7 @@ env:
   'HORIZON': 200                        # number of time steps per episode
   'time_cost': -0.2                     # cost per time step (<0: -0.2 ==> 1soup/100steps)
   'shared_rew': False                  # share reward between agents
+  neglect_boarders: True              # whether to exclude boarder counter in state representation (reduces state space sz)
 # Learning Params ----------------
 trainer:
 #    'ITERATIONS': 15_000                    # total number of training iterations
@@ -38,7 +39,7 @@ trainer:
         end: 0.1        # ending value
 #       duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
 #        duration: 2_000 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
-        duration: 2_500 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+        duration: 2_000 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
         decay: 1.0      # higher values = faster decay
 
       rshape_sched:     # linear decay on reward shaping

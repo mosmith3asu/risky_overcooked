@@ -9,8 +9,8 @@ CPT_PARAMS:
 jobs:
   risky_coordination_ring:
     agents: ['averse','neutral','seeking']
-#    p_slips: [0.4]
-    p_slips: [0.3]
+    p_slips: [0.4]
+#    p_slips: [0.3]
   risky_multipath:
     agents: [ 'averse','neutral','seeking' ]
     p_slips: [0.15]

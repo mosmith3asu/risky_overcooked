@@ -1994,13 +1994,13 @@ class OvercookedGridworld(object):
 
         terr_shape = np.shape(self.terrain_mtx)
         for pos in counter_locations:
+
+            if self.neglect_boarders:
+                if pos[0] in (0, terr_shape[0] - 1) or pos[1] in (0, terr_shape[1] - 1):
+                    self.neglected_counters.append(pos)
+                    continue
+
             for d in Direction.ALL_DIRECTIONS:
-
-                if self.neglect_boarders:
-                    if pos[0] in (0, terr_shape[0]-1) or pos[1] in (0, terr_shape[1]-1):
-                        self.neglected_counters.append(pos)
-                        continue
-
                 adj_pos = Action.move_in_direction(pos, d)
                 try:
                     tile = self.get_terrain_type_at_pos(adj_pos)

@@ -1519,7 +1519,11 @@ class OvercookedGridworld(object):
             # NOTE: we always log pickup/drop before performing it, as that's
             # what the logic of determining whether the pickup/drop is useful assumes
             if terrain_type == "X":
-                if player.has_object() and not new_state.has_object(i_pos):
+                if self.neglected_counters and i_pos in self.neglected_counters:
+                    continue # if enabled, do not let them place on boarder tiles
+
+                elif player.has_object() and not new_state.has_object(i_pos):
+
                     obj_name = player.get_object().name
 
                     self.log_object_drop(

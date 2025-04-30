@@ -1,5 +1,5 @@
 ---
-workers: 4
+workers: 3
 istart:  0 # used for starting at predefined index of batch list if previously incomplete
 CPT_PARAMS:
   averse: {'b': -0.2, 'lam': 2.25, 'eta_p': 0.88, 'eta_n': 1.0, 'delta_p': 0.61, 'delta_n': 0.69}
@@ -7,38 +7,38 @@ CPT_PARAMS:
   seeking: { 'b': -0.2, 'lam': 0.44, 'eta_p': 1.0, 'eta_n': 0.88, 'delta_p': 0.61, 'delta_n': 0.69 }
 
 jobs:
-  risky_coordination_ring:
-    agents: ['averse','neutral','seeking']
-    p_slips: [0.4]
-#    p_slips: [0.3]
-  risky_multipath:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [0.15]
-  risky_handoff:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [0.2]
-  risky_roundabout:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [0.25]
-  risky_forced_coordination:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [0.2]
-  risky_mixed_coordination:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [0.2]
-  risky_hierarchy:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [ 0.2 ]
-
-#  risky_tree:
+#  risky_coordination_ring:
+#    agents: ['averse','neutral','seeking']
+#    p_slips: [0.4]
+##    p_slips: [0.3]
+#  risky_multipath:
 #    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [ 0.2]
+#    p_slips: [0.15]
+#  risky_handoff:
+#    agents: [ 'averse','neutral','seeking' ]
+#    p_slips: [0.2]
+#  risky_roundabout:
+#    agents: [ 'averse','neutral','seeking' ]
+#    p_slips: [0.25]
+#  risky_forced_coordination:
+#    agents: [ 'averse','neutral','seeking' ]
+#    p_slips: [0.2]
+#  risky_mixed_coordination:
+#    agents: [ 'averse','neutral','seeking' ]
+#    p_slips: [0.2]
+#  risky_hierarchy:
+#    agents: [ 'averse','neutral','seeking' ]
+#    p_slips: [ 0.2 ]
+
+  risky_tree:
+    agents: [ 'averse','neutral','seeking' ]
+    p_slips: [ 0.15]
 #  risky_shortcuts:
 #    agents: [ 'averse','neutral','seeking' ]
 #    p_slips: [ 0.2]
-#  risky_corridor:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [ 0.5 ]
+##  risky_corridor:
+##    agents: [ 'averse','neutral','seeking' ]
+##    p_slips: [ 0.5 ]
 #  risky_spiral:
 #    agents: [ 'averse','neutral','seeking' ]
 #    p_slips: [ 0.3 ]

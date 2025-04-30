@@ -273,29 +273,32 @@ class Trainer:
                                       rshape_scale= self.rshape_sched[it],
                                       p_rand_start=self.random_start_sched[it])
 
-            if it>1: self.model.scheduler.step() # updates learning rate scheduler
-            self.model.update_target()  # performs soft update of target network
+            did_update = (rollout_info['mean_loss'] != 0)
+            if did_update:
+                self.model.update_target()  # performs soft update of target network
+
             self.logger.end_iteration()
 
-            # slips = rollout_info['onion_slips'] + rollout_info['dish_slips'] + rollout_info['soup_slips']
-            risks = rollout_info['onion_risked'] + rollout_info['dish_risked'] + rollout_info['soup_risked']
-            handoffs = rollout_info['onion_handoff'] + rollout_info['dish_handoff'] + rollout_info['soup_handoff']
             if self.enable_report:
-                print(f"Iteration {it} "
-                      f"| train reward:{round(cum_reward, 3)} "
-                      f"| shaped reward:{np.round(cum_shaped_rewards, 3)} "
-                      f"| loss:{round(rollout_info['mean_loss'], 3)} "
-                      # f"| slips:{slips} "
-                      f"| risks:{risks} "
-                      f"| handoffs:{handoffs} "
-                      f" |"
-                      f"| mem:{self.model.memory_len} "
-                      f"| rshape:{round(self.rshape_sched[it], 3)} "
-                      # f"| rat:{round(self.rationality_sched[it], 3)}"
-                      f"| eps:{round(self.epsilon_sched[it], 3)} "
-                      f"| LR={round(self.model.optimizer.param_groups[0]['lr'], 4)}"
-                      f"| rstart={round(self.random_start_sched[it], 3)}"
-                      )
+                # slips = rollout_info['onion_slips'] + rollout_info['dish_slips'] + rollout_info['soup_slips']
+                risks = rollout_info['onion_risked'] + rollout_info['dish_risked'] + rollout_info['soup_risked']
+                handoffs = rollout_info['onion_handoff'] + rollout_info['dish_handoff'] + rollout_info['soup_handoff']
+                if self.enable_report:
+                    print(f"Iteration {it} "
+                          f"| train reward:{round(cum_reward, 3)} "
+                          f"| shaped reward:{np.round(cum_shaped_rewards, 3)} "
+                          f"| loss:{round(rollout_info['mean_loss'], 3)} "
+                          # f"| slips:{slips} "
+                          f"| risks:{risks} "
+                          f"| handoffs:{handoffs} "
+                          f" |"
+                          f"| mem:{self.model.memory_len} "
+                          f"| rshape:{round(self.rshape_sched[it], 3)} "
+                          # f"| rat:{round(self.rationality_sched[it], 3)}"
+                          f"| eps:{round(self.epsilon_sched[it], 3)} "
+                          f"| LR={round(self.model.optimizer.param_groups[0]['lr'], 4)}"
+                          f"| rstart={round(self.random_start_sched[it], 3)}"
+                          )
 
             train_rewards.append(cum_reward + cum_shaped_rewards)
             train_losses.append(rollout_info['mean_loss'])
@@ -346,7 +349,7 @@ class Trainer:
     # Train/Test Rollouts   ########################################
     ################################################################
     def training_rollout(self,it,rationality,epsilon,rshape_scale,p_rand_start=0):
-
+        self.logger.epsilon = epsilon
         self.model.rationality = rationality
         self.env.reset()
 
@@ -380,38 +383,76 @@ class Trainer:
         }
 
         for t in count():
-            obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state,device=self.device).unsqueeze(0)
-            feasible_JAs = self.feasible_action.get_feasible_joint_actions(self.env.state,as_joint_idx=True)
+            old_state = self.env.state.deepcopy()
+            obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=self.device).unsqueeze(0)
+            feasible_JAs = self.feasible_action.get_feasible_joint_actions(self.env.state, as_joint_idx=True)
             joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,
                                                                                           epsilon=epsilon,
-                                                                                          feasible_JAs = feasible_JAs)
-            next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
+                                                                                          feasible_JAs=feasible_JAs)
+            next_state, reward, done, info = self.env.step(joint_action, get_mdp_info=True)
+            next_state_prospects = self.mdp.one_step_lookahead(old_state,  # must be called after step....
                                                                joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
                                                                as_tensor=True, device=self.device)
-            next_state, reward, done, info = self.env.step(joint_action,get_mdp_info=True)
 
             for key in rollout_info.keys():
-                if key not in ['mean_loss']:
+                if not key == 'mean_loss':
                     rollout_info[key] += np.array(info['mdp_info']['event_infos'][key])
 
             # Track reward traces
             shaped_rewards = rshape_scale * np.array(info["shaped_r_by_agent"])
-            if self.shared_rew: shaped_rewards = np.mean(shaped_rewards)*np.ones(2)
-            total_rewards =  np.array([reward + shaped_rewards]).flatten()
+            if self.shared_rew: shaped_rewards = np.mean(shaped_rewards) * np.ones(2)
+            total_rewards = np.array([reward + shaped_rewards]).flatten()
             cum_reward += reward
             cum_shaped_reward += shaped_rewards
 
             # Store in memory ----------------
-            self.model.memory_double_push(state=obs,
-                                        action=joint_action_idx,
-                                        rewards = total_rewards,
-                                        next_prospects=next_state_prospects,
-                                        done = done)
+            self.model._memory.double_push(state=obs,
+                                           action=joint_action_idx,
+                                           rewards=total_rewards,
+                                           next_prospects=next_state_prospects,
+                                           done=done)
             # Update model ----------------
-            loss = self.model.update()
-            if loss is not None: losses.append(loss)
-            if done:  break
-            self.env.state = next_state
+            if len(self.model._memory) > self.warmup_transitions:
+                loss = self.model.update()
+                if loss is not None: losses.append(loss)
+            else:
+                losses.append(0)
+
+            # Terminate episode
+            if done: break
+
+            # obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state,device=self.device).unsqueeze(0)
+            # feasible_JAs = self.feasible_action.get_feasible_joint_actions(self.env.state,as_joint_idx=True)
+            # joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,
+            #                                                                               epsilon=epsilon,
+            #                                                                               feasible_JAs = feasible_JAs)
+            # next_state_prospects = self.mdp.one_step_lookahead(self.env.state.deepcopy(),
+            #                                                    joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
+            #                                                    as_tensor=True, device=self.device)
+            # next_state, reward, done, info = self.env.step(joint_action,get_mdp_info=True)
+            #
+            # for key in rollout_info.keys():
+            #     if key not in ['mean_loss']:
+            #         rollout_info[key] += np.array(info['mdp_info']['event_infos'][key])
+            #
+            # # Track reward traces
+            # shaped_rewards = rshape_scale * np.array(info["shaped_r_by_agent"])
+            # if self.shared_rew: shaped_rewards = np.mean(shaped_rewards)*np.ones(2)
+            # total_rewards =  np.array([reward + shaped_rewards]).flatten()
+            # cum_reward += reward
+            # cum_shaped_reward += shaped_rewards
+            #
+            # # Store in memory ----------------
+            # self.model._memory.double_push(state=obs,
+            #                                action=joint_action_idx,
+            #                                rewards=total_rewards,
+            #                                next_prospects=next_state_prospects,
+            #                                done=done)
+            # # Update model ----------------
+            # loss = self.model.update()
+            # if loss is not None: losses.append(loss)
+            # if done:  break
+            # self.env.state = next_state
         rollout_info['mean_loss'] = np.mean(losses)
         return cum_reward, cum_shaped_reward, rollout_info
     def test_rollout(self,rationality,epsilon=0,rshape_scale=1,get_info = False):

@@ -83,10 +83,10 @@ class CompiledModelPreview:
 
 
 def main():
-    # CMP = CompiledModelPreview(layout='risky_tree2', p_slip=0.2)
+    CMP = CompiledModelPreview(layout='risky_tree', p_slip=0.2)
     # CMP = CompiledModelPreview(layout='risky_coordination_ring', p_slip=0.4)
     # CMP = CompiledModelPreview(layout='risky_mixed_coordination', p_slip=0.2)
-    CMP = CompiledModelPreview(layout='risky_roundabout', p_slip=0.4)
+    # CMP = CompiledModelPreview(layout='risky_roundabout', p_slip=0.4)
     plt.ioff()
     plt.show()
 

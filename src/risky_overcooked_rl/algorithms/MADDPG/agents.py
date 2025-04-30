@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import torch.nn as nn
 from torch.optim import Adam
 from src.risky_overcooked_rl.algorithms.MADDPG.utils import *
@@ -119,7 +120,17 @@ class DDPGAgent(nn.Module):
     def act(self, obs, explore=False):
         if obs.dim() == 1: obs = obs.unsqueeze(dim=0)
         action = self.policy(obs)
-        if explore: action = gumbel_softmax(action, hard=True)
+        # action = action.cpu().data.numpy()
+        if explore:
+            noise = torch.Tensor(self.exploration.noise()).to(self.device)
+            action = gumbel_softmax(action + noise, hard=True)
+            # noise = torch.rand(action.shape, device = self.device)
+            # noise = noise/torch.sum(noise, dim=1).unsqueeze(1)
+            # action = action/torch.sum(action, dim=1).unsqueeze(1)
+            # alpha = self.exploration.scale
+            # action = (1-alpha)*action + (alpha)*noise
+            # action = gumbel_softmax(action, hard=True)
+
         else: action = onehot_from_logits(action)
         action = onehot_to_number(action)
         return action.detach().cpu().numpy()

@@ -4,19 +4,22 @@
 
 # Env Params ----------------
 env:
-  'LAYOUT': "risky_coordination_ring"   # layout name
-  "p_slip": 0.4                         # probability of slipping in puddle
+  'LAYOUT': "risky_tree"   # layout name
+  "p_slip": 0.2                         # probability of slipping in puddle
+#  'LAYOUT': "risky_coordination_ring"   # layout name
+#  "p_slip": 0.4                         # probability of slipping in puddle
 #  'LAYOUT': "risky_multipath"           # layout name
 #  "p_slip": 'default'                    # probability of slipping in puddle (= default uses p_slip specified in *.layout)
 
   'HORIZON': 200                        # number of time steps per episode
+#  'time_cost': -0.4                     # if using constant shaped rewards with 1soup/100 timesteps
   'time_cost': -0.2                     # cost per time step (<0: -0.2 ==> 1soup/100steps)
   'shared_rew': False                  # share reward between agents
   neglect_boarders: True              # whether to exclude boarder counter in state representation (reduces state space sz)
 # Learning Params ----------------
 trainer:
-    'ITERATIONS': 15_000                    # total number of training iterations
-#    'ITERATIONS': 20_000                    # total number of training iterations
+#    'ITERATIONS': 15_000                    # total number of training iterations
+    'ITERATIONS': 20_000                    # total number of training iterations
     'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
     'obs_shape': nan                      # Overridden during execution depending on layout
     'joint_action_shape': 36              # number of joint actions
@@ -28,10 +31,15 @@ trainer:
     schedules: # Make sure these are scaled to if you are using curriculum or not
 #      rand_start_sched:  [0.0, 0.0, 1]      # % chance episode starts with random state (start,end, dur)
 
+#      rand_start_sched: # exponential decay on random start state chance
+#        start: 1.0      # starting value
+#        end: 0.0        # ending value
+#        duration: 0.5     # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
+#        decay: 1.1      # higher values = faster decay
       rand_start_sched: # exponential decay on random start state chance
         start: 0.0      # starting value
         end: 0.0        # ending value
-        duration: 1     # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
+        duration: 0.5     # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
         decay: 1.1      # higher values = faster decay
 
       epsilon_sched:    # exponential decay on exploration rate
@@ -39,14 +47,14 @@ trainer:
         end: 0.1        # ending value
 #       duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
 #        duration: 2_000 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
-        duration: 2_000 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+        duration: 3_000 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
         decay: 1.0      # higher values = faster decay
 
       rshape_sched:     # linear decay on reward shaping
         start: 1        # starting value
 #        end: 0          # ending value
-        end: 1          # ending value
-        duration: 0.4 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
+        end: 0          # ending value
+        duration: 0.2 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
 
     curriculum: # TODO: add ALL
       schedule_decay: 0.99     # gain on starting value in schedules after first curriculum
@@ -91,19 +99,41 @@ trainer:
 
 agents:
       'type': 'Not Specified'   # set during runtime depending on what agent model is used
-      'rationality': 10         # rationality level/decision temperature TODO: remove
+      'rationality': 10         # rationality level/decision temperature
 
       model:
         "num_hidden_layers": 6          # MLP params
         "size_hidden_layers": 256   # MLP params
         "activation": "ReLU"            # activation function        TODO: add to config
-        'clip_grad': 0.85 #0.75               # with norm clip
+        'clip_grad': 0.75               # with norm clip
         device: nan                     # device to use for training (cpu or cuda)
-        lr: 0.0001                      # learning rate
-        gamma: 0.97                     # discount factor
+        lr: 0.001                      # learning rate
+        gamma: 0.99                     # discount factor
         tau: 0.005                      # soft update weight of target network
         replay_memory_size: 200_000     # size of replay memory
         minibatch_size: 256             # size of mini-batches
+#      model:
+#        "num_hidden_layers": 6          # MLP params
+#        "size_hidden_layers": 256   # MLP params
+#        "activation": "ReLU"            # activation function        TODO: add to config
+#        'clip_grad': 0.75               # with norm clip
+#        device: nan                     # device to use for training (cpu or cuda)
+#        lr: 0.0002                      # learning rate
+#        gamma: 0.97                     # discount factor
+#        tau: 0.005                      # soft update weight of target network
+#        replay_memory_size: 200_000     # size of replay memory
+#        minibatch_size: 256             # size of mini-batches
+#      model:
+#        "num_hidden_layers": 5          # MLP params
+#        "size_hidden_layers": 128   # MLP params
+#        "activation": "ReLU"            # activation function        TODO: add to config
+#        'clip_grad': 0.75               # with norm clip
+#        device: nan                     # device to use for training (cpu or cuda)
+#        lr: 0.0001                      # learning rate
+#        gamma: 0.95                     # discount factor
+#        tau: 0.005                      # soft update weight of target network
+#        replay_memory_size: 100_000     # size of replay memory
+#        minibatch_size: 256             # size of mini-batches
 
 
       'equilibrium': #using level-k quant response equilibrium
@@ -118,6 +148,14 @@ agents:
           'eta_n': 1.0  # diminishing loss sensitivity
           'delta_p': 1.0 # s-shaped probability estimation bias for gains
           'delta_n': 1.0 # s-shaped probability estimation bias for losses
+
+##        # Averse paramters
+#          'b': -0.2      # reference point
+#          'lam': 2.25    # loss aversion
+#          'eta_p': 0.88  # diminishing gain sensitivity
+#          'eta_n': 1.0  # diminishing loss sensitivity
+#          'delta_p': 0.61 # s-shaped probability estimation bias for gains
+#          'delta_n': 0.69 # s-shaped probability estimation bias for losses
 
 
 

@@ -4,20 +4,29 @@ device: None
 env:
   layout: 'risky_coordination_ring'
   p_slip: 0.4
-  time_cost: 0
-  horizon: 400
+  time_cost: -0.2
+  horizon: 200
+  neglect_boarders: True # whether to exclude boarder counter in state representation (reduces state space sz)
 #  horizon: 200
   seed: 42
   num_episodes: 5000
   num_warmup_episodes: 25
   eval_episode_freq: 10
   num_eval_episodes: 1
-  replay_buffer_capacity: 1e6
+  replay_buffer_capacity: 2e5
 
   exploration_noise:
     init_scale: 1.0 # change
-    exp_decay: 1 # change
+    exp_decay: 2 # change
     final_scale: 0.05
+
+  exploration_noise_schedule:
+    start: 3.0 # change
+#    start: 1.0 # change
+    end: 0.05 # change
+    duration: 1.0 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
+    decay: 1.0
+    type: 'exponential'
 
   reward_shaping:
     init_scale: 1.0

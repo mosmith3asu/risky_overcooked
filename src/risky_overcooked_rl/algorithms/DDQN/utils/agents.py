@@ -417,19 +417,16 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         all_next_a_dists, all_next_q_value = self.compute_EQ(NF_games, update=True)
 
         # Convert to numpy then back ----------------------------
-        all_next_q_value = all_next_q_value[:, 0].reshape(-1, 1).detach().cpu().numpy() # grab only ego values
+        all_next_q_value = all_next_q_value[:, 0].reshape(-1, 1) # grab only ego values
         all_p_next_states = np.array(all_p_next_states).reshape(-1, 1)
 
-        # IF using rational reference, get the rational expectations of following equalib solution
-        # if self.CPT.exp_rational_value_ref:
-        #     with torch.no_grad():
-        #         NF_games_ref = self.get_normal_form_game(torch.cat(all_next_states), with_model=self.rational_ref_model)
-        #         all_next_value_ref = self.get_expected_equilibrium_value(NF_games_ref, all_next_a_dists)
-        #         all_next_value_ref = all_next_value_ref[:, 0].reshape(-1, 1).detach().cpu().numpy()
-        # else: all_next_value_ref = None
         all_next_value_ref = None
-
-
+        # expected_q_value = self.prospect_value_expectations_pt(reward=reward,
+        #                                                     done=done,
+        #                                                     prospect_masks=prospect_idxs,
+        #                                                     prospect_next_q_values=all_next_q_value,
+        #                                                     prospect_p_next_states=all_p_next_states,
+        #                                                     prospect_next_q_values_ref=all_next_value_ref)
         expected_q_value = self.prospect_value_expectations(reward=reward,
                                                             done=done,
                                                             prospect_masks=prospect_idxs,
@@ -445,17 +442,35 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         else:
             loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
             loss = loss.mean()
-        # loss = F.mse_loss(q_value, expected_q_value.detach(), reduction='none')
-        # loss = loss.mean()
         self.optimizer.zero_grad()
         loss.backward()
 
         # In-place gradient clipping
         if self.clip_grad is not None:
-            # torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad)
         self.optimizer.step()
         return loss.item()
+
+    def prospect_value_expectations_pt(self, reward, done, prospect_masks,
+                                    prospect_next_q_values, prospect_p_next_states,
+                                    prospect_next_q_values_ref=None, debug=False):
+        """CPT expectation used for modification when class inherited by CPT version
+        - condenses prospects back into expecations of |batch_size|
+        """
+
+        BATCH_SIZE = len(prospect_masks)
+        rewards = reward
+        expected_td_targets = torch.zeros([BATCH_SIZE, 1],device=self.device)
+        prospect_p_next_states = torch.tensor(prospect_p_next_states, dtype=prospect_next_q_values.dtype, device=self.device)
+
+        for i in range(BATCH_SIZE):
+            prospect_mask = prospect_masks[i]
+            prospect_values = prospect_next_q_values[prospect_mask, :]
+            prospect_probs = prospect_p_next_states[prospect_mask, :]
+            prospect_td_targets = rewards[i, :] + (self.gamma) * prospect_values * (1 - done[i, :])
+            expected_td_targets[i] = self.CPT.expectation_pt(prospect_td_targets.flatten(),prospect_probs.flatten())
+
+        return expected_td_targets
     def prospect_value_expectations(self,reward,done,prospect_masks,
                                     prospect_next_q_values,prospect_p_next_states,
                                     prospect_next_q_values_ref = None,  debug=False):
@@ -467,6 +482,8 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         done = done.detach().cpu().numpy()
         rewards = reward.detach().cpu().numpy()
         expected_td_targets = np.zeros([BATCH_SIZE, 1])
+        prospect_next_q_values = prospect_next_q_values.detach().cpu().numpy()
+
         for i in range(BATCH_SIZE):
             prospect_mask = prospect_masks[i]
             prospect_values = prospect_next_q_values[prospect_mask, :]
@@ -490,6 +507,7 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
                     'Rational CPT expectation not equal to sum of prospect values'
         expected_td_targets = torch.tensor(expected_td_targets, dtype=torch.float32, device=self.device)
         return expected_td_targets
+
 
 
 class DQN_vector_feature(nn.Module):

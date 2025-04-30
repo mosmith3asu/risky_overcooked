@@ -33,8 +33,13 @@ class PolicyHeatmap():
 
 
         # set up env ---------------------------------------------------------
-        mdp = OvercookedGridworld.from_layout_name(config['env']['LAYOUT'])
-        mdp.p_slip = config['env']['p_slip']
+        overwrite = {}
+        if p_slip != 'default' and p_slip != 'def':
+            overwrite['p_slip'] = p_slip
+        overwrite['neglect_boarders'] = config['env']['neglect_boarders']
+        mdp = OvercookedGridworld.from_layout_name(layout, **overwrite)
+        # mdp = OvercookedGridworld.from_layout_name(config['env']['LAYOUT'])
+        # mdp.p_slip = config['env']['p_slip']
         obs_shape = mdp.get_lossless_encoding_vector_shape()
         n_actions = 36
         self.env = OvercookedEnv.from_mdp(mdp, horizon=config['env']['HORIZON'], time_cost=config['env']['time_cost'])

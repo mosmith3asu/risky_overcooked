@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import deque
 from matplotlib.backends.backend_agg import FigureCanvasAgg
-
+import torch
 import random
 
 
@@ -198,6 +198,61 @@ class CumulativeProspectTheory(object):
             rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
             rho = rho_p - rho_n
             return rho
+
+    def expectation_pt(self, values, p_values, pass_single_choice=True):
+        """
+        Handles pytorch variables
+        Computes CUMULATIVE Prospect Theory Expectation
+        :param values: list of values of next states
+        :param p_values: probability of each value
+        :param value_refs: list of (rational) values used to compute reference point
+        :param pass_single_choice: if True, return the rational value of the single prospect
+        :return: scalar value (biased) expectation
+        """
+        assert  torch.is_tensor(values), "values must be a torch tensor"
+        assert  torch.is_tensor(p_values), "p_values must be a torch tensor"
+
+        # arrange all samples in ascending order
+        sorted_idxs = torch.argsort(values)
+        sorted_v = values[sorted_idxs]
+        sorted_p = p_values[sorted_idxs]
+        K = sorted_v.size(0)  # number of samples
+
+        if K == 1:
+            if pass_single_choice:
+                return sorted_v[0]
+            elif sorted_v[0] > self.b:
+                return self.u_plus(sorted_v[0],is_torch=True)
+            else:
+                return -1 * self.u_neg(sorted_v[0],is_torch=True)
+
+        elif torch.all(sorted_v <= self.b):
+            Fk = torch.cumsum(sorted_p, dim=0)
+            l = K - 1
+            rho_p = 0
+            rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K,is_torch=True)
+            rho = rho_p - rho_n
+            return rho
+
+        elif torch.all(sorted_v > self.b):
+            Fk = torch.cumsum(sorted_p.flip(0), dim=0).flip(0)
+            l = -1
+            rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K,is_torch=True)
+            rho_n = 0
+            rho = rho_p - rho_n
+            return rho
+
+        else:
+            l = torch.where(sorted_v <= self.b)[0][-1].item()
+            Fk = torch.cat([
+                torch.cumsum(sorted_p[:l + 1], dim=0),
+                torch.cumsum(sorted_p[l + 1:].flip(0), dim=0).flip(0)
+            ])
+            rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K,is_torch=True)
+            rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K,is_torch=True)
+            rho = rho_p - rho_n
+            return rho
+
     # def expectation(self, values, p_values, value_refs=None):
     #     """
     #     Computes CUMULATIVE Prospect Theory Expectation
@@ -344,23 +399,26 @@ class CumulativeProspectTheory(object):
         rho = rho_plus - rho_minus
         return rho
 
-    def rho_plus(self,sorted_v,sorted_p,Fk,l,K):
+    def rho_plus(self,sorted_v,sorted_p,Fk,l,K,is_torch=False):
         rho_p = 0
         for i in range(l + 1, K - 1):
-            rho_p += self.u_plus(sorted_v[i]) * (self.w_plus(Fk[i]) - self.w_plus(Fk[i + 1]))
-        rho_p += self.u_plus(sorted_v[K - 1]) * self.w_plus(sorted_p[K - 1])
+            rho_p += self.u_plus(sorted_v[i],is_torch=is_torch) * (self.w_plus(Fk[i]) - self.w_plus(Fk[i + 1]))
+        rho_p += self.u_plus(sorted_v[K - 1],is_torch=is_torch) * self.w_plus(sorted_p[K - 1])
         return rho_p
-    def rho_neg(self,sorted_v,sorted_p,Fk,l,K):
-        rho_n = self.u_neg(sorted_v[0]) * self.w_neg(sorted_p[0])
+    def rho_neg(self,sorted_v,sorted_p,Fk,l,K,is_torch=False):
+
+        rho_n = self.u_neg(sorted_v[0],is_torch=is_torch) * self.w_neg(sorted_p[0])
         for i in range(1, l + 1):
-            rho_n += self.u_neg(sorted_v[i]) * (self.w_neg(Fk[i]) - self.w_neg(Fk[i - 1]))
+            rho_n += self.u_neg(sorted_v[i],is_torch=is_torch) * (self.w_neg(Fk[i]) - self.w_neg(Fk[i - 1]))
         return rho_n
 
-    def u_plus(self,v):
-        return np.abs(v-self.b)**self.eta_p
-    def u_neg(self, v):
+    def u_plus(self,v,is_torch=False):
+        if is_torch: return torch.abs(v - self.b) ** self.eta_p
+        else: return np.abs(v-self.b)**self.eta_p
+    def u_neg(self, v,is_torch=False):
         # return -1*self.lam * np.abs(v-self.b) ** self.eta_n
-        return self.lam * np.abs(v-self.b) ** self.eta_n
+        if is_torch: return self.lam * torch.abs(v-self.b) ** self.eta_n
+        else: return self.lam * np.abs(v-self.b) ** self.eta_n
 
     def w_plus(self,p):
         delta = self.delta_p
@@ -501,7 +559,7 @@ class CumulativeProspectTheory(object):
                 and self.eta_p == 1 and self.eta_n == 1
                 and self.delta_p == 1 and self.delta_n == 1)
 
-    def handle_percision_error(self,Fk,sigdig=5):
+    def handle_percision_error(self,Fk,sigdig=5,is_torch=False):
         """ handles unknown rounding error in Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]"""
         if np.any(np.array(Fk)>1):
             Fk = np.round(Fk,sigdig)

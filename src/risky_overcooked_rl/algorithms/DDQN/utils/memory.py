@@ -142,12 +142,14 @@ class ReplayMemory_Prospect(object):
     def double_push(self, state, action, rewards, next_prospects, done):
 
         """ Push both agent's experience into memory from ego perspective"""
+
         if not isinstance(action, torch.Tensor): action = torch.tensor(action, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
-        if not isinstance(done, torch.Tensor): done = torch.tensor(done, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
+        # if not isinstance(done, torch.Tensor): done = torch.tensor(done, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
         rewards = rewards.flatten()
 
         # Append Agent 1 experiences
-        reward = torch.tensor([rewards[0]], dtype=torch.float32, device=self.device).reshape(1, 1).to(self.device)
+        # reward = torch.tensor([rewards[0]], dtype=torch.float32, device=self.device).reshape(1, 1).to(self.device)
+        reward = rewards[0]
 
         # assert len(reward.shape)==2,f'reward shape should be 2D:{reward.shape}'
         # self.memory.append(self.transition(state, action, reward, next_prospects, done))
@@ -156,10 +158,9 @@ class ReplayMemory_Prospect(object):
         # # Append Agent 2 experience
         s_prime = invert_obs(state)
         a_prime = invert_joint_action(action).to(self.device)
-        r_prime = torch.tensor([rewards[1]], dtype=torch.float32, device=self.device).reshape(1, 1).to(self.device)
+        # r_prime = torch.tensor([rewards[1]], dtype=torch.float32, device=self.device).reshape(1, 1).to(self.device)
+        r_prime = rewards[1]
         np_prime = invert_prospect(next_prospects)
-        # assert len(r_prime.shape) == 2, f'reward shape should be 2D:{r_prime.shape}'
-        # self.memory.append(self.transition(s_prime, a_prime, r_prime, np_prime, done))
         self.push(s_prime, a_prime, r_prime, np_prime, done)
 
     def push(self, *args):

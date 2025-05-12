@@ -2601,18 +2601,22 @@ class OvercookedGridworld(object):
         :param joint_action: if None, return all possible outcomes from all joint actions
         :return: {joint_action, next_state, p_next_state}
         """
-        def make_obs(_state):
-            if encoded and as_tensor: next_obs = self.get_lossless_encoding_vector_astensor(_state, device).unsqueeze(0)
-            elif encoded and not as_tensor: next_obs = self.get_lossless_encoding_vector(_state, device)
-            else: next_obs = next_state.deepcopy()
-            return next_obs
 
+        def make_obs(_state):
+            if encoded and as_tensor:
+                next_obs = self.get_lossless_encoding_vector_astensor(_state, device).unsqueeze(0)
+                # next_obs =torch.tensor(self.get_lossless_encoding_vector(_state)).to(device=device, non_blocking=True).unsqueeze(0)
+            elif encoded and not as_tensor:
+                next_obs = self.get_lossless_encoding_vector(_state, device)
+            else:
+                next_obs = next_state.deepcopy()
+            return next_obs
 
         if as_tensor: assert device is not None, 'If using tensor, device must be specified'
 
         outcomes = []
         # state = state.deepcopy()
-        true_state= state.deepcopy()
+        true_state = state.deepcopy()
 
         # get originally held objects
         held_objs = []
@@ -2621,14 +2625,13 @@ class OvercookedGridworld(object):
 
         # Perform the joint action
         next_state, mdp_infos = self.get_state_transition(state, joint_action)
-        can_slip = [self.check_can_slip(state.players[i],next_state.players[i]) for i in range(2)]
-
+        can_slip = [self.check_can_slip(state.players[i], next_state.players[i]) for i in range(2)]
 
         for iplayer in range(2):
             # if self.p_slip == 0 and self.is_water(next_state.players[iplayer].position):
             if self.p_slip == 0 and can_slip[iplayer]:
-                assert true_state.players[iplayer].has_object()==next_state.players[
-                    iplayer].has_object(), f'P{iplayer+1} unexpectedly lost object'
+                assert true_state.players[iplayer].has_object() == next_state.players[
+                    iplayer].has_object(), f'P{iplayer + 1} unexpectedly lost object'
 
         # can_slip = [self.is_water(next_state.players[p].position) and held_objs[p] is not None for p in range(2)]
         true_next_state = next_state.deepcopy()
@@ -2638,13 +2641,13 @@ class OvercookedGridworld(object):
         # ENUMERATE ALL POSSIBLE OUTCOMES #####################################
         ########################################################################
         # Nobody can slip
-        if np.sum(can_slip)==0:
+        if np.sum(can_slip) == 0:
             prob = 1
             outcomes.append([joint_action, make_obs(next_state), prob])
 
         # One agent can slip
-        elif np.sum(can_slip)==1:
-            iplayer = np.argmax(can_slip) #player who slips
+        elif np.sum(can_slip) == 1:
+            iplayer = np.argmax(can_slip)  # player who slips
 
             # Lost object ---------------------------------
             prob = self.p_slip
@@ -2659,7 +2662,7 @@ class OvercookedGridworld(object):
             outcomes.append([joint_action, make_obs(next_state), prob])
 
         # Both players can slip
-        elif np.sum(can_slip)==2:
+        elif np.sum(can_slip) == 2:
             # print(f'OG: {[player.has_object() for player in next_state.players]}')
             # Both lost object ---------------------------------
             prob = self.p_slip * self.p_slip
@@ -2704,8 +2707,6 @@ class OvercookedGridworld(object):
         # else: assert next_state in [prospect[1] for prospect in outcomes], 'state not prospects'
 
         return outcomes
-
-
     ###################
     # STATE ENCODINGS #
     ###################
@@ -2713,6 +2714,10 @@ class OvercookedGridworld(object):
         return self.get_lossless_encoding_vector(self.get_standard_start_state()).shape
 
     def get_lossless_encoding_vector_astensor(self, overcooked_state,device):
+        # feature_vector = self.get_lossless_encoding_vector(overcooked_state)
+        # feature_vector =  torch.tensor(feature_vector).to(device=device, non_blocking=True).unsqueeze(0)
+        # return feature_vector
+
         IDX_TO_OBJ = ["onion", "dish", "soup"]
         OBJ_TO_IDX = {o_name: idx for idx, o_name in enumerate(IDX_TO_OBJ)}
 

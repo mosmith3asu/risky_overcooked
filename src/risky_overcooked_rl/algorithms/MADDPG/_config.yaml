@@ -9,7 +9,7 @@ env:
   neglect_boarders: True # whether to exclude boarder counter in state representation (reduces state space sz)
 #  horizon: 200
   seed: 42
-  num_episodes: 5000
+  num_episodes: 10000
   num_warmup_episodes: 25
   eval_episode_freq: 10
   num_eval_episodes: 1
@@ -24,7 +24,7 @@ env:
     start: 3.0 # change
 #    start: 1.0 # change
     end: 0.05 # change
-    duration: 1.0 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
+    duration: 0.1 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
     decay: 1.0
     type: 'exponential'
 
@@ -32,7 +32,7 @@ env:
     init_scale: 1.0
 #    exp_decay: 4
     exp_decay: 1
-    final_scale: 0.0
+    final_scale: 1.0
     perc_delay: 0.0 # percentage of total episodes to delay reward shaping decay
 
 
@@ -69,7 +69,45 @@ agent:
     'delta_n': 1.0 # s-shaped probability estimation bias for losses
 
 
+curriculum: # TODO: add ALL
+  schedule_decay: 0.99     # gain on starting value in schedules after first curriculum
+  curriculum_mem: 10      # number of iterations to check curriculum over
+  sampling_decay: 0.1    # ######################################################
+  p_random_counter_obj: 0 # probability of a random object being on any counter
+  min_iter: 100           # minimum number of iterations to run before checking for curriculum
 
+  subtask_goals:
+    # specifies success threshold to move to next curriculum
+    # average number of soups delivered over curriculum_mem needed to advance
+    deliver_soup: 4.5   # agents starts with cooked soup and must cary to service window
+    pick_up_soup: 4     # agents starts with dish and must pick up soup from pot
+    pick_up_dish: 3.5   # agents starts with nothing and must pick up dish
+    wait_to_cook: 3     # agents starts with nothing and must wait to cook
+    deliver_onion3: 2.5 # agents starts with onion and must deliver to pot
+    pick_up_onion3: 2.5 # agents starts with nothing and must pick up onion
+    deliver_onion2: 2   # agents starts with onion and must deliver to pot
+    pick_up_onion2: 2   # agents starts with nothing and must pick up onion
+    deliver_onion1: 2   # agents starts with onion and must deliver to pot
+    full_task: 999 # pick_up_onion1 = full_task
+
+  failure_checks:
+    #  % of total ITERATIONS a curriculum has to finish before run considered failed
+    # if cant deliver {subtask_goals.X} soups by {early_stopping.X*ITERATIONS} -> stop training
+
+    enable: False           # enable early stopping
+    save_fig: True         # save figure of failed training run
+    save_model: True      # save model of failed training run
+
+    deliver_soup: 0.2
+    pick_up_soup: 0.3
+    pick_up_dish: 0.5
+    wait_to_cook: 0.6
+    deliver_onion3: 0.7
+    pick_up_onion3: 0.8
+    deliver_onion2: 0.9
+    pick_up_onion2: 1.0
+    deliver_onion1: 1.0
+    full_task: 999 # pick_up_onion1 = full_task
 
 
 ####### LEFT #######

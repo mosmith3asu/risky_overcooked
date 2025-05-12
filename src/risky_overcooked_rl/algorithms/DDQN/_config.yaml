@@ -18,9 +18,10 @@ env:
   neglect_boarders: True              # whether to exclude boarder counter in state representation (reduces state space sz)
 # Learning Params ----------------
 trainer:
-#    'ITERATIONS': 15_000                    # total number of training iterations
-    'ITERATIONS': 20_000                    # total number of training iterations
-    'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
+    'ITERATIONS': 15_000                    # total number of training iterations
+#    'ITERATIONS': 20_000                    # total number of training iterations
+#    'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
+    'warmup_transitions': 300            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
     'obs_shape': nan                      # Overridden during execution depending on layout
     'joint_action_shape': 36              # number of joint actions
     N_tests: 1                          # number of test runs to average over during validation
@@ -47,13 +48,13 @@ trainer:
         end: 0.1        # ending value
 #       duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
 #        duration: 2_000 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
-        duration: 3_000 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
         decay: 1.0      # higher values = faster decay
 
       rshape_sched:     # linear decay on reward shaping
         start: 1        # starting value
 #        end: 0          # ending value
-        end: 0          # ending value
+        end: 1          # ending value
         duration: 0.2 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
 
     curriculum: # TODO: add ALL
@@ -103,15 +104,26 @@ agents:
 
       model:
         "num_hidden_layers": 6          # MLP params
-        "size_hidden_layers": 256   # MLP params
+        "size_hidden_layers": 128   # MLP params
         "activation": "ReLU"            # activation function        TODO: add to config
         'clip_grad': 0.75               # with norm clip
         device: nan                     # device to use for training (cpu or cuda)
-        lr: 0.001                      # learning rate
-        gamma: 0.99                     # discount factor
-        tau: 0.005                      # soft update weight of target network
+        lr: 0.01                    # learning rate
+        gamma: 0.97                     # discount factor
+        tau: 0.01                      # soft update weight of target network
         replay_memory_size: 200_000     # size of replay memory
         minibatch_size: 256             # size of mini-batches
+#      model:
+#        "num_hidden_layers": 6          # MLP params
+#        "size_hidden_layers": 256   # MLP params
+#        "activation": "ReLU"            # activation function        TODO: add to config
+#        'clip_grad': 0.75               # with norm clip
+#        device: nan                     # device to use for training (cpu or cuda)
+#        lr: 0.001                      # learning rate
+#        gamma: 0.97                     # discount factor
+#        tau: 0.005                      # soft update weight of target network
+#        replay_memory_size: 200_000     # size of replay memory
+#        minibatch_size: 256             # size of mini-batches
 #      model:
 #        "num_hidden_layers": 6          # MLP params
 #        "size_hidden_layers": 256   # MLP params

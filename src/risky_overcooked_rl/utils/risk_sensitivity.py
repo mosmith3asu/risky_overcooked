@@ -199,7 +199,8 @@ class CumulativeProspectTheory(object):
             rho = rho_p - rho_n
             return rho
 
-    def expectation_pt(self, values, p_values, pass_single_choice=True):
+
+    def expectation_torch(self, values, p_values, pass_single_choice=True):
         """
         Handles pytorch variables
         Computes CUMULATIVE Prospect Theory Expectation
@@ -209,8 +210,9 @@ class CumulativeProspectTheory(object):
         :param pass_single_choice: if True, return the rational value of the single prospect
         :return: scalar value (biased) expectation
         """
-        assert  torch.is_tensor(values), "values must be a torch tensor"
-        assert  torch.is_tensor(p_values), "p_values must be a torch tensor"
+        # assert  torch.is_tensor(values), "values must be a torch tensor"
+        # assert  torch.is_tensor(p_values), "p_values must be a torch tensor"
+        # print(f"values={values}, p_values={p_values}")
 
         # arrange all samples in ascending order
         sorted_idxs = torch.argsort(values)

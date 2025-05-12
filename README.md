@@ -17,6 +17,7 @@ pip3 install torch torchvision torchaudio --index-url https://download.pytorch.o
 # tbd... ask mason for help if needed
 ```
 ---
+Uses torch.compile which requires g++ compiler to be installed https://code.visualstudio.com/docs/cpp/config-mingw
 ## Usage
 
 ### Creating Custom Layouts

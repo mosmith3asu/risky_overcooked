@@ -184,12 +184,12 @@ class Trainer():
                     print('warmup/episode_reward', [episode_sparse_reward, episode_shaped_reward])
                     break
 
-    def step_exploration(self, prog):
+    def step_exploration(self, step=None):
 
         # self.noise_percentage = (1-prog) ** self.noise.exp_decay
         # # noise_scale = self.noise.final_scale + (self.noise.init_scale - self.noise.final_scale) * self.noise_percentage
         # noise_scale = self.noise.final_scale + (self.noise.init_scale - self.noise.final_scale) * self.noise_percentage
-        noise_scale = self.noise_sched.step()
+        noise_scale = self.noise_sched.step(t=step)
         self.agent.scale_noise(noise_scale)
         self.agent.reset_noise()
         self.logger.epsilon = noise_scale
@@ -440,7 +440,7 @@ class CPTTrainer(Trainer):
         for epi in range(self.num_episodes):
             self.logger.start_iteration()
             prog = epi / self.num_episodes
-            self.step_exploration(prog)
+            self.step_exploration()
 
             # TRAINING ROLLOUT ##################################
             episode_sparse_reward = 0

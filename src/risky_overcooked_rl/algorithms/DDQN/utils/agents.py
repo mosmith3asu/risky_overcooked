@@ -16,7 +16,7 @@ if is_ipython:
 from risky_overcooked_rl.algorithms.DDQN.utils.memory import ReplayMemory_Prospect
 # from risky_overcooked_rl.utils.risk_sensitivity import CumulativeProspectTheory
 from risky_overcooked_rl.utils.risk_sensitivity_compiled import CumulativeProspectTheory
-from risky_overcooked_rl.utils.model_manager import get_absolute_save_dir
+from risky_overcooked_rl.algorithms.DDQN import get_absolute_save_dir
 from risky_overcooked_rl.utils.state_utils import invert_obs, flatten_next_prospects
 import numpy as np
 import warnings
@@ -40,7 +40,7 @@ class SelfPlay_QRE_OSA(object):
         # select file to load ---------------
         files = os.listdir(dir)
         files = [f for f in files if (fname in f and '.pt' in f)]
-        if len(files) == 0: raise FileNotFoundError(f'No files found with fname:'+fname)
+        if len(files) == 0: raise FileNotFoundError(f'No files found with fname: {dir}[{fname}]'+fname)
         elif len(files) == 1: loads_fname = files[0]
         elif len(files) > 1:
             warnings.warn(f'Multiple files found with fname: {fname}. Using latest file...')

@@ -5,7 +5,6 @@ import torch
 import copy
 from risky_overcooked_py.mdp.actions import Action, Direction
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
-from numba import jit
 
 class FeasibleActionManager(object):
     def __init__(self, env, enable=True):

@@ -1,6 +1,6 @@
 import numpy as np
 from risky_overcooked_rl.utils.rl_logger import RLLogger,TrajectoryVisualizer, TrajectoryHeatmap
-from risky_overcooked_rl.utils.model_manager import get_absolute_save_dir
+from risky_overcooked_rl.algorithms.DDQN import get_absolute_save_dir
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,SoupState, ObjectState
 from risky_overcooked_py.mdp.actions import Action

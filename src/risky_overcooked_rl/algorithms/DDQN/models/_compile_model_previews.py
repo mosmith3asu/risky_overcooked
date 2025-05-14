@@ -1,12 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from risky_overcooked_rl.algorithms.DDQN.eval.policy_heatmap import PolicyHeatmap
-from risky_overcooked_rl.utils.model_manager import get_absolute_save_dir
+from risky_overcooked_rl.algorithms.DDQN import get_absolute_save_dir
 import os
 
 class CompiledModelPreview:
-    def __init__(self, layout, p_slip,n_trials=5,seed=42):
-        fig_sz = (12, 12)
+    def __init__(self, layout, p_slip,n_trials=10,seed=42):
+        fig_sz = (10, 7)
         self.layout = layout
         self.p_slip = p_slip
         self.items = ('onion','dish')
@@ -30,7 +30,7 @@ class CompiledModelPreview:
         # Create a figure and axis
 
         print(f'Plotting {layout} with p_slip={p_slip}')
-        fig, axs = plt.subplots(3, 3, figsize=fig_sz)
+        fig, axs = plt.subplots(3, 3, figsize=fig_sz, constrained_layout=True)
         for r, human_type in enumerate(list(hms.keys())):
             titles = self.items if r == 0 else ['' for _ in range(len(self.items))]
             hms[human_type].plot(axs=list(axs[r, 1:3]), items=self.items, titles=titles)
@@ -42,7 +42,12 @@ class CompiledModelPreview:
         c = 0
         for r, human_type in enumerate(list(hms.keys())):
             self.plot_training_fig(axs[r, c], hms[human_type].policy_fnames[human_type])
-            axs[r, c].set_ylabel(human_type)
+            # axs[r, c].set_ylabel(human_type)
+        #
+        for r, human_type in enumerate(list(hms.keys())):
+            # axs[r, 0].set_ylabel(human_type)
+            axs[r, -1].set_ylabel(human_type)
+            axs[r, -1].yaxis.set_label_position("right")
 
     def plot_training_fig(self,ax,fname,ftype='.png'):
 
@@ -83,10 +88,10 @@ class CompiledModelPreview:
 
 
 def main():
-    CMP = CompiledModelPreview(layout='risky_tree', p_slip=0.2)
-    # CMP = CompiledModelPreview(layout='risky_coordination_ring', p_slip=0.4)
+    # CMP = CompiledModelPreview(layout='risky_tree', p_slip=0.2)
+    # CMP = CompiledModelPreview(layout='risky_handoff', p_slip=0.25)
+    CMP = CompiledModelPreview(layout='risky_roundabout', p_slip=0.25)
     # CMP = CompiledModelPreview(layout='risky_mixed_coordination', p_slip=0.2)
-    # CMP = CompiledModelPreview(layout='risky_roundabout', p_slip=0.4)
     plt.ioff()
     plt.show()
 

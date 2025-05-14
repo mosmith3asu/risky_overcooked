@@ -1,5 +1,5 @@
 ---
-workers: 3
+workers: 7
 istart:  0 # used for starting at predefined index of batch list if previously incomplete
 CPT_PARAMS:
   averse: {'b': -0.2, 'lam': 2.25, 'eta_p': 0.88, 'eta_n': 1.0, 'delta_p': 0.61, 'delta_n': 0.69}
@@ -9,23 +9,25 @@ CPT_PARAMS:
 jobs:
 #  risky_coordination_ring:
 #    agents: ['averse','neutral','seeking']
-#    p_slips: [0.4]
+#    p_slips: ['default'] # 0.4 in layout definition
 ##    p_slips: [0.3]
 #  risky_multipath:
 #    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [0.15]
+#    p_slips: ['default'] #0.15 in layout definition
 #  risky_handoff:
 #    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [0.2]
-#  risky_roundabout:
+#    p_slips: ['default'] # 0.25 in layout definition
+  risky_roundabout:
+    agents: [ 'averse','neutral','seeking' ]
+    p_slips: [0.2]
+  risky_mixed_coordination:
 #    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [0.25]
-#  risky_forced_coordination:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [0.2]
-#  risky_mixed_coordination:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [0.2]
+    agents: ['seeking' ]
+    p_slips: [0.2]
+  risky_shortcuts:
+    agents: [ 'averse','neutral','seeking' ]
+    p_slips: [ 0.2]
+
 #  risky_hierarchy:
 #    agents: [ 'averse','neutral','seeking' ]
 #    p_slips: [ 0.2 ]
@@ -33,15 +35,17 @@ jobs:
 #  risky_tree:
 #    agents: [ 'averse','neutral','seeking' ]
 #    p_slips: [ 0.15]
-#  risky_shortcuts:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [ 0.2]
-##  risky_corridor:
-##    agents: [ 'averse','neutral','seeking' ]
-##    p_slips: [ 0.5 ]
-#  risky_spiral:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [ 0.3 ]
+  risky_spiral:
+    agents: [ 'averse','neutral','seeking' ]
+    p_slips: [ 0.3 ]
   risky_passing:
     agents: [ 'averse','neutral','seeking' ]
     p_slips: [ 0.3 ]
+
+# EXCLUDED ###################################
+#  risky_forced_coordination:
+#    agents: [ 'averse','neutral','seeking' ]
+#    p_slips: [0.2]
+##  risky_corridor:
+##    agents: [ 'averse','neutral','seeking' ]
+##    p_slips: [ 0.5 ]

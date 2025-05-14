@@ -71,16 +71,39 @@ def main(reversed = False, shuffled = True, istart=0):
     #     "clip_grad": [0.9]
     #
     # }
+
+    # 5_6_25
+    # search_space = {
+    #     'lr': [0.0002, 0.0005,0.001],  # learning rate
+    #     'gamma': [0.95,0.97,0.99],  # discount factor
+    #     'tau': [0.005],  # soft update weight of target network
+    #     "num_hidden_layers": [6],  # MLP params
+    #     "size_hidden_layers": [256],  # MLP params
+    #     "minibatch_size": [256],  # size of mini-batches
+    #     "replay_memory_size": [200_000],  # size of replay memory
+    #     "clip_grad": [0.75]
+    # }
+
+    # 5_9_25
+    # search_space = {
+    #     'lr': [0.001],  # learning rate
+    #     'gamma': [0.97],  # discount factor
+    #     'tau': [0.005,0.001, 0.01],  # soft update weight of target network
+    #     "num_hidden_layers": [6, 7],  # MLP params
+    #     "size_hidden_layers": [128, 256],  # MLP params
+    #     "minibatch_size": [256],  # size of mini-batches
+    #     "replay_memory_size": [200_000],  # size of replay memory
+    #     "clip_grad": [0.75,0.85]
+    # }
     search_space = {
-        'lr': [0.0001, 0.0002],  # learning rate
-        'gamma': [0.97, 0.95],  # discount factor
-        'tau': [0.005],  # soft update weight of target network
-        "num_hidden_layers": [5,6],  # MLP params
+        'lr': [0.001],  # learning rate
+        'gamma': [0.97],  # discount factor
+        'tau': [0.005, 0.01],  # soft update weight of target network
+        "num_hidden_layers": [6, 7],  # MLP params
         "size_hidden_layers": [128, 256],  # MLP params
         "minibatch_size": [256],  # size of mini-batches
-        "replay_memory_size": [100_000,200_000],  # size of replay memory
-        "clip_grad": [0.75,0.85]
-
+        "replay_memory_size": [200_000],  # size of replay memory
+        "clip_grad": [0.75, 0.85]
     }
 
     # search_space = {

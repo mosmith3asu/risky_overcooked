@@ -1,5 +1,6 @@
 import sys
 import os
+
 print('\\'.join(os.getcwd().split('\\')[:-1]))
 sys.path.append('\\'.join(os.getcwd().split('\\')[:-1]))
 
@@ -28,6 +29,10 @@ def get_default_batching(path = '\\risky_overcooked_rl\\algorithms\\DDQN\\_batch
         config = yaml.load(f, Loader=yaml.SafeLoader)
     return config
 
+def get_absolute_save_dir(path = '\\risky_overcooked_rl\\algorithms\\DDQN\\models\\'):
+    dirs = os.getcwd().split('\\')
+    src_idx = dirs.index('src') # find index of src directory
+    return '\\'.join(dirs[:src_idx+1]) + path
 
 def get_save_dir():
     # TODO: implement this is save confing to generalize to other algs

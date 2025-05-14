@@ -2,8 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import random
-from risky_overcooked_rl.utils.model_manager import get_default_config
-from risky_overcooked_rl.utils.deep_models import SelfPlay_QRE_OSA_CPT,SelfPlay_QRE_OSA
+from risky_overcooked_rl.algorithms.DDQN.utils.agents import SelfPlay_QRE_OSA_CPT,SelfPlay_QRE_OSA
 from risky_overcooked_rl.utils.belief_update import BayesianBeliefUpdate
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld

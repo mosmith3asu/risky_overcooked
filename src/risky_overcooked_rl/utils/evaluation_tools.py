@@ -5,9 +5,9 @@ sys.path.append('\\'.join(os.getcwd().split('\\')[:-1]))
 
 import numpy as np
 import matplotlib.pyplot as plt
-from risky_overcooked_rl.utils.model_manager import get_default_config, parse_args #get_argparser
-from risky_overcooked_rl.utils.trainer import Trainer
-from risky_overcooked_rl.utils.deep_models import SelfPlay_QRE_OSA_CPT
+# from risky_overcooked_rl.utils.model_manager import get_default_config, parse_args #get_argparser
+from risky_overcooked_rl.algorithms.DDQN.utils.trainer import Trainer
+from risky_overcooked_rl.algorithms.DDQN.utils.agents import SelfPlay_QRE_OSA_CPT
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
 from risky_overcooked_rl.utils.state_utils import StartStateManager

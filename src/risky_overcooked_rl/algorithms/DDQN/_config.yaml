@@ -15,10 +15,11 @@ env:
 #  'time_cost': -0.4                     # if using constant shaped rewards with 1soup/100 timesteps
   'time_cost': -0.2                     # cost per time step (<0: -0.2 ==> 1soup/100steps)
   'shared_rew': False                  # share reward between agents
-  neglect_boarders: True              # whether to exclude boarder counter in state representation (reduces state space sz)
+#  neglect_boarders: True              # whether to exclude boarder counter in state representation (reduces state space sz)
+  neglect_boarders: False              # whether to exclude boarder counter in state representation (reduces state space sz)
 # Learning Params ----------------
 trainer:
-    'ITERATIONS': 20_000                    # total number of training iterations
+    'ITERATIONS': 15_000                    # total number of training iterations
     'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
 #    'warmup_transitions': 300            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
     'obs_shape': nan                      # Overridden during execution depending on layout
@@ -153,7 +154,6 @@ agents:
         'belief_trick': True # other agent uses  level-(k+1) to avoid recomputing in QRE
 
       'cpt':   # Default rational CPT parameters
-          # Rational Parameters
           'b': 0.0      # reference point
           'lam': 1.0    # loss aversion
           'eta_p': 1.0  # diminishing gain sensitivity

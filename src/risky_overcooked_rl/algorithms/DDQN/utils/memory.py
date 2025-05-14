@@ -143,7 +143,8 @@ class ReplayMemory_Prospect(object):
 
         """ Push both agent's experience into memory from ego perspective"""
 
-        if not isinstance(action, torch.Tensor): action = torch.tensor(action, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
+        if not isinstance(action, torch.Tensor):
+            action = torch.tensor(action, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
         # if not isinstance(done, torch.Tensor): done = torch.tensor(done, dtype=torch.int64, device=self.device).reshape(1, 1).to(self.device)
         rewards = rewards.flatten()
 

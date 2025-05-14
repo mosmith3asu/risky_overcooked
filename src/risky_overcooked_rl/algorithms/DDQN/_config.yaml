@@ -18,10 +18,9 @@ env:
   neglect_boarders: True              # whether to exclude boarder counter in state representation (reduces state space sz)
 # Learning Params ----------------
 trainer:
-    'ITERATIONS': 15_000                    # total number of training iterations
-#    'ITERATIONS': 20_000                    # total number of training iterations
-#    'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
-    'warmup_transitions': 300            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
+    'ITERATIONS': 20_000                    # total number of training iterations
+    'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
+#    'warmup_transitions': 300            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
     'obs_shape': nan                      # Overridden during execution depending on layout
     'joint_action_shape': 36              # number of joint actions
     N_tests: 1                          # number of test runs to average over during validation
@@ -44,7 +43,7 @@ trainer:
         decay: 1.1      # higher values = faster decay
 
       epsilon_sched:    # exponential decay on exploration rate
-        start: 1        # starting value
+        start: 1.0        # starting value
         end: 0.1        # ending value
 #       duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
 #        duration: 2_000 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
@@ -108,7 +107,7 @@ agents:
         "activation": "ReLU"            # activation function        TODO: add to config
         'clip_grad': 0.75               # with norm clip
         device: nan                     # device to use for training (cpu or cuda)
-        lr: 0.01                    # learning rate
+        lr: 0.001                    # learning rate
         gamma: 0.97                     # discount factor
         tau: 0.01                      # soft update weight of target network
         replay_memory_size: 200_000     # size of replay memory
@@ -154,6 +153,7 @@ agents:
         'belief_trick': True # other agent uses  level-(k+1) to avoid recomputing in QRE
 
       'cpt':   # Default rational CPT parameters
+          # Rational Parameters
           'b': 0.0      # reference point
           'lam': 1.0    # loss aversion
           'eta_p': 1.0  # diminishing gain sensitivity

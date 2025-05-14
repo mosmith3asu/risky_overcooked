@@ -30,9 +30,9 @@ jobs:
 #    agents: [ 'averse','neutral','seeking' ]
 #    p_slips: [ 0.2 ]
 
-  risky_tree:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [ 0.15]
+#  risky_tree:
+#    agents: [ 'averse','neutral','seeking' ]
+#    p_slips: [ 0.15]
 #  risky_shortcuts:
 #    agents: [ 'averse','neutral','seeking' ]
 #    p_slips: [ 0.2]
@@ -42,6 +42,6 @@ jobs:
 #  risky_spiral:
 #    agents: [ 'averse','neutral','seeking' ]
 #    p_slips: [ 0.3 ]
-#  risky_passing:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [ 0.3 ]
+  risky_passing:
+    agents: [ 'averse','neutral','seeking' ]
+    p_slips: [ 0.3 ]

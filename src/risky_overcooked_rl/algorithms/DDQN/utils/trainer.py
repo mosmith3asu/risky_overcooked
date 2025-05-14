@@ -19,6 +19,7 @@ class Trainer:
 
         # Update configs with runtime values --------------
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         master_config['agents']['model']['device'] = self.device
         master_config['agents']['type'] = model_object.__name__
         master_config['trainer']['obs_shape'] = None # defined later

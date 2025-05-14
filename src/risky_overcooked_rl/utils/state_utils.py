@@ -5,6 +5,7 @@ import torch
 import copy
 from risky_overcooked_py.mdp.actions import Action, Direction
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
+from numba import jit
 
 class FeasibleActionManager(object):
     def __init__(self, env, enable=True):
@@ -85,6 +86,7 @@ def invert_obs(obs,N_PLAYER_FEAT = 9):
                                obs[:N_PLAYER_FEAT],
                                obs[2 * N_PLAYER_FEAT:]])
     elif isinstance(obs, torch.Tensor):
+        # _obs = invert_obs_torch_compiled([obs,N_PLAYER_FEAT])
         n_dim = len(obs.shape)
         if n_dim == 1:
             _obs = torch.cat([obs[N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
@@ -97,6 +99,8 @@ def invert_obs(obs,N_PLAYER_FEAT = 9):
         else: raise ValueError("Invalid obs dimension")
     else: raise ValueError("Invalid obs type")
     return _obs
+
+
 
 
 
@@ -125,6 +129,28 @@ def invert_prospect(prospects):
      for i,prospect in enumerate(_prospects):
          _prospects[i][1] = invert_obs(prospect[1])
      return _prospects
+
+
+def flatten_next_prospects(next_prospects):
+    """
+    Used for flattening next_state prospects into list of outcomes for batch processing
+     - improve model-value prediction speed
+     - condensed to back to |batch_size| after using expectation
+    """
+    N = len(next_prospects)
+    all_next_states = []
+    all_p_next_states = []
+    prospect_idxs = []
+    total_outcomes = 0
+    # for i, prospect in enumerate(next_prospects):
+    for i in range(N):
+        prospect = next_prospects[i]
+        n_outcomes = len(prospect)
+        all_next_states += [outcome[1] for outcome in prospect]
+        all_p_next_states += [outcome[2] for outcome in prospect]
+        prospect_idxs.append(np.arange(total_outcomes, total_outcomes + n_outcomes))
+        total_outcomes += n_outcomes
+    return all_next_states,all_p_next_states,prospect_idxs
 
 
 class StartStateManager:

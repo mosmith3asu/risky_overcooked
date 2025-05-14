@@ -7,7 +7,7 @@ from collections import deque
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import torch
 import random
-
+# from numba import njit,prange
 
 class CumulativeProspectTheory_Lite(object):
     def __init__(self,b,lam,eta_p,eta_n,delta_p,delta_n):
@@ -28,6 +28,7 @@ class CumulativeProspectTheory_Lite(object):
         self.delta_p = delta_p
         self.delta_n = delta_n
 
+    # @njit
     def expectation(self,values, p_values):
         """
         Applies the CPT-expectation multiple prospects (i.e. a series of value-probability pairs) which can arbitrarily
@@ -87,7 +88,8 @@ class CumulativeProspectTheory_Lite(object):
         delta = self.delta_n
         return p ** delta / ((p ** delta + (1 - p) ** delta) ** (1 / delta))
 
-class CumulativeProspectTheory(object):
+
+class CumulativeProspectTheory_bu(object):
     def __init__(self,b,lam,eta_p,eta_n,delta_p,delta_n):
         """
         :param b: reference point determining if outcome is gain or loss
@@ -159,6 +161,7 @@ class CumulativeProspectTheory(object):
         :return: scalar value (biased) expectation
         """
         # arrange all samples in ascending order
+        handle_percision = False
         sorted_idxs = np.argsort(values)
         sorted_v = values[sorted_idxs]
         sorted_p = np.array(p_values[sorted_idxs])  #sorted_p = p_values[sorted_idxs]
@@ -174,7 +177,7 @@ class CumulativeProspectTheory(object):
             Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]
             l = K - 1
             rho_p = 0
-            Fk = self.handle_percision_error(Fk)
+            if handle_percision: Fk = self.handle_percision_error(Fk)
             # assert np.all(np.array(Fk) <= 1), f"Invalid Fk={Fk}"
 
 
@@ -183,7 +186,7 @@ class CumulativeProspectTheory(object):
             return rho
         elif np.all(sorted_v > self.b):
             Fk = [np.sum(sorted_p[i:K]) for i in range(K)]
-            Fk = self.handle_percision_error(Fk)
+            if handle_percision: Fk = self.handle_percision_error(Fk)
             # assert np.all(np.array(Fk) <= 1), f"Invalid Fk={Fk}"
             l = -1
             rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K)
@@ -254,6 +257,8 @@ class CumulativeProspectTheory(object):
             rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K,is_torch=True)
             rho = rho_p - rho_n
             return rho
+
+
 
     # def expectation(self, values, p_values, value_refs=None):
     #     """

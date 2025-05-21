@@ -431,15 +431,18 @@ class OvercookedGame(Game):
         self.mdp = None
 
         self.debug = True
+        self.is_frozen = False
 
         # self.mdp_params["p_slip"] = kwargs.get("p_slips", [0.0])[0]
         # self.mdp = OvercookedGridworld.from_layout_name(
         #     layouts[0], **self.mdp_params
         # )
+
+
         self.mp = None
         self.score = 0
         self.phi = 0
-        self.max_time = min(int(gameTime), MAX_GAME_TIME)
+        self.max_time = min(int(gameTime), kwargs.get("max_game_time", MAX_GAME_TIME))
         self.npc_policies = {}
         self.npc_state_queues = {}
         self.action_to_overcooked_action = {
@@ -482,11 +485,11 @@ class OvercookedGame(Game):
         # if ray.is_initialized():
         #     ray.shutdown()
 
-        if kwargs["dataCollection"]:
-            self.write_data = True
-            self.write_config = kwargs["collection_config"]
-        else:
-            self.write_data = False
+        # if kwargs["dataCollection"]:
+        #     self.write_data = True
+        #     self.write_config = kwargs["collection_config"]
+        # else:
+        #     self.write_data = False
 
         self.trajectory = []
 
@@ -638,6 +641,10 @@ class OvercookedGame(Game):
         self.mdp = OvercookedGridworld.from_layout_name(
             self.curr_layout, **self.mdp_params
         )
+        for key, val in self.npc_policies.items():
+            if isinstance(val, ToMAI):
+                # If the policy is a DQN vector feature policy, we need to activate it
+                self.npc_policies[key].activate(self.mdp)
 
         if self.debug:
             print(f'\n\nActivating OvercookedGame...')
@@ -669,12 +676,14 @@ class OvercookedGame(Game):
         self.curr_tick = 0
         self.score = 0
         self.threads = []
-        for npc_policy in self.npc_policies:
-            self.npc_policies[npc_policy].reset()
-            self.npc_state_queues[npc_policy].put(self.state)
-            t = Thread(target=self.npc_policy_consumer, args=(npc_policy,))
-            self.threads.append(t)
-            t.start()
+        if not self.is_frozen:
+
+            for npc_policy in self.npc_policies:
+                self.npc_policies[npc_policy].reset()
+                self.npc_state_queues[npc_policy].put(self.state)
+                t = Thread(target=self.npc_policy_consumer, args=(npc_policy,))
+                self.threads.append(t)
+                t.start()
 
     def deactivate(self):
         super(OvercookedGame, self).deactivate()
@@ -711,12 +720,20 @@ class OvercookedGame(Game):
         if npc_id.lower() == "rs-tom":
             # print("Loading agent {}".format(npc_id))
             # Load the RS-TOM agent
-            try: return ToMAI(['averse','neutral','seeking'])
-            except Exception as e:  raise IOError("Error loading Rllib Agent\n{}".format(e.__repr__()))
+            try:
+                agent = ToMAI(['averse', 'neutral', 'seeking'])
+                agent.activate(self.mdp)
+                return agent
+            except Exception as e:
+                raise IOError("Error loading Rllib Agent\n{}".format(e.__repr__()))
         elif npc_id.lower() == "rational":
-            try: return ToMAI(['neutral'])
+            try:
+                agent = ToMAI(['neutral'])
+                agent.activate(self.mdp)
+                return agent
 
-            except Exception as e: raise IOError("Error loading Rllib Agent\n{}".format(e.__repr__()))
+            except Exception as e:
+                raise IOError("Error loading Rllib Agent\n{}".format(e.__repr__()))
 
         # elif npc_id.lower().startswith("rllib"):
         #     try:
@@ -1249,7 +1266,7 @@ class ToMAI:
         # print(f"All fnames {candidate_fnames}")
         policies = []
         for fname in candidate_fnames:
-            PATH = AGENT_DIR+ f'/RiskSensitiveAI/{fname}'
+            PATH = AGENT_DIR + f'/RiskSensitiveAI/{fname}'
             if not os.path.exists(PATH):
                 raise ValueError(f"Policy file {PATH} does not exist")
             try:
@@ -1266,7 +1283,7 @@ class ToMAI:
         :return:
         """
         if self.n_candidates >1:
-            obs = self.env.mdp.get_lossless_encoding_vector_astensor(state, device=self.device).unsqueeze(0)
+            obs = self.mdp.get_lossless_encoding_vector_astensor(state, device=self.device).unsqueeze(0)
 
             # Calc Joint Action
             partner_iA = Action.ACTION_TO_INDEX[partner_action]
@@ -1289,7 +1306,7 @@ class TorchPolicy:
     Is lightweight version of SelfPlay_QRE_OSA agent
     """
     def __init__(self,PATH, device, action_selection='softmax',ego_idx = 1,
-                 num_hidden_layers=5,  size_hidden_layers=128
+                 num_hidden_layers=6,  size_hidden_layers=128
                  ):
         # print(f"TorchPolicy: Loading policy from {PATH}")
         self.PATH = PATH

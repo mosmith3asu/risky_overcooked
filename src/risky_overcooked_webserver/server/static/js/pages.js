@@ -128,12 +128,14 @@ document.addEventListener("DOMContentLoaded", function () {
     // #################################################################
 
     prevBtn.addEventListener("click", () => {
+        socket.emit('update_stage', current_page.prev_msg)
         if (currentIndex > 0) {
             currentIndex--;
             updatePage();
         }
     });
     nextBtn.addEventListener("click", () => {
+        socket.emit('update_stage', current_page.next_msg)
         if (currentIndex < pages.length - 1) {
             currentIndex++;
             updatePage();
@@ -147,6 +149,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 function initialize_pages(gameWindow) {
     // Pretrial
+    pages.push(new Page_Join(gameWindow)); // DO NOT COMMENT. This creates experiment in server
     // pages.push(new Page_Consent(gameWindow));
     // pages.push(new Page_ParticipantInformation(gameWindow));
     // pages.push(new Page_BackgroundSurvey(gameWindow));
@@ -163,26 +166,27 @@ function initialize_pages(gameWindow) {
     pages.push(new Page_Section(gameWindow, "Experiment Start"));
 
     let game_num = 0
-    let multigame = new Page_MultiGamePlay(gameWindow);
 
-    //  Game Loop: Partner 1
-    pages.push(multigame.add_game('risky_coordination_ring','RS-ToM')); game_num++;
-    pages.push(multigame.add_game('risky_coordination_ring','RS-ToM')); game_num++;
-    pages.push(multigame.add_game('risky_coordination_ring','RS-ToM')); game_num++;
+
+    //  Game Loop: Partner 1 (DEPRECATED)
+    // let multigame = new Page_MultiGamePlay(gameWindow);
+    // pages.push(multigame.add_game('risky_coordination_ring','RS-ToM')); game_num++;
+    // pages.push(multigame.add_game('risky_coordination_ring','RS-ToM')); game_num++;
+    // pages.push(multigame.add_game('risky_coordination_ring','RS-ToM')); game_num++;
 
 
 
     // //  Game Loop: Partner 1
-    // pages.push(new Page_GameInstructions(gameWindow, game_num));
-    // pages.push(new Page_GamePlay(gameWindow, game_num));
-    // pages.push(new Page_TrustSurvey(gameWindow, game_num))
-    // game_num++;
+    pages.push(new Page_GameInstructions(gameWindow, game_num));
+    pages.push(new Page_GamePlay(gameWindow, game_num));
+    pages.push(new Page_TrustSurvey(gameWindow, game_num))
+    game_num++;
     //
     // // Game Loop : Partner 2
-    // pages.push(new Page_Washout(gameWindow));
-    // pages.push(new Page_GameInstructions(gameWindow, game_num));
-    // pages.push(new Page_GamePlay(gameWindow, game_num));
-    // pages.push(new Page_TrustSurvey(gameWindow, game_num))
+    pages.push(new Page_Washout(gameWindow));
+    pages.push(new Page_GameInstructions(gameWindow, game_num));
+    pages.push(new Page_GamePlay(gameWindow, game_num));
+    pages.push(new Page_TrustSurvey(gameWindow, game_num))
     // game_num++;
 
     // Debrief
@@ -235,10 +239,47 @@ class Page_Debug {
         prevBtn.style.display = "block";
     }
 }
+class Page_Join {
+    constructor(parent_container) {
+        // Create Page Container
+        this.id = 'consent';
+        this.next_msg = {'join' : true}
+        this.prev_msg = {'join': false}
+        this.container = document.createElement("div");
+        this.container.style.display = "none";
 
+        parent_container.appendChild(this.container);
+        this.text = [
+            `
+                 <h3 class="text-center">Welcome to the study!</h3>
+                  <p>
+                    To begin, press the "Join" button below to join the study.
+                   </p>
+            `
+        ];
+        this.container.innerHTML = this.text;
+    }
+
+    show() {
+        this.container.style.display = "block";
+        // let nextBtn = document.getElementById("next-btn")
+        // let prevBtn = document.getElementById("prev-btn")
+        // change nextBtn to say "Agree"
+        nextBtn.innerText = "Join";
+        nextBtn.style.display = "block";
+        prevBtn.style.display = "none";
+    }
+
+    hide() {
+        this.container.style.display = "none";
+    }
+}
 class Page_Consent {
     constructor(parent_container) {
         // Create Page Container
+        this.id = 'consent';
+        this.next_msg = {'consent' : true}
+        this.prev_msg = {'consent': false}
         this.container = document.createElement("div");
         this.container.style.display = "none";
 
@@ -304,6 +345,8 @@ class Page_Consent {
 class Page_ParticipantInformation {
     constructor(parent_container) {
         // Create Page Container
+        this.next_msg = {'participant_information' : true};
+        this.prev_msg = {'participant_information': false};
         this.container = document.createElement("div");
         this.container.style.display = "none";
         parent_container.appendChild(this.container);
@@ -397,6 +440,8 @@ class Page_UnableToParticipate {
 
 class Page_Washout {
     constructor(parent_container) {
+        this.next_msg = {'washout' : true};
+        this.prev_msg = {'washout': false};
         // Create Page Container
         this.container = document.createElement("div");
         this.container.style.display = "none";
@@ -468,6 +513,8 @@ class Page_Washout {
 
 class Page_Section {
     constructor(parent_container, txt) {
+        this.next_msg = {'skip': true};
+        this.prev_msg = {'skip': false};
         // Create Page Container
         this.container = document.createElement("div");
         this.container.style.display = "none";
@@ -492,6 +539,8 @@ class Page_Section {
 
 class Page_Debrief {
     constructor(parent_container, condition) {
+        this.next_msg = {'debrief': true};
+        this.prev_msg = {'debrief': false};
         // Create Page Container
         this.container = document.createElement("div");
         this.container.style.display = "none";
@@ -559,9 +608,11 @@ class Page_Debrief {
 
 class Page_BackgroundSurvey {
     constructor(parent_container) {
+        this.name = 'demographic';
         // Create Page Container
         this.container = document.createElement("div");
         this.container.style.display = "none";
+        this.questions = ['sex','age'];
         parent_container.appendChild(this.container);
         this.createForm();
 
@@ -683,6 +734,34 @@ class Page_BackgroundSurvey {
 
     }
 
+    emit_responses(responses) {
+        let msg = {};
+        msg[this.name] = responses;
+        socket.emit('survey_response', msg);
+        console.log(responses);
+    }
+
+    collectResponses() {
+        // console.log("Collecting responses from background survey...");
+        const responses = {};
+        // get the value of the age field
+        const ageInput = document.getElementById("ageInput").value.trim();
+        const selected = document.querySelector(`input[name="sex"]:checked`);
+
+        responses["sex"]  = selected ? selected.value : null;
+        // const sexOptions = document.querySelectorAll(".sexOption:checked").value;
+        responses["age"] = ageInput;
+        // responses["sex"] = sexOptions;
+
+
+
+        // this.questions.forEach((q, i) => {
+        //     // const val = document.querySelector(`input[name=q]`);
+        //     // console.log(val)
+        //     // responses[q] = val ? val.value : null;
+        // });
+        return responses;
+    }
     submit() {
         // get the value of the age field
 
@@ -692,7 +771,9 @@ class Page_BackgroundSurvey {
             renderOtherPage("unable_to_participate");
             nextBtn.style.display = "none";
             prevBtn.style.display = "none";
+
         } else {
+            this.emit_responses(this.collectResponses());
             currentIndex++;
             updatePage();
         }
@@ -719,7 +800,8 @@ class Page_BackgroundSurvey {
 class Page_RiskPropensityScale {
     constructor(parent_container) {
         this.header = "Pre-Experiment Survey"
-        this.name = "RPS"
+        // this.name = "RPS"
+        this.name = "risk_propensity"
         this.row_bg = ['#F5F5F5','white'];
         this.container = document.createElement("div");
         this.container.style.display = "none";
@@ -898,6 +980,9 @@ class Page_RiskPropensityScale {
     }
 
     emit_responses(responses) {
+        let msg = {};
+        msg[this.name] = responses;
+        socket.emit('survey_response', msg);
         console.log(responses);
     }
 
@@ -917,7 +1002,7 @@ class Page_RiskPropensityScale {
 class Page_TrustSurvey {
     constructor(parent_container, num) {
         this.header = "Post-Game Survey"
-        this.name = `Trust${num}`;
+        this.name = `trust_survey${num}`;
         this.container = document.createElement("div");
         this.container.style.display = "none";
         this.container.style.width = "90%";
@@ -1117,6 +1202,9 @@ class Page_TrustSurvey {
     }
 
     emit_responses(responses) {
+        let msg = {};
+        msg[this.name] = responses;
+        socket.emit('survey_response', msg);
         console.log(responses);
     }
 
@@ -1136,7 +1224,7 @@ class Page_TrustSurvey {
 class Page_RelativeTrustSurvey {
     constructor(parent_container) {
         this.header = "Pre-Experiment Survey"
-        this.name = "RPS"
+        this.name = "relative_trust_survey"
         this.container = document.createElement("div");
         this.container.style.display = "none";
         this.container.style.width = "90%";
@@ -1337,6 +1425,9 @@ class Page_RelativeTrustSurvey {
     }
 
     emit_responses(responses) {
+        let msg = {};
+        msg[this.name] = responses;
+        socket.emit('survey_response', msg);
         console.log(responses);
     }
 
@@ -1357,6 +1448,7 @@ class GamePlayTemplate {
     // This is a template for the game play pages
     constructor(parent_container, num) {
         // Must be initialized in child class
+        this.name = null;
         this.ID = null;
         this.layout = null;
         this.header = null;
@@ -1470,20 +1562,23 @@ class GamePlayTemplate {
     }
 
     emit_game_query() {
-        const params = {
-            'layouts': [this.layout],
-            phaseTwoScore: tutorial_config['tutorialParams']['phaseTwoScore'],
-            playerOne: this.player1_name,
-            playerZero: this.player0_name,
-            dataCollection: this.data_collection
-        }
-        const data = {
-            "params" : params,
-            "game_name" : this.game_type,
-            'prolific_id': prolific_data['prolific_id']
-        };
-        // create (or join if it exists) new game
-        socket.emit("join", data);
+        // const params = {
+        //     'layouts': [this.layout],
+        //     phaseTwoScore: tutorial_config['tutorialParams']['phaseTwoScore'],
+        //     playerOne: this.player1_name,
+        //     playerZero: this.player0_name,
+        //     dataCollection: this.data_collection
+        // }
+        // const data = {
+        //     "params" : params,
+        //     "game_name" : this.game_type,
+        //     'prolific_id': prolific_data['prolific_id']
+        // };
+        // // create (or join if it exists) new game
+        // // socket.emit("join", data);
+        const data ={};
+        data['name'] = this.name;
+        socket.emit("create_game", data);
     }
 
     submit() {
@@ -1517,10 +1612,7 @@ class GamePlayTemplate {
     destroy() {
         // destroys game to save on memory
         this.container.innerHTML = "";
-        socket.emit('leave', {})
-        // if (debug_mode) {
-        //     socket.emit('leave', {})
-        // }
+        socket.emit('close_game', {})
     }
 }
 
@@ -1528,6 +1620,10 @@ class GamePlayTemplate {
 class Page_GamePlay extends GamePlayTemplate {
     constructor(parent_container, num) {
         super(parent_container, num);
+        this.name = `game${num}`;
+        const msg_name = `game_${num}`;
+        this.next_msg = {}; this.next_msg[msg_name] = true;
+        this.prev_msg  = {}; this.next_msg[msg_name] = false;
         // Base Class Params
         this.ID = `perform_${num}`;
         this.layout = LAYOUTS[num];
@@ -1545,171 +1641,15 @@ class Page_GamePlay extends GamePlayTemplate {
     }
 }
 
-
-class Page_MultiGamePlay {
-    // This is a template for the game play pages
-    constructor(parent_container) {
-        // Must be initialized in child class
-
-        this.ID = 'multi_game_container';
-        this.curr_game = 0;
-        this.layouts = [];
-        this.player0_name = []; // human agent
-        this.player1_name = []; // AI agent
-        this.overcooked_id = `${this.ID}_gameplay`; // ID of overcooked div
-        this.game_type = 'overcooked'; // type of game (tutorial/overcooked)
-        this.is_created = false;
-
-        // Create Page Container
-        this.container = document.createElement("div");
-        this.container.style.minWidth = '500px';
-        this.container.style.minHeight = '500px';
-        this.container.style.maxWidth = '800px';
-        this.container.style.maxHeight = '800px';
-        this.container.style.height = "95%";
-        this.container.style.display = "none";
-        if (debug_mode) {
-            this.container.style.border = "2px solid red";
-        }
-        parent_container.appendChild(this.container);
-        this.render();
-        this.add_submit_button('Continue')
-
-    }
-    add_game(layout, AI_type) {
-        this.layouts.push(layout);
-        this.player0_name.push('human'); // human agent
-        this.player1_name.push(AI_type); // AI agent
-        return this
-    }
-
-    game_finished() {
-        // alert("ERROR: ADD GAME FINISHED QUERY HERE");
-        graphics_end();
-        disable_key_listener();
-        ++this.curr_game;
-
-        // this.draw_finished_overlay();
-        socket.emit('leave',{});
-        this.submitBtn.style.display = "block";
-    }
-
-    render() {
-        this.header = document.createElement("h3");
-        this.header.innerText = 'TBD';
-        this.header.style.textAlign = "center";
-        this.header.style.margin = "0";
-        // header.style.marginTop = "20px";
-        this.header.style.width = "100%";
-        this.header.style.height = "10%";
-        this.container.appendChild(this.header);
-
-        const overcooked = document.createElement("div");
-        // cetner items horizontally and vertically in div
-        overcooked.style.display = "flex";
-        overcooked.style.justifyContent = "center";
-        overcooked.id = this.overcooked_id ;
-        overcooked.style.width = "100%";
-        overcooked.style.height = "70%";
-        overcooked.style.margin = "0 auto";
-        overcooked.style.padding = "0";
-        this.container.appendChild(overcooked);
-
-    }
-
-    add_submit_button(txt) {
-        // Add submit button for custom event
-        this.submitBtn = document.createElement("button");
-        this.submitBtn.id = `${this.ID}-btn`;
-        this.submitBtn.innerText = txt;
-        this.submitBtn.style.width = nextBtn.style.width;
-        this.submitBtn.style.height = nextBtn.style.height;
-        this.submitBtn.style.display = "none";
-        this.submitBtn.addEventListener("click", () => {
-            this.submit();
-        });
-        buttonContainer.appendChild(this.submitBtn);
-    }
-
-    create_game(){
-        this.is_created = true;
-         const params = {
-            'layouts': this.layouts,
-            // phaseTwoScore: tutorial_config['tutorialParams']['phaseTwoScore'],
-            playerOne: this.player1_name[this.curr_game],
-            playerZero: this.player0_name[this.curr_game]
-        }
-        const data = {
-            "params" : params,
-            "game_name" : this.game_type,
-            'prolific_id': prolific_data['prolific_id']
-        };
-        // create (or join if it exists) new game
-        socket.emit("create", data);
-    }
-    join_game() {
-        socket.emit("client_ready", {});
-        // socke
-        // // const params = {
-        // //     'layouts': [this.layout],
-        // //     phaseTwoScore: tutorial_config['tutorialParams']['phaseTwoScore'],
-        // //     playerOne: this.player1_name,
-        // //     playerZero: this.player0_name
-        // // }
-        // const data = {
-        //     // "params" : params,
-        //     // "game_name" : this.game_type,
-        //     'prolific_id': prolific_data['prolific_id']
-        // };
-        // // create (or join if it exists) new game
-        // socket.emit("join", data);
-    }
-
-    submit() {
-        // this.destroy()
-        currentIndex++;
-        updatePage();
-    };
-
-    show() {
-        if (!this.is_created){this.create_game();}
-        this.join_game();
-
-        // this.emit_game_query();
-        // make items in this.container alighn horizontally and stack vertically
-        // this.container.style.display = "block";
-        this.header.innerText = `Game ${this.curr_game+1}/${this.layouts.length}`;
-        this.container.style.display = "flex";
-        this.container.style.flexDirection = "column";
-        this.container.style.alignItems = "center";
-        this.container.style.justifyContent = "center";
-
-        // this.container.style.display = "flex";
-        nextBtn.style.display = "none";
-        prevBtn.style.display = "none";
-        this.submitBtn.style.display = "none";
-        if (debug_mode) { this.submitBtn.style.display = "block"; }
-    }
-
-    hide() {
-        this.container.style.display = "none";
-        this.submitBtn.style.display = "none";
-        // this.finished_overlay.style.display = "none";
-    }
-
-    destroy() {
-        // destroys game to save on memory
-        this.container.innerHTML = "";
-        if (debug_mode) {
-            socket.emit('leave', {})
-        }
-    }
-}
-
 class Page_GameInstructions extends GamePlayTemplate {
     constructor(parent_container, num) {
         super(parent_container, num);
         // Base Class Params
+        this.name = `priming${num}`;
+        const msg_name = `instructions${num}`;
+        this.next_msg = {}; this.next_msg[msg_name] = true;
+        this.prev_msg  = {}; this.next_msg[msg_name] = false;
+
         this.ID = `game_instructions_${num}`;
         this.layout = LAYOUTS[num];
         this.p_slip =  PSLIPS[num];
@@ -1845,6 +1785,9 @@ class Page_GameInstructions extends GamePlayTemplate {
     emit_responses(response) {
         // sends priming response to server
         console.log(response);
+        let msg = {};
+        msg[this.name] = response;
+        socket.emit('survey_response', msg);
     }
 
     isFormComplete() {
@@ -1883,12 +1826,35 @@ class Page_GameInstructions extends GamePlayTemplate {
         this.submitBtn.style.display = "block";
         // if (debug_mode) { this.submitBtn.style.display = "block"; }
     }
+
+    destroy() {
+        // destroys game to save on memory
+        this.container.innerHTML = "";
+        // socket.emit('close_game', {})
+    }
+    hide() {
+        this.container.style.display = "none";
+        this.submitBtn.style.display = "none";
+        // this.finished_overlay.style.display = "none";
+    }
+    game_finished() {
+        // alert("ERROR: ADD GAME FINISHED QUERY HERE");
+        graphics_end();
+        disable_key_listener();
+        // this.draw_finished_overlay();
+        // socket.emit('leave');
+        this.submitBtn.style.display = "none";
+    }
 }
 
 class Page_Tutorials extends GamePlayTemplate {
     constructor(parent_container, num) {
         super(parent_container, num);
         // Base Class Params
+        this.name = `risky_tutorial_${num}`;
+        this.next_msg = {}; this.next_msg[this.name] = true;
+        this.prev_msg  = {}; this.next_msg[this.name] = false;
+
         this.ID = `tutorial-${num}`;
         this.layout = tutorial_config['tutorialParams']['layouts'][num]
         this.p_slip = [0.0,0.3,0.9,0.9][num]
@@ -2004,6 +1970,7 @@ function updatePage() {
     for (let i = 0; i < pages.length; i++) {
         pages[i].hide();
     }
+
     current_page = pages[currentIndex];
     current_page.show();
 }
@@ -2075,6 +2042,7 @@ socket.on('reset_game', function(data) {
 });
 
 socket.on('state_pong', function(data) {
+    console.log("State Pong: ", data['state']);
     // Draw state update
     drawState(data['state']);
 });
@@ -2091,6 +2059,8 @@ socket.on('end_game', function(data) {
         // Propogate game stats to parent window
         window.top.postMessage({ name : "tutorial-done" }, "*");
     }
+
+    // socket.emit('close_game',{})
 
 });
 
@@ -2570,3 +2540,175 @@ var arrToJSON = function(arr) {
 //     }
 // }
 //
+
+// class Page_MultiGamePlay {
+//     // This is a template for the game play pages
+//     constructor(parent_container) {
+//         // Must be initialized in child class
+//
+//         this.next_msg = {'multi_game': 'not_set'};
+//         this.prev_msg  ={'multi_game': 'not_set'};
+//         this.ID = 'multi_game_container';
+//         this.curr_game = 0;
+//         this.layouts = [];
+//         this.player0_name = []; // human agent
+//         this.player1_name = []; // AI agent
+//         this.overcooked_id = `${this.ID}_gameplay`; // ID of overcooked div
+//         this.game_type = 'overcooked'; // type of game (tutorial/overcooked)
+//         this.is_created = false;
+//
+//         // Create Page Container
+//         this.container = document.createElement("div");
+//         this.container.style.minWidth = '500px';
+//         this.container.style.minHeight = '500px';
+//         this.container.style.maxWidth = '800px';
+//         this.container.style.maxHeight = '800px';
+//         this.container.style.height = "95%";
+//         this.container.style.display = "none";
+//         if (debug_mode) {
+//             this.container.style.border = "2px solid red";
+//         }
+//         parent_container.appendChild(this.container);
+//         this.render();
+//         this.add_submit_button('Continue')
+//
+//     }
+//     add_game(layout, AI_type) {
+//         this.layouts.push(layout);
+//         this.player0_name.push('human'); // human agent
+//         this.player1_name.push(AI_type); // AI agent
+//         return this
+//     }
+//
+//     game_finished() {
+//         // alert("ERROR: ADD GAME FINISHED QUERY HERE");
+//         graphics_end();
+//         disable_key_listener();
+//         ++this.curr_game;
+//
+//         const msg_name = `game_${num}`;
+//         this.next_msg = {}; this.next_msg[msg_name] = true;
+//         this.prev_msg  = {}; this.next_msg[msg_name] = false;
+//
+//         // this.draw_finished_overlay();
+//         socket.emit('leave',{});
+//         this.submitBtn.style.display = "block";
+//     }
+//
+//     render() {
+//         this.header = document.createElement("h3");
+//         this.header.innerText = 'TBD';
+//         this.header.style.textAlign = "center";
+//         this.header.style.margin = "0";
+//         // header.style.marginTop = "20px";
+//         this.header.style.width = "100%";
+//         this.header.style.height = "10%";
+//         this.container.appendChild(this.header);
+//
+//         const overcooked = document.createElement("div");
+//         // cetner items horizontally and vertically in div
+//         overcooked.style.display = "flex";
+//         overcooked.style.justifyContent = "center";
+//         overcooked.id = this.overcooked_id ;
+//         overcooked.style.width = "100%";
+//         overcooked.style.height = "70%";
+//         overcooked.style.margin = "0 auto";
+//         overcooked.style.padding = "0";
+//         this.container.appendChild(overcooked);
+//
+//     }
+//
+//     add_submit_button(txt) {
+//         // Add submit button for custom event
+//         this.submitBtn = document.createElement("button");
+//         this.submitBtn.id = `${this.ID}-btn`;
+//         this.submitBtn.innerText = txt;
+//         this.submitBtn.style.width = nextBtn.style.width;
+//         this.submitBtn.style.height = nextBtn.style.height;
+//         this.submitBtn.style.display = "none";
+//         this.submitBtn.addEventListener("click", () => {
+//             this.submit();
+//         });
+//         buttonContainer.appendChild(this.submitBtn);
+//     }
+//
+//     create_game(){
+//         this.is_created = true;
+//         //  const params = {
+//         //     'layouts': this.layouts,
+//         //     // phaseTwoScore: tutorial_config['tutorialParams']['phaseTwoScore'],
+//         //     playerOne: this.player1_name[this.curr_game],
+//         //     playerZero: this.player0_name[this.curr_game]
+//         // }
+//         // const data = {
+//         //     "params" : params,
+//         //     "game_name" : this.game_type,
+//         //     'prolific_id': prolific_data['prolific_id']
+//         // };
+//         // create (or join if it exists) new game
+//         const data = {};
+//         data['name'] = `game${this.curr_game}`;
+//         socket.emit("create_game", data);
+//     }
+//
+//
+//     join_game() {
+//         socket.emit("create_game", {});
+//         // socket.emit("client_ready", {});
+//
+//         // socke
+//         // // const params = {
+//         // //     'layouts': [this.layout],
+//         // //     phaseTwoScore: tutorial_config['tutorialParams']['phaseTwoScore'],
+//         // //     playerOne: this.player1_name,
+//         // //     playerZero: this.player0_name
+//         // // }
+//         // const data = {
+//         //     // "params" : params,
+//         //     // "game_name" : this.game_type,
+//         //     'prolific_id': prolific_data['prolific_id']
+//         // };
+//         // // create (or join if it exists) new game
+//         // socket.emit("join", data);
+//     }
+//
+//     submit() {
+//         // this.destroy()
+//         currentIndex++;
+//         updatePage();
+//     };
+//
+//     show() {
+//         if (!this.is_created){this.create_game();}
+//         this.join_game();
+//
+//         // this.emit_game_query();
+//         // make items in this.container alighn horizontally and stack vertically
+//         // this.container.style.display = "block";
+//         this.header.innerText = `Game ${this.curr_game+1}/${this.layouts.length}`;
+//         this.container.style.display = "flex";
+//         this.container.style.flexDirection = "column";
+//         this.container.style.alignItems = "center";
+//         this.container.style.justifyContent = "center";
+//
+//         // this.container.style.display = "flex";
+//         nextBtn.style.display = "none";
+//         prevBtn.style.display = "none";
+//         this.submitBtn.style.display = "none";
+//         if (debug_mode) { this.submitBtn.style.display = "block"; }
+//     }
+//
+//     hide() {
+//         this.container.style.display = "none";
+//         this.submitBtn.style.display = "none";
+//         // this.finished_overlay.style.display = "none";
+//     }
+//
+//     destroy() {
+//         // destroys game to save on memory
+//         this.container.innerHTML = "";
+//         if (debug_mode) {
+//             socket.emit('leave', {})
+//         }
+//     }
+// }

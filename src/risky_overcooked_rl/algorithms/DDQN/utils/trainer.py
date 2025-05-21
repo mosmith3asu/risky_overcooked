@@ -1,4 +1,5 @@
 import numpy as np
+from risky_overcooked_rl.utils.rl_logger_v2 import RLLogger_V2
 from risky_overcooked_rl.utils.rl_logger import RLLogger,TrajectoryVisualizer, TrajectoryHeatmap
 from risky_overcooked_rl.algorithms.DDQN import get_absolute_save_dir
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
@@ -41,21 +42,6 @@ class Trainer:
         torch.manual_seed(seed)
         random.seed(seed)
 
-        # Load default and parse custom config ---
-        # trainer_config['obs_shape'] = None # defined later
-        # trainer_config['device'] = device
-        # trainer_config['AGENT'] = model_object.__name__
-        # trainer_config['Date'] = datetime.now().strftime("%m_%d_%Y-%H_%M")
-        # self.config = config
-        # self.cpt_params = config['cpt_params']
-        # self.timestamp = config['Date']
-        # self.time_cost = config['time_cost']
-
-        # Generate MDP and environment----------------
-        # self.LAYOUT = config['LAYOUT']
-        # self.HORIZON = config['HORIZON']
-        # self.device = config['device']
-
         # Parse Trainer Configuration -------------------
 
         self.ITERATIONS = trainer_config['ITERATIONS']
@@ -64,7 +50,6 @@ class Trainer:
         self.test_interval =  trainer_config['test_interval']
         enable_feasible_actions = trainer_config['feasible_actions']
         n_actions = trainer_config['joint_action_shape']
-
 
         # Instantiate MDP and Environment ----------------
         layout = env_config['LAYOUT']
@@ -83,8 +68,6 @@ class Trainer:
 
         self.LAYOUT = layout
         self.shared_rew = env_config['shared_rew']
-
-
 
         # Instantiate trainer configurations and Variables-------------
         self.init_sched(trainer_config['schedules'])
@@ -122,20 +105,39 @@ class Trainer:
 
 
         # Initiate Logger and Managers ----------------
+        self._init_logger_()
+        self.enable_report = logger_config['enable_report']
+        if self.enable_report: self.print_config(master_config)
+
+    def _init_logger_(self):
+        self.logger = RLLogger_V2(num_iters=self.ITERATIONS,wait_for_close = self.wait_for_close)
+
+        self.logger.add_lineplot('test_reward', xlabel='', ylabel='$R_{test}$', filter_window=10, xtick=False)
+        self.logger.add_lineplot('train_reward', xlabel='', ylabel='$R_{train}$', filter_window=50,xtick=False)
+        self.logger.add_lineplot('loss', xlabel='iter', ylabel='$Loss$', filter_window=10)
+        self.logger.add_checkpoint_watcher('test_reward', draw_on=['test_reward', 'train_reward','loss'], callback=self.checkpoint_callback)
+        self.logger.add_settings(self.get_logger_display_data(self.master_config))
+
+
+        # Create Watchers for training params
+        self.rshape_scale = self.rshape_sched[0]  # initial rshape scale
+        self.epsilon = self.epsilon_sched[0]  # initial epsilon
+        self.iteration = 0
+        def get_rshape():  return self.rshape_scale
+        def get_epsilon(): return self.epsilon
+        def get_prog(): return f'{round(self.iteration/self.ITERATIONS,2)*100}%'
+        self.logger.add_status('$\epsilon$', callback=get_epsilon)
+        self.logger.add_status('$R_{shape}$',callback=get_rshape)
+        self.logger.add_status('Prog', callback=get_prog)
+
         self.traj_visualizer = TrajectoryVisualizer(self.env)
         self.traj_heatmap = TrajectoryHeatmap(self.env)
-        self.logger = RLLogger(rows=3, cols=1, num_iterations=self.ITERATIONS)
-        self.logger.add_lineplot('test_reward', xlabel='', ylabel='$R_{test}$', filter_window=30, display_raw=True, loc=(0, 1))
-        self.logger.add_lineplot('train_reward', xlabel='', ylabel='$R_{train}$', filter_window=30, display_raw=True, loc=(1, 1))
-        self.logger.add_lineplot('loss', xlabel='iter', ylabel='$Loss$', filter_window=30, display_raw=True, loc=(2, 1))
-        self.logger.add_checkpoint_line()
-        self.logger.add_table('Params', self.get_logger_display_data(master_config))
-        self.logger.add_status()
         self.logger.add_button('Preview', callback=self.traj_visualizer.preview_qued_trajectory)
         self.logger.add_button('Heatmap', callback=self.traj_heatmap.preview)
         self.logger.add_button('Save ', callback=self.save)
-        self.enable_report = logger_config['enable_report']
-        if self.enable_report: self.print_config(master_config)
+        self.logger.add_toggle_button('wait_for_close', label='Wait For Close')
+        # self.logger.add_checkbox('wait_for_close', label='Halt')
+        # self.enable_report = self.logger_config['enable_report']
 
 
     @property
@@ -170,7 +172,9 @@ class Trainer:
 
         data['ENVIRONMENT'] = '================================'
         data['layout'] = master_config['env']['LAYOUT']
-        data['p_slip'] = master_config['env']['p_slip']
+        data['p_slip'] = self.mdp.p_slip #master_config['env']['p_slip']
+        data['time_cost'] = self.env.time_cost  # master_config['env']['p_slip']
+
         # data['shared_rew'] = master_config['env']['shared_rew']
         data['neglect boarder'] = master_config['env']['neglect_boarders']
 
@@ -529,7 +533,13 @@ class Trainer:
     ################################################################
     # Save Utils       #############################################
     ################################################################
-    def checkpoint(self,it, state_history):
+    def checkpoint_callback(self):
+        self.model.update_checkpoint()
+        self.traj_visualizer.que_trajectory(self.state_history)
+        self.traj_heatmap.que_trajectory(self.state_history)
+
+
+    def checkpoint(self,it, state_history): #TODO: Delete since LoggerV2
 
         score = np.mean(self.test_rewards)
         if score > self.checkpoint_score:

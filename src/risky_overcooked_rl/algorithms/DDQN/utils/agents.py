@@ -14,13 +14,12 @@ is_ipython = 'inline' in matplotlib.get_backend()
 if is_ipython:
     from IPython import display
 from risky_overcooked_rl.algorithms.DDQN.utils.memory import ReplayMemory_Prospect
-# from risky_overcooked_rl.utils.risk_sensitivity import CumulativeProspectTheory
+from risky_overcooked_rl.utils.risk_sensitivity import CumulativeProspectTheory_Compiled
 from risky_overcooked_rl.utils.risk_sensitivity_compiled import CumulativeProspectTheory
 from risky_overcooked_rl.algorithms.DDQN import get_absolute_save_dir
 from risky_overcooked_rl.utils.state_utils import invert_obs, flatten_next_prospects
 import numpy as np
 import warnings
-import copy
 import os
 plt.ion()
 
@@ -40,7 +39,7 @@ class SelfPlay_QRE_OSA(object):
         # select file to load ---------------
         files = os.listdir(dir)
         files = [f for f in files if (fname in f and '.pt' in f)]
-        if len(files) == 0: raise FileNotFoundError(f'No files found with fname: {dir}[{fname}]'+fname)
+        if len(files) == 0: raise FileNotFoundError(f'No files found with fname: {dir}{fname}')
         elif len(files) == 1: loads_fname = files[0]
         elif len(files) > 1:
             warnings.warn(f'Multiple files found with fname: {fname}. Using latest file...')
@@ -261,8 +260,7 @@ class SelfPlay_QRE_OSA(object):
         q_value = self.model(state).gather(1, action)
 
         # Batch calculate Q(s'|pi) and form mask for later condensation to expectation
-        # all_next_states,all_p_next_states,prospect_idxs = self.flatten_next_prospects(batch.next_prospects)
-        all_next_states, all_p_next_states, prospect_idxs = flatten_next_prospects(batch.next_prospects)
+        all_next_states,all_p_next_states,prospect_idxs = self.flatten_next_prospects(batch.next_prospects)
 
         # Compute equalib value for each outcome ---------------
         # NF_games = self.get_normal_form_game(torch.cat(all_next_states), use_target=True)
@@ -312,6 +310,24 @@ class SelfPlay_QRE_OSA(object):
         return torch.FloatTensor(expected_td_targets).to(self.device)
 
 
+    def flatten_next_prospects(self,next_prospects):
+        """
+        Used for flattening next_state prospects into list of outcomes for batch processing
+         - improve model-value prediction speed
+         - condensed to back to |batch_size| after using expectation
+        """
+
+        all_next_states = []
+        all_p_next_states = []
+        prospect_idxs = []
+        total_outcomes = 0
+        for i, prospect in enumerate(next_prospects):
+            n_outcomes = len(prospect)
+            all_next_states += [outcome[1] for outcome in prospect]
+            all_p_next_states += [outcome[2] for outcome in prospect]
+            prospect_idxs.append(np.arange(total_outcomes, total_outcomes + n_outcomes))
+            total_outcomes += n_outcomes
+        return all_next_states,all_p_next_states,prospect_idxs
 
     def update_target(self):
         # self.target = soft_update(self.model, self.target, self.tau)
@@ -325,7 +341,9 @@ class SelfPlay_QRE_OSA(object):
 class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
     def __init__(self, obs_shape, n_actions, agents_config, **kwargs):
         super().__init__(obs_shape, n_actions, agents_config, **kwargs)
-        self.CPT = CumulativeProspectTheory(**agents_config['cpt'])
+        # self.CPT = CumulativeProspectTheory(**agents_config['cpt'])
+        self.CPT = CumulativeProspectTheory_Compiled(**agents_config['cpt'])
+        # print(f'{self.CPT.mean_value_ref}  ')
 
         self.frozen = False
         self.rational_ref_model = None
@@ -333,20 +351,18 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
     def update(self):
         if self.frozen: raise ValueError('Model is frozen, cannot update')
 
-
         transitions = self._memory.sample(self._memory_batch_size)
         batch = self._memory.transition(*zip(*transitions))
         BATCH_SIZE = len(transitions)
         state = torch.cat(batch.state)
         action = torch.cat(batch.action)
         reward = np.vstack(batch.reward)
-        # done = np.vstack(batch.done) # (excluded to solve infinite horizon)
 
         # # Q-Learning with target network
         q_value = self.model(state).gather(1, action)
 
         # Batch calculate Q(s'|pi) and form mask for later condensation to expectation
-        all_next_states, all_p_next_states, prospect_idxs = flatten_next_prospects(batch.next_prospects)
+        all_next_states, all_p_next_states, prospect_idxs = self.flatten_next_prospects(batch.next_prospects)
 
         # Compute equalib value for each outcome ---------------
         with torch.no_grad():
@@ -359,7 +375,8 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
 
             expected_value = self.CPT.expectation_samples(all_next_q_value, all_p_next_states,
                                                                prospect_idxs, reward, self.gamma)
-            expected_value = torch.from_numpy(expected_value).float().cuda()
+
+            expected_value = torch.from_numpy(expected_value).float().cuda().reshape(q_value.shape)
 
         # expected_value = torch.tensor(expected_value, dtype=torch.float32, device=self.device)
         # Optimize ----------------

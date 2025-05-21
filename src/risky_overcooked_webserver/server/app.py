@@ -616,9 +616,6 @@ def on_client_ready(data):
     #     emit("waiting", {"in_game": True}, room=game.id)
 
 
-
-
-
 @socketio.on("leave")
 def on_leave(data):
     user_id = request.sid

@@ -9,7 +9,7 @@ import warnings
 from risky_overcooked_rl.algorithms.DDQN.utils.curriculum import CirriculumTrainer
 from risky_overcooked_rl.algorithms.DDQN.utils.agents import SelfPlay_QRE_OSA_CPT
 import risky_overcooked_rl.algorithms.DDQN as Algorithm
-
+import datetime
 
 from copy import deepcopy
 def train_worker(config):
@@ -21,15 +21,9 @@ def get_config_search_list():
 
     config_lst = []
     def_config = Algorithm.get_default_config()
-    def_config['save']["auto_save"] = True
-    def_config['save']["wait_for_close"] = False
-    def_config['logger']['enable_report'] =False
-
-
-    # def_config['ITERATIONS'] = 20
-    # def_config['rshape_sched'] = [1, 0, 20]
-    # def_config['epsilon_sched'] = [1, 0, 20]
-
+    Algorithm.set_config_value(def_config, 'auto_save', True)
+    Algorithm.set_config_value(def_config, 'wait_for_close', False)
+    Algorithm.set_config_value(def_config, 'enable_report', False)
 
     batching = Algorithm.get_default_batching()
 
@@ -53,11 +47,16 @@ def get_config_search_list():
         for i, pslip in enumerate(job_configs['p_slips']):
             for j, agent_type in enumerate(job_configs['agents']):
                         config = deepcopy(def_config)
-                        config['agents']['cpt'] = batching['CPT_PARAMS'][agent_type]
-                        config['env']['p_slip'] = pslip
-                        config['env']['LAYOUT'] = layout
-                        config['ibatch']= f'{len(config_lst)+1}/{batch_size}'
-                        config['save']['fname_ext'] = f'BATCH{len(config_lst)+1}_'
+                        sets = job_configs.get('set', {})
+                        for key, val in sets.items():
+                            Algorithm.set_config_value(config, key, val)
+
+                        Algorithm.set_config_value(config, 'cpt', batching['cpt'][agent_type])
+                        Algorithm.set_config_value(config, 'p_slip', pslip)
+                        Algorithm.set_config_value(config, 'LAYOUT', layout)
+                        config['ibatch'] = f'{len(config_lst) + 1}/{batch_size}'
+                        date_stamp = datetime.datetime.now().strftime("%m-%d")
+                        config['save']['fname_ext'] = f'{date_stamp}_BATCH{len(config_lst)+1}_'
                         config_lst.append(config)
                         # print(f'Loading Config: {len(config_lst)}/{batch_size}')
     config_lst = config_lst[istart:]

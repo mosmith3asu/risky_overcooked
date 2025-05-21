@@ -5,23 +5,17 @@
 # Env Params ----------------
 env:
   'LAYOUT': "risky_tree"   # layout name
-  "p_slip": 0.2                         # probability of slipping in puddle
-#  'LAYOUT': "risky_coordination_ring"   # layout name
-#  "p_slip": 0.4                         # probability of slipping in puddle
-#  'LAYOUT': "risky_multipath"           # layout name
-#  "p_slip": 'default'                    # probability of slipping in puddle (= default uses p_slip specified in *.layout)
+  "p_slip": 'default'                         # probability of slipping in puddle
 
   'HORIZON': 200                        # number of time steps per episode
-#  'time_cost': -0.4                     # if using constant shaped rewards with 1soup/100 timesteps
   'time_cost': -0.2                     # cost per time step (<0: -0.2 ==> 1soup/100steps)
   'shared_rew': False                  # share reward between agents
-#  neglect_boarders: True              # whether to exclude boarder counter in state representation (reduces state space sz)
-  neglect_boarders: False              # whether to exclude boarder counter in state representation (reduces state space sz)
+  neglect_boarders: True              # whether to exclude boarder counter in state representation (reduces state space sz)
+#  neglect_boarders: False              # whether to exclude boarder counter in state representation (reduces state space sz)
 # Learning Params ----------------
 trainer:
     'ITERATIONS': 15_000                    # total number of training iterations
     'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
-#    'warmup_transitions': 300            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
     'obs_shape': nan                      # Overridden during execution depending on layout
     'joint_action_shape': 36              # number of joint actions
     N_tests: 1                          # number of test runs to average over during validation
@@ -30,13 +24,6 @@ trainer:
     'seed': 42                              # random seed for reproducibility
 
     schedules: # Make sure these are scaled to if you are using curriculum or not
-#      rand_start_sched:  [0.0, 0.0, 1]      # % chance episode starts with random state (start,end, dur)
-
-#      rand_start_sched: # exponential decay on random start state chance
-#        start: 1.0      # starting value
-#        end: 0.0        # ending value
-#        duration: 0.5     # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
-#        decay: 1.1      # higher values = faster decay
       rand_start_sched: # exponential decay on random start state chance
         start: 0.0      # starting value
         end: 0.0        # ending value
@@ -46,15 +33,13 @@ trainer:
       epsilon_sched:    # exponential decay on exploration rate
         start: 1.0        # starting value
         end: 0.1        # ending value
-#       duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
-#        duration: 2_000 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
         duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
         decay: 1.0      # higher values = faster decay
 
       rshape_sched:     # linear decay on reward shaping
-        start: 1        # starting value
+        start: 1.0        # starting value
 #        end: 0          # ending value
-        end: 1          # ending value
+        end: 0.1          # ending value
         duration: 0.2 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
 
     curriculum: # TODO: add ALL
@@ -113,40 +98,6 @@ agents:
         tau: 0.01                      # soft update weight of target network
         replay_memory_size: 200_000     # size of replay memory
         minibatch_size: 256             # size of mini-batches
-#      model:
-#        "num_hidden_layers": 6          # MLP params
-#        "size_hidden_layers": 256   # MLP params
-#        "activation": "ReLU"            # activation function        TODO: add to config
-#        'clip_grad': 0.75               # with norm clip
-#        device: nan                     # device to use for training (cpu or cuda)
-#        lr: 0.001                      # learning rate
-#        gamma: 0.97                     # discount factor
-#        tau: 0.005                      # soft update weight of target network
-#        replay_memory_size: 200_000     # size of replay memory
-#        minibatch_size: 256             # size of mini-batches
-#      model:
-#        "num_hidden_layers": 6          # MLP params
-#        "size_hidden_layers": 256   # MLP params
-#        "activation": "ReLU"            # activation function        TODO: add to config
-#        'clip_grad': 0.75               # with norm clip
-#        device: nan                     # device to use for training (cpu or cuda)
-#        lr: 0.0002                      # learning rate
-#        gamma: 0.97                     # discount factor
-#        tau: 0.005                      # soft update weight of target network
-#        replay_memory_size: 200_000     # size of replay memory
-#        minibatch_size: 256             # size of mini-batches
-#      model:
-#        "num_hidden_layers": 5          # MLP params
-#        "size_hidden_layers": 128   # MLP params
-#        "activation": "ReLU"            # activation function        TODO: add to config
-#        'clip_grad': 0.75               # with norm clip
-#        device: nan                     # device to use for training (cpu or cuda)
-#        lr: 0.0001                      # learning rate
-#        gamma: 0.95                     # discount factor
-#        tau: 0.005                      # soft update weight of target network
-#        replay_memory_size: 100_000     # size of replay memory
-#        minibatch_size: 256             # size of mini-batches
-
 
       'equilibrium': #using level-k quant response equilibrium
         'type': 'QRE' # type of equilibrium to use \in {QRE, Pareto}
@@ -154,20 +105,32 @@ agents:
         'belief_trick': True # other agent uses  level-(k+1) to avoid recomputing in QRE
 
       'cpt':   # Default rational CPT parameters
-          'b': 0.0      # reference point
-          'lam': 1.0    # loss aversion
-          'eta_p': 1.0  # diminishing gain sensitivity
-          'eta_n': 1.0  # diminishing loss sensitivity
-          'delta_p': 1.0 # s-shaped probability estimation bias for gains
-          'delta_n': 1.0 # s-shaped probability estimation bias for losses
-
-##        # Averse paramters
-#          'b': -0.2      # reference point
-#          'lam': 2.25    # loss aversion
-#          'eta_p': 0.88  # diminishing gain sensitivity
+          ########### Rational Params ####################
+#          'b': 0.0      # reference point
+#          'lam': 1.0    # loss aversion
+#          'eta_p': 1.0  # diminishing gain sensitivity
 #          'eta_n': 1.0  # diminishing loss sensitivity
+#          'delta_p': 1.0 # s-shaped probability estimation bias for gains
+#          'delta_n': 1.0 # s-shaped probability estimation bias for losses
+#            mean_val_ref: False
+
+           ########### Averse Params ######################
+          'b': 0.0      # reference point
+          'lam': 2.25    # loss aversion
+          'eta_p': 0.88  # diminishing gain sensitivity
+          'eta_n': 1.0  # diminishing loss sensitivity
+          'delta_p': 0.61 # s-shaped probability estimation bias for gains
+          'delta_n': 0.69 # s-shaped probability estimation bias for losses
+          mean_val_ref: True # whether to use mean value reference point (True) or 0 (False) (sets b=0)
+
+           ########### Seeking Params #####################
+#          'b': -0.2      # reference point
+#          'lam': 0.44    # loss aversion
+#          'eta_p': 1.0  # diminishing gain sensitivity
+#          'eta_n': 0.88  # diminishing loss sensitivity
 #          'delta_p': 0.61 # s-shaped probability estimation bias for gains
 #          'delta_n': 0.69 # s-shaped probability estimation bias for losses
+#            mean_val_ref: True # whether to use mean value reference point (True) or 0 (False) (sets b=0)
 
 
 
@@ -185,7 +148,6 @@ save:
     'date': nan             # date of training run
 
     'fname_fmt': '{algorithm}{val}_{env}{val}_{pslip}{val}_{rshape}{val}_{epsilon}{val}_{lr}_{note}_{fname_ext'#TODO: add?
-#    'save_dir': '\\risky_overcooked_rl\\algorithms\\DDQN\\models\\'
     'save_dir': '\risky_overcooked_rl\algorithms\DDQN\models\'
 
 

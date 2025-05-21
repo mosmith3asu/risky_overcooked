@@ -1,10 +1,10 @@
 {
     "grid":  """XSSXXXXXX
-                X       X
-                X     X X
-                XPPXWXX X
-                XOOXWXX X
-                D  W  X X
+                P       X
+                P    X  X
+                XXX  X  X
+                XOXXWX  X
+                D  W X  X
                 X12X    X
                 X       X
                 XXXXXXXXX""",
@@ -13,5 +13,5 @@
         { "ingredients" : ["onion", "onion","onion"]}
     ],
     "rew_shaping_params": None,
-    "p_slip":0.4
+    "p_slip":0.40
 }

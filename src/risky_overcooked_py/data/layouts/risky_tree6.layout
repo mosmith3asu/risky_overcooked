@@ -4,8 +4,8 @@
                 X     X X
                 XPPXWXX X
                 XOOXWXX X
-                D  W  X X
-                X12X    X
+                D  W    X
+                D12X    X
                 X       X
                 XXXXXXXXX""",
     "start_bonus_orders": [],
@@ -13,5 +13,5 @@
         { "ingredients" : ["onion", "onion","onion"]}
     ],
     "rew_shaping_params": None,
-    "p_slip":0.4
+    "p_slip":0.2
 }

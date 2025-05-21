@@ -11,5 +11,6 @@
     "start_all_orders" : [
         { "ingredients" : ["onion", "onion", "onion"]}
     ],
-    "rew_shaping_params": None
+    "rew_shaping_params": None,
+    "p_slip": 0.0
 }

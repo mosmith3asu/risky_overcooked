@@ -2,6 +2,8 @@ import itertools
 
 import numpy as np
 import torch
+# import torch._inductor.config
+# torch._inductor.config.cpp.cxx = ("g++",)
 import copy
 from risky_overcooked_py.mdp.actions import Action, Direction
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
@@ -85,22 +87,33 @@ def invert_obs(obs,N_PLAYER_FEAT = 9):
                                obs[:N_PLAYER_FEAT],
                                obs[2 * N_PLAYER_FEAT:]])
     elif isinstance(obs, torch.Tensor):
+        _obs = invert_obs_torch_compiled(obs)
         # _obs = invert_obs_torch_compiled([obs,N_PLAYER_FEAT])
-        n_dim = len(obs.shape)
-        if n_dim == 1:
-            _obs = torch.cat([obs[N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
-                               obs[:N_PLAYER_FEAT],
-                               obs[2 * N_PLAYER_FEAT:]])
-        elif n_dim == 2:
-            _obs = torch.cat([obs[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
-                                   obs[:, :N_PLAYER_FEAT],
-                                   obs[:, 2 * N_PLAYER_FEAT:]], dim=1)
-        else: raise ValueError("Invalid obs dimension")
+        # n_dim = len(obs.shape)
+        # if n_dim == 1:
+        #     _obs = torch.cat([obs[N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+        #                        obs[:N_PLAYER_FEAT],
+        #                        obs[2 * N_PLAYER_FEAT:]])
+        # elif n_dim == 2:
+        #     _obs = torch.cat([obs[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+        #                            obs[:, :N_PLAYER_FEAT],
+        #                            obs[:, 2 * N_PLAYER_FEAT:]], dim=1)
+        # else: raise ValueError("Invalid obs dimension")
     else: raise ValueError("Invalid obs type")
     return _obs
 
-
-
+# @torch.compile
+def invert_obs_torch_compiled(obs, N_PLAYER_FEAT = 9):
+    n_dim = len(obs.shape)
+    if n_dim == 1:
+        _obs = torch.cat([obs[N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+                          obs[:N_PLAYER_FEAT],
+                          obs[2 * N_PLAYER_FEAT:]])
+    elif n_dim == 2:
+        _obs = torch.cat([obs[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+                          obs[:, :N_PLAYER_FEAT],
+                          obs[:, 2 * N_PLAYER_FEAT:]], dim=1)
+    return _obs
 
 
 def invert_joint_action(joint_action_batch):
@@ -136,20 +149,17 @@ def flatten_next_prospects(next_prospects):
      - improve model-value prediction speed
      - condensed to back to |batch_size| after using expectation
     """
-    N = len(next_prospects)
     all_next_states = []
     all_p_next_states = []
     prospect_idxs = []
     total_outcomes = 0
-    # for i, prospect in enumerate(next_prospects):
-    for i in range(N):
-        prospect = next_prospects[i]
+    for i, prospect in enumerate(next_prospects):
         n_outcomes = len(prospect)
         all_next_states += [outcome[1] for outcome in prospect]
         all_p_next_states += [outcome[2] for outcome in prospect]
         prospect_idxs.append(np.arange(total_outcomes, total_outcomes + n_outcomes))
         total_outcomes += n_outcomes
-    return all_next_states,all_p_next_states,prospect_idxs
+    return all_next_states, all_p_next_states, prospect_idxs
 
 
 class StartStateManager:

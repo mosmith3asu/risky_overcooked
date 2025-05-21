@@ -161,7 +161,7 @@ class CumulativeProspectTheory_bu(object):
         :return: scalar value (biased) expectation
         """
         # arrange all samples in ascending order
-        handle_percision = False
+        handle_percision = True
         sorted_idxs = np.argsort(values)
         sorted_v = values[sorted_idxs]
         sorted_p = np.array(p_values[sorted_idxs])  #sorted_p = p_values[sorted_idxs]

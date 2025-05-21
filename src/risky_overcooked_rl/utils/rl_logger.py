@@ -341,6 +341,7 @@ class RLLogger(object):
         self.filtered_settings = {'c': 'k', 'lw': lw}
 
         self.epsilon = 0
+
     def close_plots(self):
         plt.close(self.root_fig)
     def log(self, **data):
@@ -353,13 +354,18 @@ class RLLogger(object):
 
         # np.convolve(x, np.ones(window), 'valid') / window
         if len(x) > window:
-            f = []
-            std = []
-            for i in range(len(x)):
-                w = min(i, window)
-                f.append(np.mean(x[i - w:i]))
-                std.append(np.std(x[i - w:i]))
-            return f, std
+            try:
+                f = []
+                std = []
+                for i in range(len(x)):
+                    w = min(i, window)
+                    f.append(np.mean(x[i - w:i]))
+                    std.append(np.std(x[i - w:i]))
+                return f, std
+            except Exception as e:
+                print(f'Error in filter: x[i - w:i]={np.shape(x)} [{i}-{w}]\n{e} ')
+                return x, None
+
             # return np.convolve(x, np.ones(w) / w, 'same')
         else:
             return x, None
@@ -515,12 +521,8 @@ class RLLogger(object):
         for key, data in self.logs.items():
             self.checkpoint_lines[key] = self.axs[key].axvline(x=0, color='g', linestyle='--',lw=1, label='TBD')
 
-    def add_lineplot(self, key,
-                     xlabel='', ylabel='', title='',
-                     loc=None,
-                     filter_window=None,
-                     display_raw=False,
-                     display_std = True
+    def add_lineplot(self, key, xlabel='', ylabel='', title='',
+                     loc=None,  filter_window=None,  display_raw=False, display_std = True
                      ):
 
         self.iax += 1

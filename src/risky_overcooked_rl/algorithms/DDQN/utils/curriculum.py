@@ -20,18 +20,18 @@ class CirriculumTrainer(Trainer):
 
 
     def run(self):
-        train_rewards = []
-        train_losses = []
+        # train_rewards = []
+        # train_losses = []
         # Main training Loop
         for it in range(self.ITERATIONS):
             self.training_iteration = it
             cit = self.curriculum.iteration
-            self.logger.start_iteration()
+            # self.logger.start_iteration()
+            self.logger.loop_iteration()
             self.logger.spin()
 
             ##########################################################
             # Training Step ##########################################
-            # Perform Rollout
 
             cum_reward, cum_shaped_rewards, rollout_info = \
                 self.curriculum_rollout(cit,
@@ -43,36 +43,21 @@ class CirriculumTrainer(Trainer):
 
             did_update = (rollout_info['mean_loss']!=0)
             if did_update:
-                # self.model.scheduler.step()  # updates learning rate scheduler
                 self.model.update_target()  # performs soft update of target network
                 next_cirriculum = self.curriculum.step_cirriculum(cum_reward)
                 if next_cirriculum:
                     self.init_sched(self.schedules, eps_decay=self.schedule_decay, rshape_decay=self.schedule_decay)
 
+                if self.curriculum.name in self.curriculum.cirriculums[-3:-1]:
+                    self.logger.enable_checkpointing(True)
+
             # Report
             if self.enable_report:
-                risks = rollout_info['onion_risked'] + rollout_info['dish_risked'] + rollout_info['soup_risked']
-                handoffs = rollout_info['onion_handoff'] + rollout_info['dish_handoff'] + rollout_info['soup_handoff']
+                self.report(it,cum_reward,cum_shaped_rewards,rollout_info)
 
-                print(f"[it:{it}"
-                      f" {self.curriculum.name}:{self.curriculum.current_cirriculum}-{cit}]"
-                      f"[R:{round(cum_reward, 3)} "
-                      f" Rshape:{np.round(cum_shaped_rewards, 3)} "
-                      f" L:{round(rollout_info['mean_loss'], 3)} ]"
-                      # f"| slips:{slips} "
-                      f"[ risks:{risks} "
-                      f" handoffs:{handoffs} ]"
-                      f" |"
-                      f"| mem:{len(self.model._memory)} "
-                      f"| rshape:{round(self.rshape_sched[cit], 3)} "
-                      # f"| rat:{round(self.rationality, 3)}"
-                      f"| eps:{round(self.epsilon_sched[cit], 3)} "
-                      f"| LR={round(self.model.optimizer.param_groups[0]['lr'], 4)}"
-                      f"| rstart={round(self.random_start_sched[cit], 3)}"
-                      )
-
-            train_rewards.append(cum_reward + cum_shaped_rewards)
-            train_losses.append(rollout_info['mean_loss'])
+            self.logger.log(train_reward=[it, cum_reward + np.mean(cum_shaped_rewards)],
+                            loss=[it, rollout_info['mean_loss']],
+                            eps=self.epsilon_sched[cit])
 
             # Testing Step ##########################################
             time4test = (it % self.test_interval == 0)
@@ -87,22 +72,12 @@ class CirriculumTrainer(Trainer):
                         self.test_rollout(rationality=self.test_rationality)
                     test_rewards.append(test_reward)
                     test_shaped_rewards.append(test_shaped_reward)
-                    # if not self.has_checkpointed:
-                    #     self.traj_visualizer.que_trajectory(state_history)
-                    #     self.traj_heatmap.que_trajectory(state_history)
+                self.state_history = state_history
 
-                # Checkpointing ----------------------
-                self.test_rewards.append(np.mean(test_rewards))  # for checkpointing
-                self.train_rewards.append(np.mean(train_rewards))  # for checkpointing
-                self.checkpoint(it,state_history)
-                # if self.checkpoint(it):  # check if should checkpoint
-                #     self.traj_visualizer.que_trajectory(state_history)  # load preview of checkpointed trajectory
-                #     self.traj_heatmap.que_trajectory(state_history)
+
 
                 # Logging ----------------------
-                self.logger.log(test_reward=[it, np.mean(test_rewards)],
-                                train_reward=[it, np.mean(train_rewards)],
-                                loss=[it, np.mean(train_losses)])
+                self.logger.log(test_reward=[it, np.mean(test_rewards)])
                 self.logger.draw()
                 if self.enable_report:
                     print(f"\nTest: | nTests= {self.N_tests} "
@@ -111,8 +86,8 @@ class CirriculumTrainer(Trainer):
                           # f"\n{action_history}\n"#, f"{aprob_history[0]}\n"
                           )
 
-                train_rewards = []
-                train_losses = []
+                # train_rewards = []
+                # train_losses = []
                 self.curriculum.eval('off')
 
             # Close Iteration ########################################
@@ -122,7 +97,7 @@ class CirriculumTrainer(Trainer):
                 self.save(save_model=self.curriculum.save_model_on_fail, save_fig=self.curriculum.save_fig_on_fail)
                 break
 
-            self.logger.end_iteration()
+            # self.logger.end_iteration() # TODO: DELETE
 
 
             ####### END TRAINING ON LOGGER CLOSED ########
@@ -132,7 +107,8 @@ class CirriculumTrainer(Trainer):
 
 
 
-        self.logger.wait_for_close(enable=self.wait_for_close)
+        # self.logger.wait_for_close(enable=self.wait_for_close)
+        self.logger.halt()
         self.logger.close_plots()
         if self.auto_save and not self.curriculum.is_failing(it, self.ITERATIONS):
             self.save(save_model=True, save_fig=True)
@@ -142,7 +118,7 @@ class CirriculumTrainer(Trainer):
         self.env.reset()
         self.env.state = self.curriculum.sample_cirriculum_state()
 
-        self.logger.epsilon = epsilon
+        # self.logger.epsilon = epsilon
 
         losses = []
         cum_reward = 0
@@ -173,6 +149,8 @@ class CirriculumTrainer(Trainer):
         }
 
         for t in range(self.env.horizon+1):#itertools.count():
+            if t%5==0: self.logger.spin()
+
             old_state = self.env.state.deepcopy()
             obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=self.device).unsqueeze(0)
             feasible_JAs = self.feasible_action.get_feasible_joint_actions(self.env.state, as_joint_idx=True)
@@ -220,6 +198,27 @@ class CirriculumTrainer(Trainer):
 
         return cum_reward, cum_shaped_reward, rollout_info
 
+    def report(self,it,cum_reward,cum_shaped_rewards,rollout_info):
+        risks = rollout_info['onion_risked'] + rollout_info['dish_risked'] + rollout_info['soup_risked']
+        handoffs = rollout_info['onion_handoff'] + rollout_info['dish_handoff'] + rollout_info['soup_handoff']
+        cit = self.curriculum.iteration
+
+        print(f"[it:{it}"
+              f" {self.curriculum.name}:{self.curriculum.current_cirriculum}-{cit}]"
+              f"[R:{round(cum_reward, 3)} "
+              f" Rshape:{np.round(cum_shaped_rewards, 3)} "
+              f" L:{round(rollout_info['mean_loss'], 3)} ]"
+              # f"| slips:{slips} "
+              f"[ risks:{risks} "
+              f" handoffs:{handoffs} ]"
+              f" |"
+              f"| mem:{len(self.model._memory)} "
+              f"| rshape:{round(self.rshape_sched[cit], 3)} "
+              # f"| rat:{round(self.rationality, 3)}"
+              f"| eps:{round(self.epsilon_sched[cit], 3)} "
+              f"| LR={round(self.model.optimizer.param_groups[0]['lr'], 4)}"
+              f"| rstart={round(self.random_start_sched[cit], 3)}"
+              )
 
 
 class Curriculum:
@@ -246,18 +245,7 @@ class Curriculum:
         self.cirriculum_step_threshs = {}
         for key, num_soups in curriculum_config['subtask_goals'].items():
             self.cirriculum_step_threshs[key] = soup_reward*num_soups + timecost_offset
-        # self.cirriculum_step_threshs = {
-        #     'deliver_soup': 80 + self.env.horizon*time_cost,
-        #     'pick_up_soup': 80 + self.env.horizon*time_cost,
-        #     'pick_up_dish': 70 + self.env.horizon*time_cost,
-        #     'wait_to_cook': 50 + self.env.horizon*time_cost,
-        #     'deliver_onion3': 50 + self.env.horizon*time_cost,
-        #     'pick_up_onion3': 50 + self.env.horizon*time_cost,
-        #     'deliver_onion2': 40 + self.env.horizon*time_cost,
-        #     'pick_up_onion2': 40 + self.env.horizon*time_cost,
-        #     'deliver_onion1': 40 + self.env.horizon*time_cost,
-        #     'full_task': 999
-        # }
+
         self.cirriculums = list(self.cirriculum_step_threshs.keys())
         self.name = self.cirriculums[self.current_cirriculum]
 
@@ -500,6 +488,10 @@ class Curriculum:
         else:
             player.set_object(ObjectState(obj, player.position))
         return player
+
+    @property
+    def num_curriculums(self):
+        return len(self.cirriculums)
 # def main():
 #     config = {
 #         'ALGORITHM': 'Boltzmann_QRE-DDQN-OSA',

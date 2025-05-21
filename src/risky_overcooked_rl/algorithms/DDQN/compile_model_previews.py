@@ -5,7 +5,7 @@ from risky_overcooked_rl.algorithms.DDQN import get_absolute_save_dir
 import os
 
 class CompiledModelPreview:
-    def __init__(self, layout, p_slip,n_trials=10,seed=42):
+    def __init__(self, layout, p_slip,n_trials=20,seed=42):
         fig_sz = (10, 7)
         self.layout = layout
         self.p_slip = p_slip
@@ -88,42 +88,16 @@ class CompiledModelPreview:
 
 
 def main():
-    # CMP = CompiledModelPreview(layout='risky_tree', p_slip=0.2)
+    # CMP = CompiledModelPreview(layout='risky_tree', p_slip=0.25)
     # CMP = CompiledModelPreview(layout='risky_handoff', p_slip=0.25)
-    CMP = CompiledModelPreview(layout='risky_roundabout', p_slip=0.25)
+    # CMP = CompiledModelPreview(layout='risky_roundabout', p_slip=0.25)
     # CMP = CompiledModelPreview(layout='risky_mixed_coordination', p_slip=0.2)
+
+    # CMP = CompiledModelPreview(layout='risky_coordination_ring', p_slip=0.4)
+    CMP = CompiledModelPreview(layout='risky_multipath', p_slip=0.15)
     plt.ioff()
     plt.show()
 
-    # # load all images in this directory
-    # import os
-    # import glob
-    # import cv2
-    # import numpy as np
-    # import matplotlib.pyplot as plt
-    # from PIL import Image
-
-    # # Get all image files in the directory
-    # image_files = glob.glob(os.path.join(os.path.dirname(__file__), '*.png'))
-    # images = []
-    # for image_file in image_files:
-    #     # Read the image using OpenCV
-    #     image = cv2.imread(image_file)
-    #     # Convert BGR to RGB
-    #     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    #     images.append(image)
-    #
-    # # Create a figure and axis
-    # fig, ax = plt.subplots()
-    # # Loop through the images and display them
-    # for i, image in enumerate(images):
-    #     # Create a subplot for each image
-    #     ax = fig.add_subplot(1, len(images), i + 1)
-    #     ax.imshow(image)
-    #     ax.axis('off')  # Hide the axis
-    #     # Set the title for each subplot
-    #     # ax.set_title(f'Image {i + 1}')
-    # plt.show()
 
 
 def subfun():

@@ -1,46 +1,65 @@
 ---
-workers: 7
+workers: 3
 istart:  0 # used for starting at predefined index of batch list if previously incomplete
-CPT_PARAMS:
-  averse: {'b': -0.2, 'lam': 2.25, 'eta_p': 0.88, 'eta_n': 1.0, 'delta_p': 0.61, 'delta_n': 0.69}
+cpt:
+#  averse: {'b': 'time_cost', 'lam': 2.25, 'eta_p': 0.88, 'eta_n': 1.0, 'delta_p': 0.61, 'delta_n': 0.69}
+#  neutral: {'b': 0.0, 'lam': 1.0, 'eta_p': 1.0, 'eta_n': 1.0, 'delta_p': 1.0, 'delta_n': 1.0}
+#  seeking: { 'b': 'time_cost', 'lam': 0.44, 'eta_p': 1.0, 'eta_n': 0.88, 'delta_p': 0.61, 'delta_n': 0.69 }
+
+  averse: {'b': 0.0, 'lam': 2.25, 'eta_p': 0.88, 'eta_n': 1.0, 'delta_p': 0.61, 'delta_n': 0.69}
   neutral: {'b': 0.0, 'lam': 1.0, 'eta_p': 1.0, 'eta_n': 1.0, 'delta_p': 1.0, 'delta_n': 1.0}
-  seeking: { 'b': -0.2, 'lam': 0.44, 'eta_p': 1.0, 'eta_n': 0.88, 'delta_p': 0.61, 'delta_n': 0.69 }
+  seeking: { 'b': 0.0, 'lam': 0.44, 'eta_p': 1.0, 'eta_n': 0.88, 'delta_p': 0.61, 'delta_n': 0.69 }
 
 jobs:
 #  risky_coordination_ring:
 #    agents: ['averse','neutral','seeking']
 #    p_slips: ['default'] # 0.4 in layout definition
-##    p_slips: [0.3]
-#  risky_multipath:
+#    set:
+#      time_cost: -0.3 # rational does 0.6
+
+  risky_multipath:
+    agents: [ 'averse','neutral','seeking' ]
+    p_slips: ['default'] #0.15 in layout definition
+#    set:
+#      time_cost: -0.3 # rational does 0.3
+
+  # PC1 (HOME) #############################
+#  risky_tree:
 #    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: ['default'] #0.15 in layout definition
+#    p_slips: ['default'] # 0.2 in layout definition
+
+#  risky_tree_simple:
+#    agents: [ 'averse','neutral','seeking' ]
+#    p_slips: [ 'default' ] # 0.2 in layout definition
+
+
 #  risky_handoff:
 #    agents: [ 'averse','neutral','seeking' ]
 #    p_slips: ['default'] # 0.25 in layout definition
-  risky_roundabout:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [0.2]
-  risky_mixed_coordination:
-#    agents: [ 'averse','neutral','seeking' ]
-    agents: ['seeking' ]
-    p_slips: [0.2]
-  risky_shortcuts:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [ 0.2]
 
-#  risky_hierarchy:
+  # PC2 (WORK) #############################
+#  risky_roundabout:
 #    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [ 0.2 ]
-
-#  risky_tree:
+#    p_slips: [0.2]
+#  risky_mixed_coordination:
+##    agents: [ 'averse','neutral','seeking' ]
+#    agents: ['seeking' ]
+#    p_slips: [0.2]
+#  risky_shortcuts:
 #    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [ 0.15]
-  risky_spiral:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [ 0.3 ]
-  risky_passing:
-    agents: [ 'averse','neutral','seeking' ]
-    p_slips: [ 0.3 ]
+#    p_slips: [ 0.2]
+#
+##  risky_hierarchy:
+##    agents: [ 'averse','neutral','seeking' ]
+##    p_slips: [ 0.2 ]
+#
+#
+#  risky_spiral:
+#    agents: [ 'averse','neutral','seeking' ]
+#    p_slips: [ 0.3 ]
+#  risky_passing:
+#    agents: [ 'averse','neutral','seeking' ]
+#    p_slips: [ 0.3 ]
 
 # EXCLUDED ###################################
 #  risky_forced_coordination:

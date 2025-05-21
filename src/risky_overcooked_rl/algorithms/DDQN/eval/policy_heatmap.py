@@ -60,19 +60,19 @@ class PolicyHeatmap():
 
 
         policy_fnames = {
-            'Rational': f'{layout}_pslip{f"{p_slip}".replace(".","")}__rational',
-            # 'Averse': f'{layout}_pslip0{int(p_slip * 10)}__b00_lam225_etap088_etan10_deltap061_deltan069',
-            # 'Seeking': f'{layout}_pslip0{int(p_slip * 10)}__b00_lam044_etap10_etan088_deltap061_deltan069'
-            'Averse': f'{layout}_pslip{f"{p_slip}".replace(".","")}__b-02_lam225_etap088_etan10_deltap061_deltan069',
-            'Seeking': f'{layout}_pslip{f"{p_slip}".replace(".","")}__b-02_lam044_etap10_etan088_deltap061_deltan069'
-            # 'Seeking': f'{layout}_pslip{f"{p_slip}".replace(".","")}__b-02_lam02_etap10_etan088_deltap061_deltan069'
+            'Averse': f'{layout}_pslip{f"{p_slip}".replace(".", "")}__b00_lam225_etap088_etan10_deltap061_deltan069',
+            'Rational': f'{layout}_pslip{f"{p_slip}".replace(".", "")}__rational',
+            'Seeking': f'{layout}_pslip{f"{p_slip}".replace(".", "")}__b00_lam044_etap10_etan088_deltap061_deltan069'
+            # 'Averse': f'{layout}_pslip{f"{p_slip}".replace(".","")}__b-02_lam225_etap088_etan10_deltap061_deltan069',
+            # 'Rational': f'{layout}_pslip{f"{p_slip}".replace(".", "")}__rational',
+            # 'Seeking': f'{layout}_pslip{f"{p_slip}".replace(".","")}__b-02_lam044_etap10_etan088_deltap061_deltan069'
         }
         self.policy_fnames = policy_fnames
 
         config['agents']['save_dir'] = config['save']['save_dir']
         self.policies = {
-            'Rational': SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config['agents'], policy_fnames['Rational']),
             'Averse': SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config['agents'],  policy_fnames['Averse']),
+            'Rational': SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config['agents'], policy_fnames['Rational']),
             'Seeking': SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config['agents'],  policy_fnames['Seeking'])
         }
         for p in self.policies.keys():

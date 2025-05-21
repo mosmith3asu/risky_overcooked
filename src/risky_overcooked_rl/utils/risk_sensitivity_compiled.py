@@ -1,46 +1,56 @@
 import numpy as np
 from numba import jit,float32
+from numba.typed import List
 import time
+# import warnings
+# warnings.simplefilter('error')
 # from numba.pycc import CC
 # cc = CC('risk_sensitivity_compiled')
 # import matplotlib.pyplot as plt
 class CumulativeProspectTheory:
     """Wrapper for compiled CPT expectations"""
     def __init__(self, b, lam, eta_p, eta_n, delta_p, delta_n):
-        self.b = np.float64(b)  # STATICALLY DEFINED REFERENCE
-        self.lam = np.float64(lam)
-        self.eta_p = np.float64(eta_p)
-        self.eta_n = np.float64(eta_n)
-        self.delta_p = np.float64(delta_p)
-        self.delta_n = np.float64(delta_n)
+        # self.b = np.float64(b)  # STATICALLY DEFINED REFERENCE
+        # self.lam = np.float64(lam)
+        # self.eta_p = np.float64(eta_p)
+        # self.eta_n = np.float64(eta_n)
+        # self.delta_p = np.float64(delta_p)
+        # self.delta_n = np.float64(delta_n)
 
         self.params = {
-            'b': self.b,
-            'lam': self.lam,
-            'eta_p': self.eta_p,
-            'eta_n': self.eta_n,
-            'delta_p': self.delta_p,
-            'delta_n': self.delta_n
+            'b':b,
+            'lam':lam,
+            'eta_p':eta_p,
+            'eta_n':eta_n,
+            'delta_p':delta_p,
+            'delta_n':delta_n
         }
 
     def expectation(self, values, p_values):
         return expectation_jit(values, p_values,**self.params)
-    def expectation_samples(self, *args):
-        expected_td_targets = np.zeros([len(args[3]), 1])
-        return expactation_samples_jit(expected_td_targets,*args, **self.params)
+    def expectation_samples(self, all_next_q_value, all_p_next_states, prospect_mask, reward, gamma):
+        prospect_mask = List(prospect_mask)
+        expected_td_targets = np.zeros([len(prospect_mask), 1])
+        return expactation_samples_jit(expected_td_targets,
+                                       all_next_q_value, all_p_next_states, prospect_mask,
+                                       reward, gamma, **self.params)
 
 
 
 @jit(nopython=True,fastmath=True)
 def expactation_samples_jit(expected_td_targets,prospect_next_values, prospect_p_next_states,prospect_masks,reward,gamma,
                             b, lam, eta_p, eta_n, delta_p, delta_n):
+
+    handle_precision_error = True
     def expectation(values, p_values, b, lam, eta_p, eta_n, delta_p, delta_n):
         """
         Calculate the expected value given values and their probabilities.
         """
 
         def weight(p, delta):
+            # if not 0 < p <= 1: print(f"Probabilities must be between 0 and 1 v={values} p_values={p_values} p= {p}")
             return p ** delta / ((p ** delta + (1 - p) ** delta) ** (1 / delta))
+
 
         def rho_neg(sorted_v, sorted_p, Fk, l, K, b, lam, eta_n, delta_n):
 
@@ -63,31 +73,36 @@ def expactation_samples_jit(expected_td_targets,prospect_next_values, prospect_p
             return _rho_p
 
 
-        sorted_idxs = np.argsort(values)
-        sorted_v = values[sorted_idxs]
-        sorted_p = p_values[sorted_idxs]  # sorted_p = p_values[sorted_idxs]
-        K = len(sorted_v)  # number of samples
+
+        K = len(values)  # number of samples
 
         if K == 1:
             # If there is only one value, return the utility of that value
-            rho_p = sorted_v[0]
-            rho_n = 0
-        elif np.all(sorted_v <= b):
-            Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]
-            l = K - 1
-            rho_p = 0
-            rho_n = rho_neg(sorted_v, sorted_p, Fk, l, K, b, lam, eta_n, delta_n)
-        elif np.all(sorted_v > b):
-            Fk = [np.sum(sorted_p[i:K]) for i in range(K)]
-            l = -1
-            rho_p = rho_plus(sorted_v, sorted_p, Fk, l, K, b, eta_p, delta_p)
+            rho_p = values[0]
             rho_n = 0
         else:
-            l = np.where(sorted_v <= b)[0][-1]  # idx of highest loss
-            Fk = [np.sum(sorted_p[0:i + 1], dtype=np.float64) for i in range(l + 1)] + \
-                 [np.sum(sorted_p[i:K], dtype=np.float64) for i in range(l + 1, K)]  # cumulative probability
-            rho_p = rho_plus(sorted_v, sorted_p, Fk, l, K, b, eta_p, delta_p)
-            rho_n = rho_neg(sorted_v, sorted_p, Fk, l, K, b, lam, eta_n, delta_n)
+            sorted_idxs = np.argsort(values)
+            sorted_v = values[sorted_idxs]
+            sorted_p = p_values[sorted_idxs]  # sorted_p = p_values[sorted_idxs]
+            if np.all(sorted_v <= b):
+                Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]
+                if handle_precision_error: Fk = [min([max([0,f]),1]) for f in Fk]
+                l = K - 1
+                rho_p = 0
+                rho_n = rho_neg(sorted_v, sorted_p, Fk, l, K, b, lam, eta_n, delta_n)
+            elif np.all(sorted_v > b):
+                Fk = [np.sum(sorted_p[i:K]) for i in range(K)]
+                if handle_precision_error: Fk = [min([max([0,f]),1.0]) for f in Fk]
+                l = -1
+                rho_p = rho_plus(sorted_v, sorted_p, Fk, l, K, b, eta_p, delta_p)
+                rho_n = 0
+            else:
+                l = np.where(sorted_v <= b)[0][-1]  # idx of highest loss
+                Fk = [np.sum(sorted_p[0:i + 1], dtype=np.float64) for i in range(l + 1)] + \
+                     [np.sum(sorted_p[i:K], dtype=np.float64) for i in range(l + 1, K)]  # cumulative probability
+                if handle_precision_error: Fk = [min([max([0,f]),1]) for f in Fk]
+                rho_p = rho_plus(sorted_v, sorted_p, Fk, l, K, b, eta_p, delta_p)
+                rho_n = rho_neg(sorted_v, sorted_p, Fk, l, K, b, lam, eta_n, delta_n)
         rho = rho_p - rho_n
         return rho
     BATCH_SIZE = len(prospect_masks)
@@ -104,8 +119,7 @@ def expactation_samples_jit(expected_td_targets,prospect_next_values, prospect_p
                                              b, lam, eta_p, eta_n, delta_p, delta_n)
     return expected_td_targets
 # @jit(fastmath=True)
-
-@jit(nopython=True,fastmath=True)
+@jit
 def expectation_jit(values, p_values,b, lam, eta_p, eta_n, delta_p, delta_n):
     """
     Calculate the expected value given values and their probabilities.
@@ -146,14 +160,14 @@ def expectation_jit(values, p_values,b, lam, eta_p, eta_n, delta_p, delta_n):
             return sorted_v[0]
 
     elif np.all(sorted_v <= b):
-        Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]
+        Fk = np.clip([np.sum(sorted_p[0:i + 1]) for i in range(K)],0,1)
         l = K - 1
         rho_p = 0
         rho_n = rho_neg(sorted_v, sorted_p, Fk, l, K,b,lam,eta_n,delta_n)
         rho = rho_p - rho_n
         return rho
     elif np.all(sorted_v > b):
-        Fk = [np.sum(sorted_p[i:K]) for i in range(K)]
+        Fk = np.clip([np.min(np.sum(sorted_p[i:K]),1) for i in range(K)],0,1)
         l = -1
         rho_p = rho_plus(sorted_v, sorted_p, Fk, l, K,b,eta_p,delta_p)
         rho_n = 0
@@ -161,8 +175,8 @@ def expectation_jit(values, p_values,b, lam, eta_p, eta_n, delta_p, delta_n):
         return rho
     else:
         l = np.where(sorted_v <= b)[0][-1]  # idx of highest loss
-        Fk = [np.sum(sorted_p[0:i + 1], dtype=np.float64) for i in range(l + 1)] + \
-             [np.sum(sorted_p[i:K], dtype=np.float64) for i in range(l + 1, K)]  # cumulative probability
+        Fk = np.clip([np.sum(sorted_p[0:i + 1], dtype=np.float64) for i in range(l + 1)] + \
+             [np.sum(sorted_p[i:K], dtype=np.float64) for i in range(l + 1, K)],0,1)  # cumulative probability
         rho_p = rho_plus(sorted_v, sorted_p, Fk, l, K,b,eta_p,delta_p)
         rho_n = rho_neg(sorted_v, sorted_p, Fk, l, K,b,lam,eta_n,delta_n)
         rho = rho_p - rho_n

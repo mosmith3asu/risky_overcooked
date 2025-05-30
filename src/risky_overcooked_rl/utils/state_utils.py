@@ -113,6 +113,7 @@ def invert_obs_torch_compiled(obs, N_PLAYER_FEAT = 9):
         _obs = torch.cat([obs[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
                           obs[:, :N_PLAYER_FEAT],
                           obs[:, 2 * N_PLAYER_FEAT:]], dim=1)
+
     return _obs
 
 

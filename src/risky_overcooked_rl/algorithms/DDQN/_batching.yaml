@@ -26,8 +26,21 @@ jobs:
   risky_tree:
     agents: [ 'averse','neutral','seeking' ]
     p_slips: ['default'] # 0.2 in layout definition
-    set:
-      ITERATIONS: 20_000
+#    set:
+#      loads: 'latest'
+#      ITERATIONS: 25_000
+#      epsilon_sched:
+#        start: 1.0        # starting value
+#        end: 0.1        # ending value
+#        duration: 2250 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+#        decay: 1.0      # higher values = faster decay
+#      rshape_sched:
+#        start: 1.0        # starting value
+#        end: 0.1          # ending value
+#        duration: 3000  # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
+
+
+
 
 #  risky_tree_simple:
 #    agents: [ 'averse','neutral','seeking' ]

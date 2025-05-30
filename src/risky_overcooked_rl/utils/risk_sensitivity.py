@@ -62,7 +62,7 @@ class CumulativeProspectTheory_Compiled:
             prospect_td_targets = reward[i, :] + (gamma) * prospect_values  # * (1 - done[i, :]) #(solving infinite horizon)
 
             if self.is_rational:
-                self.expected_td_targets[i] = np.sum(prospect_td_targets.flatten()*prospect_probs.flatten())
+                self.expected_td_targets[i] = np.sum(prospect_td_targets.flatten() * prospect_probs.flatten())
             else:
                 self.expected_td_targets[i] = self.expectation(prospect_td_targets.flatten(), prospect_probs.flatten())
 

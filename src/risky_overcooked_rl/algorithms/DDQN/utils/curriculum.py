@@ -33,7 +33,7 @@ class CirriculumTrainer(Trainer):
             ##########################################################
             # Training Step ##########################################
             self.iteration = it # for logging callbacks
-            self.epsilong = self.epsilon_sched[cit] # for logging callbacks
+            self.epsilon = self.epsilon_sched[cit] # for logging callbacks
             self.rshape_scale = self.rshape_sched[cit] # for logging callbacks
             self.random_start = self.random_start_sched[cit] # for logging callbacks
 

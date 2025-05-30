@@ -75,23 +75,12 @@ class Trainer:
 
         # Initialize Agent's policy and target networks ----------------
         loads = save_config['loads']
-        self.rationality = agents_config['rationality']
-        self.test_rationality = agents_config['rationality']
+        self.rationality = agents_config['equilibrium']['rationality']
+        self.test_rationality = agents_config['equilibrium']['rationality']
         self.cpt_params = agents_config['cpt']
 
         # model_config = agents_config['model']
         # model_config['rationality'] = agents_config['rationality'] # inherit rationality (minor change recommended)
-
-        if loads == 'rational':
-            rational_fname = f"{layout}_pslip{str(p_slip).replace('.', '')}__rational__"
-            # self.model = model_object.from_file(obs_shape, n_actions, config,rational_fname)
-            self.model = model_object.from_file(obs_shape, n_actions, agents_config, rational_fname)
-        elif loads == '':
-            self.model = model_object(obs_shape, n_actions, agents_config)
-        else:
-            self.model = model_object.from_file(obs_shape, n_actions, agents_config, loads)
-            # raise ValueError(f"Invalid load option: {config['loads']}")
-
         # Checkpointing/Saving utils ----------------
         self.checkpoint_score = -999
         self.checkpoint_mem = save_config['checkpoint_mem']
@@ -102,6 +91,22 @@ class Trainer:
         self.save_dir = save_config['save_dir']
         self.wait_for_close = save_config['wait_for_close']
         self.auto_save = save_config['auto_save']
+
+        # Load/Instantiate Model ------------------------------
+        if loads == 'rational':
+            rational_fname = f"{layout}_pslip{str(p_slip).replace('.', '')}__rational__"
+            # self.model = model_object.from_file(obs_shape, n_actions, config,rational_fname)
+            self.model = model_object.from_file(obs_shape, n_actions, agents_config, rational_fname)
+        elif loads == '':
+            self.model = model_object(obs_shape, n_actions, agents_config)
+        elif loads.lower() == 'latest':
+            loads = self.get_fname(with_ext=False,with_timestamp=False)  # get the model (no date)
+            self.model = model_object.from_file(obs_shape, n_actions, agents_config, loads)
+        else:
+            self.model = model_object.from_file(obs_shape, n_actions, agents_config, loads)
+            # raise ValueError(f"Invalid load option: {config['loads']}")
+
+
 
 
         # Initiate Logger and Managers ----------------
@@ -126,9 +131,12 @@ class Trainer:
         def get_rshape():  return self.rshape_scale
         def get_epsilon(): return self.epsilon
         def get_prog(): return f'{round(self.iteration/self.ITERATIONS,2)*100}%'
+        def get_qval_range():
+            return self.model.qval_range# if hasattr(self.model, 'qval_range') else None
         self.logger.add_status('$\epsilon$', callback=get_epsilon)
-        self.logger.add_status('$R_{shape}$',callback=get_rshape)
-        self.logger.add_status('Prog', callback=get_prog)
+        self.logger.add_status('$r_{s}$',callback=get_rshape) # reward shaping scale
+        # self.logger.add_status('Prog', callback=get_prog)
+        self.logger.add_status('$Q\in$', callback=get_qval_range)
 
         self.traj_visualizer = TrajectoryVisualizer(self.env)
         self.traj_heatmap = TrajectoryHeatmap(self.env)
@@ -139,19 +147,16 @@ class Trainer:
         # self.logger.add_checkbox('wait_for_close', label='Halt')
         # self.enable_report = self.logger_config['enable_report']
 
-
-    @property
-    def fname(self):
+    def get_fname(self, with_ext=True, with_timestamp=True):
         if (self.cpt_params['b'] == 0
-            and self.cpt_params['lam'] == 1.0
-            and self.cpt_params['eta_p'] == 1.0
-            and self.cpt_params['eta_n'] == 1.0
-            and self.cpt_params['delta_p'] == 1.0
-            and self.cpt_params['delta_n'] == 1.0):
+                and self.cpt_params['lam'] == 1.0
+                and self.cpt_params['eta_p'] == 1.0
+                and self.cpt_params['eta_n'] == 1.0
+                and self.cpt_params['delta_p'] == 1.0
+                and self.cpt_params['delta_n'] == 1.0):
             h = f"{self.LAYOUT}" \
                 f"_pslip{str(self.mdp.p_slip).replace('.', '')}" \
-                f"__rational" \
-                f"__{self.timestamp}"
+                f"__rational"
         else:
             h = f"{self.LAYOUT}" \
                 f"_pslip{str(self.mdp.p_slip).replace('.', '')}" \
@@ -160,9 +165,18 @@ class Trainer:
                 f"_etap{str(self.cpt_params['eta_p']).replace('.', '')}" \
                 f"_etan{str(self.cpt_params['eta_n']).replace('.', '')}" \
                 f"_deltap{str(self.cpt_params['delta_p']).replace('.', '')}" \
-                f"_deltan{str(self.cpt_params['delta_n']).replace('.', '')}" \
-                f"__{self.timestamp}"
-        return self.fname_ext + h
+                f"_deltan{str(self.cpt_params['delta_n']).replace('.', '')}"
+
+        if with_timestamp:
+            h += f"__{self.timestamp}"
+        if with_ext:
+            h = self.fname_ext + h
+        return h
+
+    @property
+    def fname(self):
+        return self.get_fname()
+
 
     def get_logger_display_data(self,master_config):
         data = {}
@@ -171,14 +185,14 @@ class Trainer:
         data['fname'] = self.fname
 
         data['ENVIRONMENT'] = '================================'
-        data['layout'] = master_config['env']['LAYOUT']
-        data['p_slip'] = self.mdp.p_slip #master_config['env']['p_slip']
+        data['layout'] = f"{master_config['env']['LAYOUT']}"+" $p_{slip}$ = " + f"{self.mdp.p_slip}"
+        # data['p_slip'] = self.mdp.p_slip #master_config['env']['p_slip']
         data['time_cost'] = self.env.time_cost  # master_config['env']['p_slip']
 
         # data['shared_rew'] = master_config['env']['shared_rew']
         data['neglect boarder'] = master_config['env']['neglect_boarders']
 
-        data['TRAINER'] = '================================'
+        data['TRAINER'] = '####################################'
         data['ITERATIONS'] = master_config['trainer']['ITERATIONS']
         data['OBS Shape'] = master_config['trainer']['obs_shape']
         # data['warmup_transitions'] = master_config['trainer']['warmup_transitions']
@@ -190,23 +204,38 @@ class Trainer:
 
         # data['SCHEDULES'] = '================================'
         data['epsilon'] = list(master_config['trainer']['schedules']['epsilon_sched'].values())
-        data['random start'] = list(master_config['trainer']['schedules']['rand_start_sched'].values())
+        # data['random start'] = list(master_config['trainer']['schedules']['rand_start_sched'].values())
         data['rew shaping'] = list(master_config['trainer']['schedules']['rshape_sched'].values())
 
-        data['AGENTS'] = '================================'
+        data['AGENTS'] = '####################################'
         data['type'] = master_config['agents']['type']
-        data['device'] = master_config['agents']['model']['device']
-        data['rationality'] = master_config['agents']['rationality']
-        data['lr'] = master_config['agents']['model']['lr']
-        data['gamma'] = master_config['agents']['model']['gamma']
-        data['tau'] = master_config['agents']['model']['tau']
+        # data['device'] = master_config['agents']['model']['device']
+
+        # data['rationality'] = master_config['agents']['equilibrium']['rationality']
+        # data['lr'] = master_config['agents']['model']['lr']
+        # data['gamma'] = master_config['agents']['model']['gamma']
+        # data['tau'] = master_config['agents']['model']['tau']
+        #
+        data[''] = f"$\lambda$={master_config['agents']['equilibrium']['rationality']}\t" \
+                   f"$\\alpha$={master_config['agents']['model']['lr']}\t" \
+                   f"$\gamma$={master_config['agents']['model']['gamma']}\t" \
+                   f"$\\tau$={master_config['agents']['model']['tau']}"\
+
+
         data['Mem Size'] = master_config['agents']['model']['replay_memory_size']
         data['Minibatch Size'] = master_config['agents']['model']['minibatch_size']
-        data['Num hidden layers'] = master_config['agents']['model']['num_hidden_layers']
-        data['Size hidden layers'] = master_config['agents']['model']['size_hidden_layers']
+        data['NN Shape'] = f"{self.model.model.size_hidden_layers}" \
+                           f"x{self.model.model.num_hidden_layers}" \
+                           f" with {self.model.model.activation_function_name} activation"
+                           # f" with {master_config['agents']['model']['activation']} activation"
         data['Clip Grad'] = master_config['agents']['model']['clip_grad']
-        data['CPT'] = master_config['agents']['cpt']
-
+        # data['CPT'] = master_config['agents']['cpt']
+        data['CPT'] = " {" + f"$b$={master_config['agents']['cpt']['b']}, " \
+                   f"$\ell$={master_config['agents']['cpt']['lam']}, " \
+                   f"$\eta_p$={master_config['agents']['cpt']['eta_p']}, " \
+                   f"$\eta_n$={master_config['agents']['cpt']['eta_n']}, " \
+                   f"$\delta_p$={master_config['agents']['cpt']['delta_p']}, " \
+                   f"$\delta_n$={master_config['agents']['cpt']['delta_n']}" + "}"
         return data
 
     def print_config(self,config):

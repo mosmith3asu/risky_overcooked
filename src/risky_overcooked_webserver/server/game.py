@@ -1306,7 +1306,7 @@ class TorchPolicy:
     Is lightweight version of SelfPlay_QRE_OSA agent
     """
     def __init__(self,PATH, device, action_selection='softmax',ego_idx = 1,
-                 num_hidden_layers=6,  size_hidden_layers=128
+                 # num_hidden_layers=6,  size_hidden_layers=128
                  ):
         # print(f"TorchPolicy: Loading policy from {PATH}")
         self.PATH = PATH
@@ -1314,8 +1314,8 @@ class TorchPolicy:
         assert action_selection in ['greedy', 'softmax'], "Action selection must be either greedy or softmax"
         self.action_selection = action_selection
         self.ego_idx = ego_idx
-        self.num_hidden_layers = num_hidden_layers
-        self.size_hidden_layers = size_hidden_layers
+        # self.num_hidden_layers = num_hidden_layers
+        # self.size_hidden_layers = size_hidden_layers
 
 
         self.player_action_dim = len(Action.ALL_ACTIONS)
@@ -1333,12 +1333,15 @@ class TorchPolicy:
         loaded_model = torch.load(PATH, weights_only=True, map_location=self.device)
         # print(f'Geting model data')
         obs_shape = (loaded_model['layer1.weight'].size()[1],)
+        size_hidden_layers = loaded_model['layer1.weight'].shape[0]
+        num_hidden_layers = len(loaded_model.keys()) / 2
         # size_hidden_layers = loaded_model['layer1.weight'].size()[0]
         # for key,val in loaded_model.items():
         #     print(key, "\t", val.size())
 
         n_actions = self.joint_action_dim
-        model = DQN_vector_feature(obs_shape, n_actions, self.num_hidden_layers, self.size_hidden_layers).to(self.device)
+        # model = DQN_vector_feature(obs_shape, n_actions, self.num_hidden_layers, self.size_hidden_layers).to(self.device)
+        model = DQN_vector_feature(obs_shape, n_actions, num_hidden_layers, size_hidden_layers).to(self.device)
         model.load_state_dict(loaded_model)
         return model
 

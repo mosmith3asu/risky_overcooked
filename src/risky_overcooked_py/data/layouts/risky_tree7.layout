@@ -1,10 +1,10 @@
 {
     "grid":  """XSSXXXXXX
                 X       X
-                X       X
+                X     X X
                 XPPXWXX X
                 XOXXWXX X
-                D  W  X X
+                D  W    X
                 X12X    X
                 X       X
                 XXXXXXXXX""",

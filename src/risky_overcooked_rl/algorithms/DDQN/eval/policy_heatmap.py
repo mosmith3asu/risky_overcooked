@@ -15,7 +15,9 @@ import pandas as pd
 from risky_overcooked_rl.utils.rl_logger import TrajectoryHeatmap
 
 class PolicyHeatmap():
-    def __init__(self,layout,p_slip,human_type, robot_type = 'Oracle', n_trials=1,rationality=10,horizon=400,time_cost=0.0,overwrite_dict=None):
+    def __init__(self,layout,p_slip,human_type, robot_type = 'Oracle',
+                 n_trials=1,rationality=10,horizon=400,time_cost=0.0,
+                 overwrite_dict=None):
         self.layout = layout
         self.p_slip = p_slip
         self.n_trials = n_trials
@@ -67,20 +69,25 @@ class PolicyHeatmap():
             'Averse': f'{layout}_pslip{f"{p_slip}".replace(".", "")}__b00_lam225_etap088_etan10_deltap061_deltan069',
             'Rational': f'{layout}_pslip{f"{p_slip}".replace(".", "")}__rational',
             'Seeking': f'{layout}_pslip{f"{p_slip}".replace(".", "")}__b00_lam044_etap10_etan088_deltap061_deltan069'
-            # 'Averse': f'{layout}_pslip{f"{p_slip}".replace(".","")}__b-02_lam225_etap088_etan10_deltap061_deltan069',
-            # 'Rational': f'{layout}_pslip{f"{p_slip}".replace(".", "")}__rational',
-            # 'Seeking': f'{layout}_pslip{f"{p_slip}".replace(".","")}__b-02_lam044_etap10_etan088_deltap061_deltan069'
         }
         self.policy_fnames = policy_fnames
 
         config['agents']['save_dir'] = config['save']['save_dir']
-        self.policies = {
-            'Averse': SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config['agents'],  policy_fnames['Averse']),
-            'Rational': SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config['agents'], policy_fnames['Rational']),
-            'Seeking': SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config['agents'],  policy_fnames['Seeking'])
-        }
-        for p in self.policies.keys():
-            self.policies['Rational'].rationality = rationality
+
+        loaded_policies = []
+        if self.robot_type=="Oracle":
+            loaded_policies =[self.human_type]
+        elif self.robot_type == "RS-ToM":
+            loaded_policies = list(self.policy_fnames.keys())
+        elif self.robot_type in self.policy_fnames.keys():
+            loaded_policies = [self.robot_type]
+        else:
+            raise ValueError(f'Invalid robot condition: {self.robot_type}')
+
+        self.policies = {}
+        for p in loaded_policies:
+            self.policies[p] = SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config['agents'],policy_fnames[p])
+            self.policies[p].rationality = rationality
             self.policies[p].model.eval()
 
 

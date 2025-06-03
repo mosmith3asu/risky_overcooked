@@ -74,7 +74,10 @@ class Checkpoint:
         """ Update checkpoint line on designated axes"""
         for i,ax in enumerate(self.axs):
             if self.cp_lines[i] is not None:
-                self.cp_lines[i].set_xdata(it)
+                try:
+                    self.cp_lines[i].set_xdata(it)
+                except:
+                    self.cp_lines[i].set_xdata([it])
             else:
                 self.cp_lines[i] = ax.axvline(it, **self.style)
 
@@ -601,7 +604,7 @@ def example_usage():
     logger.add_toggle_button('wait_for_close', label='Wait For Close')
     logger.add_checkpoint_watcher('test_reward',draw_on=['test_reward','train_reward'],callback=checkpoint_callback)
     # logger.add_status('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=1)
-
+    logger.enable_checkpointing(True)
     for i in range(N):
         # print(i)
         logger.loop_iteration() # begin every iteration with this command

@@ -13,15 +13,16 @@ class CompiledModelPreview:
         self.dir = get_absolute_save_dir()
 
         hms = {
-            'Averse': None,
+            # 'Averse': None,
             'Rational': None,
-            'Seeking': None
+            # 'Seeking': None
         }
         titles = []
         # Populate the heatmap data
         print(f'Running {layout} with p_slip={p_slip}')
         for human_type in hms.keys():
-            hms[human_type] = PolicyHeatmap(layout, p_slip, human_type=human_type, n_trials=n_trials,overwrite_dict=overwrite_dict)
+            hms[human_type] = PolicyHeatmap(layout, p_slip, human_type=human_type, robot_type=human_type,
+                                            n_trials=n_trials,overwrite_dict=overwrite_dict)
             hms[human_type].run(seed=seed)
             titles = f'{human_type} {self.layout} | p_slip={self.p_slip}'
 
@@ -30,7 +31,9 @@ class CompiledModelPreview:
         # Create a figure and axis
 
         print(f'Plotting {layout} with p_slip={p_slip}')
-        fig, axs = plt.subplots(3, 3, figsize=fig_sz, constrained_layout=True)
+        num_rows = len(hms.keys())
+        fig, axs = plt.subplots(num_rows, 3, figsize=fig_sz, constrained_layout=True)
+        axs = np.array(axs).reshape(num_rows, 3)  # Ensure axs is a 2D array for easier indexing
         for r, human_type in enumerate(list(hms.keys())):
             titles = self.items if r == 0 else ['' for _ in range(len(self.items))]
             hms[human_type].plot(axs=list(axs[r, 1:3]), items=self.items, titles=titles)
@@ -88,7 +91,8 @@ class CompiledModelPreview:
 
 
 def main():
-    CMP = CompiledModelPreview(layout='risky_tree', p_slip=0.3)
+    CMP = CompiledModelPreview(layout='risky_tree7', p_slip=0.5)
+    # CMP = CompiledModelPreview(layout='risky_tree', p_slip=0.3)
     # CMP = CompiledModelPreview(layout='risky_handoff', p_slip=0.25)
     # CMP = CompiledModelPreview(layout='risky_roundabout', p_slip=0.25)
     # CMP = CompiledModelPreview(layout='risky_mixed_coordination', p_slip=0.2)

@@ -45,6 +45,7 @@ class Trainer:
         # Parse Trainer Configuration -------------------
 
         self.ITERATIONS = trainer_config['ITERATIONS']
+        self.EXTRA_ITERATIONS = trainer_config['EXTRA_ITERATIONS']
         self.warmup_transitions = trainer_config['warmup_transitions']
         self.N_tests = trainer_config['N_tests']
         self.test_interval =  trainer_config['test_interval']
@@ -133,6 +134,13 @@ class Trainer:
         def get_prog(): return f'{round(self.iteration/self.ITERATIONS,2)*100}%'
         def get_qval_range():
             return self.model.qval_range# if hasattr(self.model, 'qval_range') else None
+
+
+
+        def extend_iteration(args):
+            button =  self.logger.items[f'Extend Iters'].button
+            self.EXTRA_ITERATIONS += 1000
+            button.label.set_text(f'+{self.EXTRA_ITERATIONS} it')
         self.logger.add_status('$\epsilon$', callback=get_epsilon)
         self.logger.add_status('$r_{s}$',callback=get_rshape) # reward shaping scale
         # self.logger.add_status('Prog', callback=get_prog)
@@ -143,9 +151,12 @@ class Trainer:
         self.logger.add_button('Preview', callback=self.traj_visualizer.preview_qued_trajectory)
         self.logger.add_button('Heatmap', callback=self.traj_heatmap.preview)
         self.logger.add_button('Save ', callback=self.save)
-        self.logger.add_toggle_button('wait_for_close', label='Wait For Close')
-        # self.logger.add_checkbox('wait_for_close', label='Halt')
-        # self.enable_report = self.logger_config['enable_report']
+        self.logger.add_button(f'Extend Iters', callback=extend_iteration)
+        self.logger.items[f'Extend Iters'].button.label.set_text(f'+{self.EXTRA_ITERATIONS} it')
+
+        # self.logger.add_toggle_button('wait_for_close', label='Wait For Close')
+        # print()
+
 
     def get_fname(self, with_ext=True, with_timestamp=True):
         if (self.cpt_params['b'] == 0

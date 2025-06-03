@@ -7,14 +7,16 @@ env:
   'LAYOUT': "risky_tree"   # layout name
   "p_slip": 'default'                         # probability of slipping in puddle
   'HORIZON': 200                        # number of time steps per episode
-  'time_cost': -0.2                     # cost per time step (<0: -0.2 ==> 1soup/100steps)
-#  'time_cost': -0.285                     # cost per time step (<0: -0.2+SHAPED REWARD ==> 1soup/100steps)
+#  'time_cost': -0.2                     # cost per time step (<0: -0.2 ==> 1soup/100steps)
+  'time_cost': -0.285                     # cost per time step (<0: -0.2+SHAPED REWARD ==> 1soup/100steps)
   'shared_rew': False                  # share reward between agents
   neglect_boarders: True              # whether to exclude boarder counter in state representation (reduces state space sz)
 #  neglect_boarders: False              # whether to exclude boarder counter in state representation (reduces state space sz)
 # Learning Params ----------------
 trainer:
-    'ITERATIONS': 15_000                    # total number of training iterations
+#    'ITERATIONS': 15_000                    # total number of training iterations
+    'ITERATIONS': 18_000                    # total number of training iterations
+    EXTRA_ITERATIONS: 0          # additional iterations to run after initial training
     'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
     'obs_shape': nan                      # Overridden during execution depending on layout
     'joint_action_shape': 36              # number of joint actions
@@ -36,16 +38,16 @@ trainer:
         duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
         decay: 1.0      # higher values = faster decay
 
-      rshape_sched:     # linear decay on reward shaping
-        start: 1.0        # starting value
-#        end: 0          # ending value
-        end: 0.1          # ending value
-        duration: 0.2 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
-#      rshape_sched: # linear decay on reward shaping
+#      rshape_sched:     # linear decay on reward shaping
 #        start: 1.0        # starting value
-#        #        end: 0          # ending value
-#        end: 1.0          # ending value
+##        end: 0          # ending value
+#        end: 0.1          # ending value
 #        duration: 0.2 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
+      rshape_sched: # linear decay on reward shaping
+        start: 1.0        # starting value
+        #        end: 0          # ending value
+        end: 1.0          # ending value
+        duration: 0.2 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
 
     curriculum: # TODO: add ALL
       schedule_decay: 0.99     # gain on starting value in schedules after first curriculum

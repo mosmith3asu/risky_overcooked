@@ -1,4 +1,4 @@
-from risky_overcooked_py.mdp.overcooked_mdp import ObjectState,SoupState
+from risky_overcooked_py.mdp.overcooked_mdp import ObjectState,SoupState, Direction
 from risky_overcooked_rl.algorithms.DDQN.utils.trainer import Trainer
 import numpy as np
 from risky_overcooked_py.mdp.actions import Action
@@ -20,10 +20,9 @@ class CirriculumTrainer(Trainer):
 
 
     def run(self):
-        # train_rewards = []
-        # train_losses = []
+
         # Main training Loop
-        for it in range(self.ITERATIONS):
+        for it in range(self.ITERATIONS + self.EXTRA_ITERATIONS):
             self.training_iteration = it
             cit = self.curriculum.iteration
             # self.logger.start_iteration()
@@ -122,7 +121,11 @@ class CirriculumTrainer(Trainer):
     def curriculum_rollout(self, it, rationality,epsilon,rshape_scale,p_rand_start=0):
         self.model.rationality = rationality
         self.env.reset()
-        self.env.state = self.curriculum.sample_cirriculum_state()
+        state,sampled_curriculum = self.curriculum.sample_cirriculum_state()
+
+        self.env.state = state
+        # if sampled_curriculum != self.curriculum.curr_curriculum_name:
+        #     epsilon = self.epsilon_sched[-1]  # set lowest epsilon from previous successful curriculum
 
         # self.logger.epsilon = epsilon
 
@@ -193,12 +196,14 @@ class CirriculumTrainer(Trainer):
             else: losses.append(0)
 
             # Terminate episode
-            if done: break
+            if done:
+                break
             elif self.curriculum.is_early_stopping(self.env.state,reward,info):  # Cirriculum Complete, reset state in this episode
-            # elif info['mdp_info']['soup_delivery']:  # Cirriculum Complete, reset state in this episode
-                self.env.state = self.curriculum.sample_cirriculum_state()
-                # print(f"Early Stopping at t={t}")
-            else: self.env.state = next_state
+                self.env.state , sampled_curriculum= self.curriculum.sample_cirriculum_state()
+                # if sampled_curriculum != self.curriculum.curr_curriculum_name:
+                #     epsilon = self.epsilon_sched[-1]  # set lowest epsilon from previous successful curriculum
+            else:
+                self.env.state = next_state
 
         rollout_info['mean_loss'] = np.mean(losses)
 
@@ -324,6 +329,7 @@ class Curriculum:
             pi = [sample_decay**(self.current_cirriculum-i) for i in range(self.current_cirriculum+1)]
             i = np.random.choice(np.arange(self.current_cirriculum+1), p=np.array(pi)/np.sum(pi))
 
+        this_cirriculum = self.cirriculums[i]
         state = self.add_random_start_loc()
 
         if self.cirriculums[i] == 'full_task':
@@ -333,17 +339,34 @@ class Curriculum:
             """
             Start pot with 0 onion & one player with onion            
             """
-            possibilities = [["onion", None], [None, "onion"]]
+            possibilities = [["onion", None], [None, "onion"], ["onion", "onion"]]
             held_objs = possibilities[np.random.randint(len(possibilities))]
             state = self.add_held_objs(state, held_objs)
+
+            for player in state.players:
+                if player.has_object() and player.get_object().name == 'onion':
+                    self.add_logical_start_loc(state,player)
+                    break
 
         elif self.cirriculums[i] == 'pick_up_onion2':
             """
             Start pot with 1 onion            
             """
-            n_onions = 1
-            onion_quants = np.eye(self.mdp.num_pots, dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
-            state = self.add_onions_to_pots(state, onion_quants)
+            situation = np.random.choice([0, 1])
+            if situation == 0:
+                """1 onion already in pot, mobody has onion"""
+                n_onions = 1
+                onion_quants = np.eye(self.mdp.num_pots, dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
+                state = self.add_onions_to_pots(state, onion_quants)
+            else:
+                """onion 1 on the way, need to pick up anouther"""
+                possibilities = [["onion", None], [None, "onion"]]
+                held_objs = possibilities[np.random.randint(len(possibilities))]
+                state = self.add_held_objs(state, held_objs)
+
+                # Do not need as other player is already on the way
+                # for player in state.players:
+                #     self.add_logical_start_loc(player)
 
         elif self.cirriculums[i] == 'deliver_onion2':
             """
@@ -351,41 +374,86 @@ class Curriculum:
              - other pots unfilled since filling other pot before first is suboptimal
             """
             n_onions = 1
+
+            possibilities = [["onion", None], [None, "onion"],["onion", "onion"]]
+            held_objs = possibilities[np.random.choice([0,1,2],p=[0.4,0.4,0.2])]
+            state = self.add_held_objs(state, held_objs)
+
+
             onion_quants = np.eye(self.mdp.num_pots,dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
             state = self.add_onions_to_pots(state, onion_quants)
 
-            possibilities = [["onion", None], [None, "onion"]]
-            held_objs = possibilities[np.random.randint(len(possibilities))]
-            state = self.add_held_objs(state, held_objs)
+            for player in state.players:
+                if player.has_object() and player.get_object().name == 'onion':
+                    self.add_logical_start_loc(state,player)
 
         elif self.cirriculums[i] == 'pick_up_onion3':
             """
             Start with one pot filled with 2 onions
             - other pots unfilled since filling other pot before first is suboptimal
             """
-            n_onions = 2
-            onion_quants = np.eye(self.mdp.num_pots,dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
-            state = self.add_onions_to_pots(state, onion_quants)
+            situation = np.random.choice([0, 1])
+            if situation == 0:
+                """2 onion already in pot, mobody has onion"""
+                n_onions = 2
+                onion_quants = np.eye(self.mdp.num_pots, dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
+                state = self.add_onions_to_pots(state, onion_quants)
+            else:
+                """onion 2 on the way, need to pick up anouther"""
+                n_onions = 1
+                onion_quants = np.eye(self.mdp.num_pots, dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
+                state = self.add_onions_to_pots(state, onion_quants)
+
+                possibilities = [["onion", None], [None, "onion"]]
+                held_objs = possibilities[np.random.randint(len(possibilities))]
+                state = self.add_held_objs(state, held_objs)
+
+                # Do not need as other player is already on the way
+                # for player in state.players:
+                #     self.add_logical_start_loc(player)
+
+            # possibilities = [["onion", None], [None, "onion"], [None, None]]
+            # held_objs = possibilities[np.random.randint(len(possibilities))]
+            # state = self.add_held_objs(state, held_objs)
+
+            # onion_quants = np.eye(self.mdp.num_pots,dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
+            # state = self.add_onions_to_pots(state, onion_quants)
 
         elif self.cirriculums[i] == 'deliver_onion3':
             """
             Start with one pot filled with 2 onions & one player with onion
             - other pots unfilled since filling other pot before first is suboptimal
             """
-            possibilities = [["onion", None], [None, "onion"]]
-            held_objs = possibilities[np.random.randint(len(possibilities))]
-            state = self.add_held_objs(state, held_objs)
 
-            n_onions = 2
-            onion_quants = np.eye(self.mdp.num_pots,dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
-            state = self.add_onions_to_pots(state, onion_quants)
+            situation = np.random.choice([0, 1], p=[0.75,0.25])
+            if situation == 0:
+                """2 onion already in pot, mobody has onion"""
+                possibilities = [["onion", None], [None, "onion"]]
+                held_objs = possibilities[np.random.randint(len(possibilities))]
+                state = self.add_held_objs(state, held_objs)
+
+                n_onions = 2
+                onion_quants = np.eye(self.mdp.num_pots,dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
+                state = self.add_onions_to_pots(state, onion_quants)
+            else:
+                held_objs = ["onion", "onion"]
+                state = self.add_held_objs(state, held_objs)
+
+                n_onions = 1
+                onion_quants = np.eye(self.mdp.num_pots, dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
+                state = self.add_onions_to_pots(state, onion_quants)
+
+
+            # for player in state.players:
+            #     if player.has_object() and player.get_object().name == 'onion':
+            #         self.add_logical_start_loc(state,player)
+            #         break
 
         elif self.cirriculums[i] == 'wait_to_cook':
             """
             Initiate pot with three onions loaded and waiting to cook 
             - other pots not filled since filling other pot before first starts cooking is suboptimal
             """
-            # TODO: random num onions for other pots?
             n_onions = 3
             onion_quants = np.eye(self.mdp.num_pots,dtype=int)[np.random.choice(self.mdp.num_pots)] * n_onions
             state = self.add_onions_to_pots(state, onion_quants, cooking_tick= 0)
@@ -395,12 +463,9 @@ class Curriculum:
             Initiate pot with soup finished cooking
             - other pots partially filled = likely since already waited for soup to cook
             """
-            # n_onions = 3
-            # onion_quants = np.eye(self.mdp.num_pots)[np.random.choice(self.mdp.num_pots)] * n_onions
-            # state = self.add_onions_to_pots(state, onion_quants, cooking_tick=20)  # finished soup is cooked
             n_onions = 3
             pots = np.eye(self.mdp.num_pots)[np.random.choice(self.mdp.num_pots)]  # which pot is filled
-            onion_quants = [n_onions if pot == 1 else np.random.choice([0, 1, 2], p=[0.7, 0.2, 0.1])
+            onion_quants = [n_onions if pot == 1 else np.random.choice([0, 1], p=[0.8, 0.2])
                             for pot in pots]
             state = self.add_onions_to_pots(state, onion_quants, cooking_tick=20)  # finished soup is cooked
 
@@ -427,6 +492,12 @@ class Curriculum:
                             for pot in pots]
             state = self.add_onions_to_pots(state, onion_quants, cooking_tick=20)  # finished soup is cooked
 
+
+            # for player in state.players:
+            #     if player.has_object() and player.get_object().name=='dish':
+            #         self.add_logical_start_loc(state,player)
+            #         break
+
         elif self.cirriculums[i] == 'deliver_soup':
             """
             Init [P1 or P2] with held soup 
@@ -438,10 +509,16 @@ class Curriculum:
                              [np.random.choice([None,"onion"], p=[0.75, 0.25]), "soup"]]
             held_soups = possibilities[np.random.randint(len(possibilities))]
             state = self.add_held_objs(state, held_soups)
+
+            for player in state.players:
+                if player.has_object() and player.get_object().name=='soup':
+                    self.add_logical_start_loc(state,player)
+                    break
+
         else:
             raise ValueError(f"Invalid cirriculum mode '{self.cirriculums[i]}'")
-        self.env.state = state
-        return state
+        # self.env.state = state
+        return state, this_cirriculum
 
     def eval(self,status):
         # if status.lower() == 'on': self.set_cirriculum(**self.default_params)
@@ -452,6 +529,44 @@ class Curriculum:
     def add_random_start_loc(self):
         random_state = self.mdp.get_random_start_state_fn(random_start_pos=True, rnd_obj_prob_thresh=0.0)()
         return random_state
+
+    def add_logical_start_loc(self, state, player):
+
+        # self.mdp.get_valid_joint_player_positions()
+        # self.get_adjacent_features(player)
+        if player.has_object():
+            obj = player.get_object()
+            if obj.name == "soup": # start at pot
+                locs = self.mdp.get_pot_locations()
+            elif obj.name == "onion": # start at onion dispenser
+                locs = self.mdp.get_onion_dispenser_locations()
+            elif obj.name == "dish": # start at dish dispenser
+                locs = self.mdp.get_dish_dispenser_locations()
+            else:
+                raise ValueError(f"Invalid object type '{obj.type}' for logical start location")
+
+            pos = locs[np.random.randint(len(locs))]
+            valid_terrain = (" ","1","2")
+            for d in Direction.ALL_DIRECTIONS:
+                adj_pos = Action.move_in_direction(pos, d)
+                terrain = self.mdp.get_terrain_type_at_pos(adj_pos)
+                if terrain in valid_terrain:
+                    for ip, _player in enumerate(state.players):
+
+                        if _player.position == adj_pos: # reassign players if in desired location
+                            other_locs = list(self.mdp.get_valid_joint_player_positions())
+                            other_locs = [loc[ip] for loc in other_locs if loc[ip] != adj_pos] # remove current player position
+                            # other_locs.pop(adj_pos) # remove current player position
+                            other_loc = other_locs[np.random.randint(len(other_locs) )]
+                            _player.update_pos_and_or(other_loc, _player.orientation)
+
+                    new_or = (-1 * d[0], -1 * d[1]) # face the object
+                    player.update_pos_and_or(adj_pos, new_or)
+                    break
+
+        assert state.players[0].position != state.players[1].position, "Players cannot start at the same position"
+
+
 
     def add_onions_to_pots(self, state, onion_quants,cooking_tick=None):
         pots = self.mdp.get_pot_states(state)["empty"]
@@ -498,6 +613,10 @@ class Curriculum:
     @property
     def num_curriculums(self):
         return len(self.cirriculums)
+
+    @property
+    def curr_curriculum_name(self):
+        return self.cirriculums[self.current_cirriculum]
 # def main():
 #     config = {
 #         'ALGORITHM': 'Boltzmann_QRE-DDQN-OSA',

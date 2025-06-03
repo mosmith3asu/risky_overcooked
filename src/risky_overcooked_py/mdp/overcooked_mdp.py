@@ -2119,9 +2119,10 @@ class OvercookedGridworld(object):
         # Check that players and non-held objects don't overlap
         all_pos = [player_state.position for player_state in state.players]
         all_pos += [obj_state.position for obj_state in state.objects.values()]
+
         assert len(all_pos) == len(
             set(all_pos)
-        ), "Overlapping players or objects"
+        ), f"Overlapping players or objects"
 
         # Check that objects have a valid state
         for obj_state in all_objects:

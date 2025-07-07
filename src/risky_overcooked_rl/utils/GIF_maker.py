@@ -1,6 +1,6 @@
 import numpy as np
-from risky_overcooked_rl.utils.deep_models import ReplayMemory,DQN_vector_feature,device,SelfPlay_QRE_OSA,SelfPlay_QRE_OSA_CPT
-from risky_overcooked_rl.utils.rl_logger import RLLogger,TrajectoryVisualizer
+from risky_overcooked_rl.algorithms.DDQN.utils.agents import DQN_vector_feature,SelfPlay_QRE_OSA,SelfPlay_QRE_OSA_CPT
+from risky_overcooked_rl.utils.visualization import TrajectoryVisualizer
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,OvercookedState,SoupState, ObjectState
 from risky_overcooked_py.mdp.actions import Action,Direction
@@ -49,6 +49,7 @@ class GIF_maker():
         imageio.mimsave(f'{fname}.gif', imgs,loop=0,fps=5)
 
 def main():
+    agent_type = 'seeking'
     LAYOUT = 'risky_coordination_ring'
     # LAYOUT = 'risky_multipath_long'
     # LAYOUT = 'risky_dualpath_long'
@@ -190,13 +191,20 @@ def main():
         [E, I, 0], # P2 DELIVER SOUP
         [N, W, 0],  # P2 DELIVER SOUP
     ]
-    joint_traj = np.array(seeking_joint_traj)
+
+    if agent_type == 'averse':
+        traj = averse_joint_traj
+    elif agent_type == 'seeking':
+        traj = seeking_joint_traj
+    else:
+        raise ValueError("agent_type must be either 'averse' or 'seeking'")
+    joint_traj = np.array(traj)
     # joint_traj = np.array(averse_joint_traj)
     # joint_traj = np.array(seeking_joint_traj)
     gifer.load_trajectory(joint_traj[:,0], joint_traj[:,1],joint_traj[:,2])
 
     gifer.preview()
-    # gifer.make_gif('risky_coordination_ring_averse')
+    gifer.make_gif(f'{LAYOUT}_{agent_type}')
     # gifer.make_gif('risky_coordination_ring_seeking')
 
 

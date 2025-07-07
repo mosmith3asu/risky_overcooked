@@ -1334,7 +1334,7 @@ class TorchPolicy:
         # print(f'Geting model data')
         obs_shape = (loaded_model['layer1.weight'].size()[1],)
         size_hidden_layers = loaded_model['layer1.weight'].shape[0]
-        num_hidden_layers = len(loaded_model.keys()) / 2
+        num_hidden_layers = int(len(loaded_model.keys()) / 2)
         # size_hidden_layers = loaded_model['layer1.weight'].size()[0]
         # for key,val in loaded_model.items():
         #     print(key, "\t", val.size())

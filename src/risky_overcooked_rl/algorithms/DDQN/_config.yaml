@@ -4,19 +4,19 @@
 
 # Env Params ----------------
 env:
-  'LAYOUT': "risky_tree"   # layout name
+  'LAYOUT': "risky_mixed_coordination4"   # layout name
   "p_slip": 'default'                         # probability of slipping in puddle
   'HORIZON': 200                        # number of time steps per episode
 #  'time_cost': -0.2                     # cost per time step (<0: -0.2 ==> 1soup/100steps)
-  'time_cost': -0.285                     # cost per time step (<0: -0.2+SHAPED REWARD ==> 1soup/100steps)
+  'time_cost': -0.34                     # cost per time step (<0: -0.2+SHAPED REWARD ==> 1soup/100steps)
   'shared_rew': False                  # share reward between agents
   neglect_boarders: True              # whether to exclude boarder counter in state representation (reduces state space sz)
 #  neglect_boarders: False              # whether to exclude boarder counter in state representation (reduces state space sz)
 # Learning Params ----------------
 trainer:
 #    'ITERATIONS': 15_000                    # total number of training iterations
-    'ITERATIONS': 18_000                    # total number of training iterations
-    EXTRA_ITERATIONS: 0          # additional iterations to run after initial training
+    'ITERATIONS': 15_000                    # total number of training iterations
+    EXTRA_ITERATIONS: 7000          # additional iterations to run after initial training
     'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
     'obs_shape': nan                      # Overridden during execution depending on layout
     'joint_action_shape': 36              # number of joint actions
@@ -38,32 +38,26 @@ trainer:
         duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
         decay: 1.0      # higher values = faster decay
 
-#      rshape_sched:     # linear decay on reward shaping
-#        start: 1.0        # starting value
-##        end: 0          # ending value
-#        end: 0.1          # ending value
-#        duration: 0.2 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
       rshape_sched: # linear decay on reward shaping
         start: 1.0        # starting value
-        #        end: 0          # ending value
-        end: 1.0          # ending value
-        duration: 0.2 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
+        end: 0.1          # ending value
+        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
 
     curriculum: # TODO: add ALL
-      schedule_decay: 0.99     # gain on starting value in schedules after first curriculum
       curriculum_mem: 10      # number of iterations to check curriculum over
-      sampling_decay: 0.1    # ######################################################
-#      sampling_decay: 0.5     # recursive decay on likelihood of sampling past curriculum
-      p_random_counter_obj: 0 # probability of a random object being on any counter
+      sampling_decay: 0.5    # recursive decay on likelihood of sampling past curriculum
+      completed_epsilon: 0.5  # epsilon for previously completed curriculum is done
       min_iter: 100           # minimum number of iterations to run before checking for curriculum
 
+
+      add_rshape_goals: False # whether to add reward shaping goals to curriculum
       subtask_goals:
         # specifies success threshold to move to next curriculum
         # average number of soups delivered over curriculum_mem needed to advance
         deliver_soup: 4.5   # agents starts with cooked soup and must cary to service window
         pick_up_soup: 4     # agents starts with dish and must pick up soup from pot
         pick_up_dish: 3.5   # agents starts with nothing and must pick up dish
-        wait_to_cook: 3     # agents starts with nothing and must wait to cook
+#        wait_to_cook: 3     # agents starts with nothing and must wait to cook
         deliver_onion3: 2.5 # agents starts with onion and must deliver to pot
         pick_up_onion3: 2.5 # agents starts with nothing and must pick up onion
         deliver_onion2: 2   # agents starts with onion and must deliver to pot
@@ -82,7 +76,7 @@ trainer:
         deliver_soup: 0.2
         pick_up_soup: 0.3
         pick_up_dish: 0.5
-        wait_to_cook: 0.6
+#        wait_to_cook: 0.6
         deliver_onion3: 0.7
         pick_up_onion3: 0.8
         deliver_onion2: 0.9
@@ -102,7 +96,7 @@ agents:
         'clip_grad': 0.75               # with norm clip
         device: nan                     # device to use for training (cpu or cuda)
         lr: 0.001                    # learning rate
-        gamma: 0.97                     # discount factor
+        gamma: 0.99                     # discount factor
         tau: 0.01                      # soft update weight of target network
         replay_memory_size: 200_000     # size of replay memory
         minibatch_size: 256             # size of mini-batches
@@ -115,13 +109,13 @@ agents:
 
       'cpt':   # Default rational CPT parameters
           ########### Rational Params ####################
-          b: 0.0      # reference point
-          lam: 1.0    # loss aversion
-          eta_p: 1.0  # diminishing gain sensitivity
-          eta_n: 1.0  # diminishing loss sensitivity
-          delta_p: 1.0 # s-shaped probability estimation bias for gains
-          delta_n: 1.0 # s-shaped probability estimation bias for losses
-          mean_value_ref: False
+#          b: 0.0      # reference point
+#          lam: 1.0    # loss aversion
+#          eta_p: 1.0  # diminishing gain sensitivity
+#          eta_n: 1.0  # diminishing loss sensitivity
+#          delta_p: 1.0 # s-shaped probability estimation bias for gains
+#          delta_n: 1.0 # s-shaped probability estimation bias for losses
+#          mean_value_ref: False
 
            ########### Averse Params ######################
 #          'b': 0.0      # reference point
@@ -133,19 +127,19 @@ agents:
 #          mean_value_ref: True # whether to use mean value reference point (True) or 0 (False) (sets b=0)
 
            ########### Seeking Params #####################
-#          'b': -0.2      # reference point
-#          'lam': 0.44    # loss aversion
-#          'eta_p': 1.0  # diminishing gain sensitivity
-#          'eta_n': 0.88  # diminishing loss sensitivity
-#          'delta_p': 0.61 # s-shaped probability estimation bias for gains
-#          'delta_n': 0.69 # s-shaped probability estimation bias for losses
-#            mean_value_ref: True # whether to use mean value reference point (True) or 0 (False) (sets b=0)
+          'b': -0.2      # reference point
+          'lam': 0.44    # loss aversion
+          'eta_p': 1.0  # diminishing gain sensitivity
+          'eta_n': 0.88  # diminishing loss sensitivity
+          'delta_p': 0.61 # s-shaped probability estimation bias for gains
+          'delta_n': 0.69 # s-shaped probability estimation bias for losses
+          mean_value_ref: False # whether to use mean value reference point (True) or 0 (False) (sets b=0)
 
 
 
 logger:
     'enable_report': False # enables command line reporting
-    'note': ''  # additional notes presented in RL-Logger
+    'note': 'NO MEANREF'    # additional notes presented in RL-Logger
 
 
 save:
@@ -155,6 +149,7 @@ save:
     'auto_save': True      # automatically save the model after training + logger closed
     'checkpoint_mem': 10    # number of iterations to average checkpoint check over (keeps latest)
     'date': nan             # date of training run
+    'save_with_heatmap': True # adds heatmap to saved model img
 
     'fname_fmt': '{fname_ext}_{algorithm}{val}_{env}{val}_{pslip}{val}_{rshape}{val}_{epsilon}{val}_{lr}_{note}'#TODO: add?
     'save_dir': '\risky_overcooked_rl\algorithms\DDQN\models\'

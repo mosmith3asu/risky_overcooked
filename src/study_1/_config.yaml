@@ -1,0 +1,155 @@
+---
+
+'ALGORITHM': 'DDQN-CPT'
+
+# Env Params ----------------
+env:
+  'LAYOUT': "risky_coordination_ring"   # layout name
+  "p_slip": 'default'                         # probability of slipping in puddle
+  'HORIZON': 200                        # number of time steps per episode
+  'time_cost': -0.2                     # cost per time step (<0: -0.2 ==> 1soup/100steps)
+  'shared_rew': False                  # share reward between agents
+  neglect_boarders: False              # whether to exclude boarder counter in state representation (reduces state space sz)
+# Learning Params ----------------
+trainer:
+    'ITERATIONS': 15_000                    # total number of training iterations
+    EXTRA_ITERATIONS: 0          # additional iterations to run after initial training
+    'warmup_transitions': 20_000            # number of transitions in mem before training starts (div. by horizon = iterations) #TODO: change to iterations
+    'obs_shape': nan                      # Overridden during execution depending on layout
+    'joint_action_shape': 36              # number of joint actions
+    N_tests: 1                          # number of test runs to average over during validation
+    test_interval: 10             # number of iterations between test runs
+    'feasible_actions': True  # constrain random sampling to only feasible actions
+    'seed': 42                              # random seed for reproducibility
+
+    schedules: # Make sure these are scaled to if you are using curriculum or not
+      rand_start_sched: # exponential decay on random start state chance
+        start: 0.0      # starting value
+        end: 0.0        # ending value
+        duration: 0.5     # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
+        decay: 1.1      # higher values = faster decay
+
+      epsilon_sched:    # exponential decay on exploration rate
+        start: 1.0        # starting value
+        end: 0.1        # ending value
+        duration: 0.10 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+        decay: 1.0      # higher values = faster decay
+        
+      rshape_sched: # linear decay on reward shaping
+        start: 1.0        # starting value
+        #        end: 0          # ending value
+        end: 1.0          # ending value
+        duration: 0.2 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
+
+    curriculum: # TODO: add ALL
+      curriculum_mem: 10      # number of iterations to check curriculum over
+      sampling_decay: 0.5    # recursive decay on likelihood of sampling past curriculum
+      completed_epsilon: 0.5  # epsilon for previously completed curriculum is done
+      min_iter: 100           # minimum number of iterations to run before checking for curriculum
+
+
+      add_rshape_goals: False # whether to add reward shaping goals to curriculum
+      subtask_goals:
+        # specifies success threshold to move to next curriculum
+        # average number of soups delivered over curriculum_mem needed to advance
+        deliver_soup: 4.5   # agents starts with cooked soup and must cary to service window
+        pick_up_soup: 4     # agents starts with dish and must pick up soup from pot
+        pick_up_dish: 3.5   # agents starts with nothing and must pick up dish
+#        wait_to_cook: 3     # agents starts with nothing and must wait to cook
+        deliver_onion3: 2.5 # agents starts with onion and must deliver to pot
+        pick_up_onion3: 2.5 # agents starts with nothing and must pick up onion
+        deliver_onion2: 2   # agents starts with onion and must deliver to pot
+        pick_up_onion2: 2   # agents starts with nothing and must pick up onion
+        deliver_onion1: 2   # agents starts with onion and must deliver to pot
+        full_task: 999 # pick_up_onion1 = full_task
+
+      failure_checks:
+        #  % of total ITERATIONS a curriculum has to finish before run considered failed
+        # if cant deliver {subtask_goals.X} soups by {early_stopping.X*ITERATIONS} -> stop training
+
+        enable: False           # enable early stopping
+        save_fig: True         # save figure of failed training run
+        save_model: True      # save model of failed training run
+
+        deliver_soup: 0.2
+        pick_up_soup: 0.3
+        pick_up_dish: 0.5
+#        wait_to_cook: 0.6
+        deliver_onion3: 0.7
+        pick_up_onion3: 0.8
+        deliver_onion2: 0.9
+        pick_up_onion2: 1.0
+        deliver_onion1: 1.0
+        full_task: 999 # pick_up_onion1 = full_task
+
+agents:
+      'type': 'Not Specified'   # set during runtime depending on what agent model is used
+#      'rationality': 10         # rationality level/decision temperature #TODO: Deprecated
+
+      model:
+        "num_hidden_layers": 5          # MLP params
+        "size_hidden_layers": 128   # MLP params
+        "activation": "LeakyReLU"            # activation function
+#        "activation": "Tanh"            # activation function
+        'clip_grad': 0.75               # with norm clip
+        device: nan                     # device to use for training (cpu or cuda)
+        lr: 0.001                    # learning rate
+        gamma: 0.97                     # discount factor
+        tau: 0.01                      # soft update weight of target network
+        replay_memory_size: 200_000     # size of replay memory
+        minibatch_size: 256             # size of mini-batches
+
+      'equilibrium': #using level-k quant response equilibrium # TODO Add to config
+#        'type': 'QRE' # type of equilibrium to use \in {QRE, Pareto} # TODO: REMOVE REDUNDANT CONFIG
+        'rationality': 10         # rationality level/decision temperature # TODO: REMOVE REDUNDANT PARAMETER
+        'sophistication': 8 # number of recursions in QRE
+        'belief_trick': True # other agent uses  level-(k+1) to avoid recomputing in QRE
+
+      'cpt':   # Default rational CPT parameters
+          ########### Rational Params ####################
+#          b: 0.0      # reference point
+#          lam: 1.0    # loss aversion
+#          eta_p: 1.0  # diminishing gain sensitivity
+#          eta_n: 1.0  # diminishing loss sensitivity
+#          delta_p: 1.0 # s-shaped probability estimation bias for gains
+#          delta_n: 1.0 # s-shaped probability estimation bias for losses
+#          mean_value_ref: False
+
+           ########### Averse Params ######################
+#          'b': 0.0      # reference point
+#          'lam': 2.25    # loss aversion
+#          'eta_p': 0.88  # diminishing gain sensitivity
+#          'eta_n': 1.0  # diminishing loss sensitivity
+#          'delta_p': 0.61 # s-shaped probability estimation bias for gains
+#          'delta_n': 0.69 # s-shaped probability estimation bias for losses
+#          mean_value_ref: False # whether to use mean value reference point (True) or 0 (False) (sets b=0)
+
+           ########### Seeking Params #####################
+          'b': -0.2      # reference point
+          'lam': 0.44    # loss aversion
+          'eta_p': 1.0  # diminishing gain sensitivity
+          'eta_n': 0.88  # diminishing loss sensitivity
+          'delta_p': 0.61 # s-shaped probability estimation bias for gains
+          'delta_n': 0.69 # s-shaped probability estimation bias for losses
+          mean_value_ref: False # whether to use mean value reference point (True) or 0 (False) (sets b=0)
+
+
+
+logger:
+    'enable_report': False # enables command line reporting
+    'note': ''    # additional notes presented in RL-Logger
+
+
+save:
+    'loads': ''             # loaded model
+    'fname_ext': ''         # filename extension added during runtime
+    'wait_for_close': False  # halt execution after done training until user closes the window
+    'auto_save': True      # automatically save the model after training + logger closed
+    'checkpoint_mem': 10    # number of iterations to average checkpoint check over (keeps latest)
+    'date': nan             # date of training run
+    'save_with_heatmap': True # adds heatmap to saved model img
+
+    'fname_fmt': '{fname_ext}_{algorithm}{val}_{env}{val}_{pslip}{val}_{rshape}{val}_{epsilon}{val}_{lr}_{note}'#TODO: add?
+    'save_dir': '\risky_overcooked_rl\algorithms\DDQN\models\'
+
+

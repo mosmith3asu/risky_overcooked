@@ -6,88 +6,75 @@ cpt:
 #  neutral: {'b': 0.0, 'lam': 1.0, 'eta_p': 1.0, 'eta_n': 1.0, 'delta_p': 1.0, 'delta_n': 1.0}
 #  seeking: { 'b': 'time_cost', 'lam': 0.44, 'eta_p': 1.0, 'eta_n': 0.88, 'delta_p': 0.61, 'delta_n': 0.69 }
 
-  averse: {'b': 0.0, 'lam': 2.25, 'eta_p': 0.88, 'eta_n': 1.0, 'delta_p': 0.61, 'delta_n': 0.69,'mean_value_ref': False}
-  neutral: {'b': 0.0, 'lam': 1.0, 'eta_p': 1.0, 'eta_n': 1.0, 'delta_p': 1.0, 'delta_n': 1.0}
-  seeking: { 'b': 0.0, 'lam': 0.44, 'eta_p': 1.0, 'eta_n': 0.88, 'delta_p': 0.61, 'delta_n': 0.69,'mean_value_ref': False }
+  averse: {'b': 0.0, 'lam': 2.25, 'eta_p': 0.88, 'eta_n': 1.0, 'delta_p': 0.61, 'delta_n': 0.69,'mean_value_ref': True}
+  neutral: {'b': 0.0, 'lam': 1.0, 'eta_p': 1.0, 'eta_n': 1.0, 'delta_p': 1.0, 'delta_n': 1.0,'mean_value_ref': False}
+  seeking: { 'b': 0.0, 'lam': 0.44, 'eta_p': 1.0, 'eta_n': 0.88, 'delta_p': 0.61, 'delta_n': 0.69,'mean_value_ref': True }
 
 jobs:
-#  risky_coordination_ring:
-#    agents: ['averse','neutral','seeking']
-#    p_slips: ['default'] # 0.4 in layout definition
-#    set:
-#      time_cost: -0.3 # rational does 0.6
 
-#  risky_multipath:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: ['default'] #0.4 in layout definition
-
-
-  # PC1 (HOME) #############################
-  risky_tree7:
-    agents: [ 'averse','seeking' ]
-    p_slips: [0.3,0.4] # 0.2 in layout definition
+  risky_spiral6:
+    agents: ['neutral' ]
+    p_slips: [0.25,0.3,0.35,0.4]
     set:
-      ITERATIONS: 18_000 # number of iterations to run for each agent
-      EXTRA_ITERATIONS: 7_000 # number of iterations to run for each agent
-#      rationality: 5 # rationality level/decision temperature
-#      loads: 'latest'
-#      ITERATIONS: 25_000
+      HORIZON: 360
+      time_cost: -0.3 # rational does 0.6
+      ITERATIONS: 15_000 # number of iterations to run for each agent
+      EXTRA_ITERATIONS: 15_000 # number of iterations to run for each agent
+      sampling_decay: 0.3
+      gamma: 0.99
+      rshape_sched:
+        start: 1.0        # starting value
+        end: 0.1        # ending value
+        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+        decay: 1.0      # higher values = faster decay
+      epsilon_sched:
+        start: 1.0        # starting value
+        end: 0.1        # ending value
+        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+        decay: 1.0      # higher values = faster decay
+
+
+#  risky_mixed_coordination:
+#    agents: ['averse' ]
+##    agents: ['neutral','seeking' ]
+#    p_slips: [0.5]
+#    set:
+#      HORIZON: 200
+#      time_cost: -0.3 # rational does 0.6
+#      ITERATIONS: 15_000 # number of iterations to run for each agent
+#      EXTRA_ITERATIONS: 15_000 # number of iterations to run for each agent
+#      sampling_decay: 0.3
+#      gamma: 0.99
+#      rshape_sched:
+#        start: 1.0        # starting value
+#        end: 0.1        # ending value
+#        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+#        decay: 1.0      # higher values = faster decay
 #      epsilon_sched:
 #        start: 1.0        # starting value
 #        end: 0.1        # ending value
-#        duration: 2250 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+#        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
 #        decay: 1.0      # higher values = faster decay
+
+#
+#  risky_mixed_coordination4:
+##    agents: [ 'averse','neutral','seeking' ]
+#    agents: ['neutral','seeking' ]
+#    p_slips: [0.25,0.35]
+#    set:
+#      HORIZON: 200
+#      time_cost: -0.3 # rational does 0.6
+#      ITERATIONS: 15_000 # number of iterations to run for each agent
+#      EXTRA_ITERATIONS: 15_000 # number of iterations to run for each agent
+#      sampling_decay: 0.3
+#      gamma: 0.99
 #      rshape_sched:
 #        start: 1.0        # starting value
-#        end: 0.1          # ending value
-#        duration: 3000  # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS)
-
-
-
-
-#  risky_tree_simple:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [ 'default' ] # 0.2 in layout definition
-
-
-#  risky_handoff:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: ['default'] # 0.25 in layout definition
-#    risky_roundabout:
-#      agents: [ 'averse','neutral','seeking' ]
-#      p_slips: [0.25]
-#  risky_roundabout:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: ['default']
-
-  # PC2 (WORK) #############################
-#  risky_roundabout:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [0.2]
-#  risky_mixed_coordination:
-##    agents: [ 'averse','neutral','seeking' ]
-#    agents: ['seeking' ]
-#    p_slips: [0.2]
-#  risky_shortcuts:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [ 0.2]
-#
-##  risky_hierarchy:
-##    agents: [ 'averse','neutral','seeking' ]
-##    p_slips: [ 0.2 ]
-#
-#
-#  risky_spiral:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [ 0.3 ]
-#  risky_passing:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [ 0.3 ]
-
-# EXCLUDED ###################################
-#  risky_forced_coordination:
-#    agents: [ 'averse','neutral','seeking' ]
-#    p_slips: [0.2]
-##  risky_corridor:
-##    agents: [ 'averse','neutral','seeking' ]
-##    p_slips: [ 0.5 ]
+#        end: 0.1        # ending value
+#        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+#        decay: 1.0      # higher values = faster decay
+#      epsilon_sched:
+#        start: 1.0        # starting value
+#        end: 0.1        # ending value
+#        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+#        decay: 1.0      # higher values = faster decay

@@ -221,7 +221,8 @@ class StatusItems(Item):
             self.tbl.get_celld()[loc].get_text().set_text(f'{key}: {val}')
             self.tbl.get_celld()[loc].get_text().set_color(self.txtColour)
         self.tbl.auto_set_column_width([i for i in range(len(self.data))])
-        self.tbl.auto_set_font_size(True)
+        self.tbl.auto_set_font_size(False)
+        self.tbl.scale(1, 1)
 
 
     @property
@@ -317,6 +318,33 @@ class LinePlotItem:
     def recent_val(self):
         return self.filtered_data[-1, :] if self.filtered_data.shape[0] > 0 else None
 
+import multiprocessing as mp
+class CustomCallbackItem:
+    def __init__(self, id, ax, callback=None, **kwargs):
+        self.id = id
+        self.ax = ax
+        self.callback = callback
+        self.update_every_draw = kwargs.get('update_every_draw', False)
+        self.update_first_draw = kwargs.get('first_draw', True)
+        self.first_draw = False
+
+    def draw(self):
+        if self.update_every_draw:
+            # print(f'Updating on draw')
+            self.update()
+        elif self.update_first_draw and not self.first_draw:
+            # print(f'Updating on first draw')
+            self.update()
+            self.first_draw = True
+
+
+    def update(self):
+        # mp.Process(target=self.callback, args=(self.id, self.ax)).start()
+        self.callback(self.id, self.ax)
+        self.ax.autoscale_view()
+
+
+
 class IterationTimer:
     def __init__(self,num_iters=None, buffer_length=10,sig_dig=1):
         self.iteration_data = deque(maxlen=buffer_length)
@@ -347,6 +375,40 @@ class IterationTimer:
         rem_time = rem_time/3600
         return round(rem_time, self.sig_dig)
 
+class AnnotationItem:
+    def __init__(self,ax,text_or_callback,xy=(0.01,0.99),xytext=(0,0),**kwargs):
+        self.text_or_callback = text_or_callback
+        self.xy = xy
+        self.xytext = xytext
+        self.kwargs = kwargs
+        self.ax = ax
+        self.annotation = None
+        self.va = kwargs.pop('va', 'top')
+        self.ha = kwargs.pop('va', 'left')
+
+
+    def draw(self):
+        if not isinstance(self.text_or_callback, str):
+            txt = self.text_or_callback() if callable(self.text_or_callback) else str(self.text_or_callback)
+        else:
+            txt = self.text_or_callback
+
+        # bbox = self.ax.get_position()
+        # x0,y1 = (bbox.xmin, bbox.ymin)
+        # xy = self.ax.transAxes.transform(self.xy)
+        # self.xy = (0,1)
+        xy = self.xy
+        if self.annotation is None:
+
+
+            self.annotation = self.ax.annotate(txt, xy=xy, xycoords='axes fraction',
+                                               ha=self.ha, va = self.va, **self.kwargs)
+        else:
+            self.annotation.set_text(txt)
+            self.annotation.set_position(xy)
+            # self.annotation.set_xytext(self.xytext)
+
+
 class RLLogger_V2:
     def __init__(self, num_iters = 0 , figsize=(10, 5),**kwargs):
         plt.ion()
@@ -354,22 +416,43 @@ class RLLogger_V2:
         self.root_fig = plt.figure(figsize=figsize)
         self.root_fig.canvas.manager.set_window_title('RLLoger V2.1')
         self.fig_number = self.root_fig.number
+        self.with_heatmap = kwargs.get('with_heatmap', False)  # if True, will add a heatmap figure
+
+
+        vratios = kwargs.get('vratios', [1, 10])  # vertical ratios for top and bottom group
+        top_hratios = kwargs.get('top_hratios', [1, 1])  # vertical ratios for status and settings group
 
 
         ######## DIVIDE FIGURES INTO GROUPS ##################################
-        self.left_group_fig,self.right_group_fig = self.root_fig.subfigures(1, 2, width_ratios=[1.5, 1.])
-        self.interface_fig, self.lineplot_fig = self.left_group_fig.subfigures(2, 1, height_ratios=[1, 10])
-        self.status_fig, self.settings_fig = self.right_group_fig.subfigures(2, 1, height_ratios=[1, 10])
+        self.top_group_fig, self.bottom_group_fig = self.root_fig.subfigures(2, 1, height_ratios=vratios)
+        self.interface_fig, self.status_fig = self.top_group_fig.subfigures(1, 2, width_ratios=top_hratios)
+        #
+        if self.with_heatmap:
+            bottom_hratios = kwargs.get('bottom_hratios', [1.3,0.5, 1])  # vertical ratios for status and settings group
+            self.lineplot_fig, self.custom_fig, self.settings_fig = self.bottom_group_fig.subfigures(1, 3,
+                                                                                                     width_ratios=bottom_hratios)
+        else:
+            bottom_hratios = kwargs.get('bottom_hratios', [1.3, 1])  # vertical ratios for status and settings group
+            self.lineplot_fig, self.settings_fig = self.bottom_group_fig.subfigures(1, 2, width_ratios=bottom_hratios)
+
+        # self.left_group_fig,self.right_group_fig = self.root_fig.subfigures(1, 2, width_ratios=[1.5, 1.])
+        # self.interface_fig, self.lineplot_fig = self.left_group_fig.subfigures(2, 1, height_ratios=[1, 10])
+        # self.status_fig, self.settings_fig = self.right_group_fig.subfigures(2, 1, height_ratios=[1, 10])
 
         # Plot spacing configs
         self._lineplot_fig_adjust = {'hspace':0.05, 'wspace':0.05,'top':0.99,'bottom':0.1,'right':0.99,'left':0.13}
         self._settings_fig_adjust = {'hspace':0.05, 'wspace':0.05,'top':0.99,'bottom':0.01,'right':0.99,'left':0.01}
         self._interface_fig_adjust = {'hspace': 0.05, 'wspace': 0.1, 'top': 0.9, 'bottom': 0.1, 'right': 0.99, 'left': 0.01}
         self._status_fig_adjust = {'hspace': 0.05, 'wspace': 0.05, 'top': 0.99, 'bottom': 0.01, 'right': 0.99, 'left': 0.01}
-
+        self._custom_fig_adjust = {'hspace':0.05, 'wspace':0.05,'top':0.99,'bottom':0.01,'right':0.99,'left':0.01}
         self.status_fig.set_facecolor('k')
         self.interface_fig.set_facecolor('k')
-        self.all_figs = [self.root_fig,self.left_group_fig,self.right_group_fig,self.lineplot_fig,self.interface_fig,self.settings_fig,self.status_fig]
+        # self.all_figs = [self.root_fig,self.left_group_fig,self.right_group_fig,self.lineplot_fig,self.interface_fig,self.settings_fig,self.status_fig]
+        self.all_figs = [self.root_fig,self.top_group_fig,self.bottom_group_fig,self.lineplot_fig,
+                         self.interface_fig,self.settings_fig,self.status_fig]
+        if self.with_heatmap:
+            self.all_figs.append(self.custom_fig)
+
         self.dynamic_figs = [self.root_fig,self.lineplot_fig,self.status_fig]
 
         ######### DATA ###############################
@@ -500,6 +583,19 @@ class RLLogger_V2:
         self.ids.append(id)
         self.items[id] = self.settings
 
+    def add_annotation(self, id, text_or_callback,**kwargs):
+        assert id in self.ids, f"Annotation id {id} not found in RLLogger.add_annotation(id, text_or_callback)"
+        ax = self.items[id].ax
+        this_item = AnnotationItem(ax,text_or_callback,**kwargs)
+        self.items[id + "_annotation"] = this_item
+
+    def add_callback_item(self, id, callback, **kwargs):
+        """ Add a custom callback item that can be used to update the figure"""
+        self._check_id(id)
+        ax = self._append_ax(self.custom_fig, loc='bottom')
+        this_item = CustomCallbackItem(id, ax, callback=callback, **kwargs)
+        self.items[id] = this_item
+        self.ids.append(id)
     ###############################################
     ############# RUNTIME METHODS #################
 
@@ -531,6 +627,7 @@ class RLLogger_V2:
             self.settings_fig.subplots_adjust(**self._settings_fig_adjust)
             self.interface_fig.subplots_adjust(**self._interface_fig_adjust)
             self.status_fig.subplots_adjust(**self._status_fig_adjust)
+            self.status_fig.subplots_adjust(**self._custom_fig_adjust)
         self.is_drawn = True
 
         for lineplot in self.lineplots:
@@ -538,6 +635,8 @@ class RLLogger_V2:
         self.status.draw()
         self.checkpoint.draw(enable=self._enable_checkpointing)
         self.settings.draw()
+        for item in self.items.values():
+            item.draw()
         self.root_fig.canvas.draw()
         self.spin()
 
@@ -587,6 +686,9 @@ def example_usage():
     def status_callback():
         return np.random.rand()
 
+    def annotation_callback():
+        return np.random.rand()
+
     # Example usage
     N = 100
     settings = {'a': 1, 'b': 2, 'c': 3}
@@ -594,13 +696,13 @@ def example_usage():
     logger = RLLogger_V2(num_iters=N, wait_for_close=True)
     logger.add_lineplot('test_reward', xlabel='', ylabel='$R_{test}$', filter_window=10,xtick=False)
     logger.add_lineplot('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=1)
+    logger.add_annotation('test_reward',annotation_callback)
     logger.add_status('eps')
     logger.add_status('call', callback=status_callback)
     logger.add_settings(settings)
     logger.add_button('Preview', button_callback)
     logger.add_button('Heatmap', button_callback)
     logger.add_button('Save', button_callback)
-    # logger.add_checkbox('wait_for_close',label='Halt')
     logger.add_toggle_button('wait_for_close', label='Wait For Close')
     logger.add_checkpoint_watcher('test_reward',draw_on=['test_reward','train_reward'],callback=checkpoint_callback)
     # logger.add_status('train_reward', xlabel='iter', ylabel='$R_{train}$', filter_window=1)

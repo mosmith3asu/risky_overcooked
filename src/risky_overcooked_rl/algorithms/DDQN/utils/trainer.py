@@ -1,6 +1,8 @@
+import warnings
+import matplotlib.pyplot as plt
 import numpy as np
 from risky_overcooked_rl.utils.rl_logger_v2 import RLLogger_V2
-from risky_overcooked_rl.utils.rl_logger import RLLogger,TrajectoryVisualizer, TrajectoryHeatmap
+from risky_overcooked_rl.utils.visualization import TrajectoryVisualizer, TrajectoryHeatmap
 from risky_overcooked_rl.algorithms.DDQN import get_absolute_save_dir
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld,SoupState, ObjectState
@@ -92,6 +94,9 @@ class Trainer:
         self.save_dir = save_config['save_dir']
         self.wait_for_close = save_config['wait_for_close']
         self.auto_save = save_config['auto_save']
+        self.save_with_heatmap = save_config['save_with_heatmap']
+        self.state_history = None
+        self._checkpoint_state_history = None
 
         # Load/Instantiate Model ------------------------------
         if loads == 'rational':
@@ -115,15 +120,23 @@ class Trainer:
         self.enable_report = logger_config['enable_report']
         if self.enable_report: self.print_config(master_config)
 
+
+
     def _init_logger_(self):
-        self.logger = RLLogger_V2(num_iters=self.ITERATIONS,wait_for_close = self.wait_for_close)
+        self.logger = RLLogger_V2(num_iters=self.ITERATIONS,
+                                  wait_for_close = self.wait_for_close,
+                                  with_heatmap=False)
 
         self.logger.add_lineplot('test_reward', xlabel='', ylabel='$R_{test}$', filter_window=10, xtick=False)
         self.logger.add_lineplot('train_reward', xlabel='', ylabel='$R_{train}$', filter_window=50,xtick=False)
         self.logger.add_lineplot('loss', xlabel='iter', ylabel='$Loss$', filter_window=10)
-        self.logger.add_checkpoint_watcher('test_reward', draw_on=['test_reward', 'train_reward','loss'], callback=self.checkpoint_callback)
-        self.logger.add_settings(self.get_logger_display_data(self.master_config))
 
+        def get_curriculum():
+            return self.curriculum.curr_curriculum_name if hasattr(self, 'curriculum') else None
+        self.logger.add_annotation('test_reward', get_curriculum)
+
+        self.logger.add_checkpoint_watcher('test_reward', draw_on=['test_reward', 'train_reward', 'loss'], callback=self.checkpoint_callback)
+        self.logger.add_settings(self.get_logger_display_data(self.master_config))
 
         # Create Watchers for training params
         self.rshape_scale = self.rshape_sched[0]  # initial rshape scale
@@ -135,21 +148,47 @@ class Trainer:
         def get_qval_range():
             return self.model.qval_range# if hasattr(self.model, 'qval_range') else None
 
-
+        self.risk_taken = deque(maxlen=10)  # to track risk taken by agents
+        def get_risk_taken():
+            return np.mean(self.risk_taken).round(1) if len(self.risk_taken) > 0 else 0
 
         def extend_iteration(args):
             button =  self.logger.items[f'Extend Iters'].button
             self.EXTRA_ITERATIONS += 1000
             button.label.set_text(f'+{self.EXTRA_ITERATIONS} it')
+
+        def draw_heatmap(id, ax):
+            ax.clear()
+            if (self.traj_heatmap.qued_trajectory is None
+                    and self.state_history is not None):
+                self.traj_heatmap.que_trajectory(self.state_history)
+
+            elif self.traj_heatmap.qued_trajectory is None and self.state_history is None:
+                # print("\tNo heatmap found during saving. Skipping...")
+                # print(f'\tfinished {self.fname}\n\n')
+                return
+            # add heatmaps
+            ax_dict = {id: ax}
+            self.traj_heatmap.custom_preview(ax_dict)
+            for key, ax in ax_dict.items():
+                ax.set_xticks([])
+                ax.set_yticks([])
+                ax.set_ylabel(key)
+
         self.logger.add_status('$\epsilon$', callback=get_epsilon)
         self.logger.add_status('$r_{s}$',callback=get_rshape) # reward shaping scale
         # self.logger.add_status('Prog', callback=get_prog)
         self.logger.add_status('$Q\in$', callback=get_qval_range)
+        # self.logger.add_status('Cur', callback=get_curriculum)
+        self.logger.add_status('$N_\\rho$', callback=get_risk_taken)
 
         self.traj_visualizer = TrajectoryVisualizer(self.env)
         self.traj_heatmap = TrajectoryHeatmap(self.env)
         self.logger.add_button('Preview', callback=self.traj_visualizer.preview_qued_trajectory)
         self.logger.add_button('Heatmap', callback=self.traj_heatmap.preview)
+        # self.logger.add_callback_item('onion', draw_heatmap, update_every_draw=False)
+        # self.logger.add_callback_item('dish', draw_heatmap, update_every_draw=False)
+        # self.logger.add_callback_item('soup', draw_heatmap, update_every_draw=False)
         self.logger.add_button('Save ', callback=self.save)
         self.logger.add_button(f'Extend Iters', callback=extend_iteration)
         self.logger.items[f'Extend Iters'].button.label.set_text(f'+{self.EXTRA_ITERATIONS} it')
@@ -194,6 +233,8 @@ class Trainer:
 
         data['ALGORITHM'] = master_config['ALGORITHM']
         data['fname'] = self.fname
+        if master_config['logger']['note'] != '':
+            data['note'] = master_config['logger']['note']
 
         data['ENVIRONMENT'] = '================================'
         data['layout'] = f"{master_config['env']['LAYOUT']}"+" $p_{slip}$ = " + f"{self.mdp.p_slip}"
@@ -210,8 +251,8 @@ class Trainer:
         # data['N_tests'] = master_config['trainer']['N_tests']
         # data['test_interval'] = master_config['trainer']['test_interval']
         # data['shared_rew'] = master_config['trainer']['shared_rew']
-        data['feasible_actions'] = master_config['trainer']['feasible_actions']
-        data['Auto Save'] = master_config['save']['auto_save']
+        # data['feasible_actions'] = master_config['trainer']['feasible_actions']
+        # data['Auto Save'] = master_config['save']['auto_save']
 
         # data['SCHEDULES'] = '================================'
         data['epsilon'] = list(master_config['trainer']['schedules']['epsilon_sched'].values())
@@ -241,12 +282,13 @@ class Trainer:
                            # f" with {master_config['agents']['model']['activation']} activation"
         data['Clip Grad'] = master_config['agents']['model']['clip_grad']
         # data['CPT'] = master_config['agents']['cpt']
-        data['CPT'] = " {" + f"$b$={master_config['agents']['cpt']['b']}, " \
+        data['CPT'] =  f"$b$={master_config['agents']['cpt']['b']}, " \
                    f"$\ell$={master_config['agents']['cpt']['lam']}, " \
                    f"$\eta_p$={master_config['agents']['cpt']['eta_p']}, " \
                    f"$\eta_n$={master_config['agents']['cpt']['eta_n']}, " \
                    f"$\delta_p$={master_config['agents']['cpt']['delta_p']}, " \
-                   f"$\delta_n$={master_config['agents']['cpt']['delta_n']}" + "}"
+                   f"$\delta_n$={master_config['agents']['cpt']['delta_n']}"
+        data['MeanValRef'] = f"{master_config['agents']['cpt']['mean_value_ref']}"
         return data
 
     def print_config(self,config):
@@ -386,6 +428,37 @@ class Trainer:
         self.logger.wait_for_close(enable=self.wait_for_close)
         # self.logger.wait_for_close(enable=True)
         if self.auto_save: self.save()
+
+    def warmup(self,rshape_scale=1, epsilon=1):
+        """Loads random transitions into memory"""
+
+        while len(self.model._memory) > self.warmup_transitions:
+            self.logger.spin()
+            self.env.state = self.mdp.get_random_start_state_fn(random_start_pos=True, rnd_obj_prob_thresh=0.1)()
+
+            old_state = self.env.state.deepcopy()
+            obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=self.device).unsqueeze(0)
+            feasible_JAs = self.feasible_action.get_feasible_joint_actions(self.env.state, as_joint_idx=True)
+            joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,
+                                                                                          epsilon=epsilon,
+                                                                                          feasible_JAs=feasible_JAs)
+            next_state, reward, done, info = self.env.step(joint_action, get_mdp_info=True)
+            next_state_prospects = self.mdp.one_step_lookahead(old_state,  # must be called after step....
+                                                               joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
+                                                               as_tensor=True, device=self.device)
+
+            # Track reward traces
+            shaped_rewards = rshape_scale * np.array(info["shaped_r_by_agent"])
+            total_rewards = np.array([reward + shaped_rewards]).flatten()
+
+            # Store in memory ----------------
+            self.model._memory.double_push(state=obs,
+                                           action=joint_action_idx,
+                                           rewards=total_rewards,
+                                           next_prospects=next_state_prospects,
+                                           done=done)
+
+
 
     ################################################################
     # Train/Test Rollouts   ########################################
@@ -573,10 +646,23 @@ class Trainer:
     ################################################################
     # Save Utils       #############################################
     ################################################################
+    @property
+    def checkpoint_state_history(self):
+        if self._checkpoint_state_history() is not None:
+            return self._checkpoint_state_history
+        return self.state_history
+
     def checkpoint_callback(self):
         self.model.update_checkpoint()
-        self.traj_visualizer.que_trajectory(self.state_history)
-        self.traj_heatmap.que_trajectory(self.state_history)
+        if self.state_history is not None:
+            self.traj_visualizer.que_trajectory(self.state_history)
+            self.traj_heatmap.que_trajectory(self.state_history)
+            self._checkpoint_state_history = self.state_history
+
+            # for key in ['onion','dish','soup']:
+            #     if key in self.logger.items[key]:
+            #         self.logger.items[key].update()
+
 
 
     def checkpoint(self,it, state_history): #TODO: Delete since LoggerV2
@@ -625,15 +711,62 @@ class Trainer:
 
     def save(self,*args, save_model=True, save_fig=True):
         # find saved models absolute dir -------------
-        print(f'\n\nSaving model to {self.fname}...')
+
+
+        print(f'\n\nSaving model to {self.fname}')
         dir = get_absolute_save_dir(path=self.save_dir)
+        img_fname = f"{dir}{self.fname}.png"
 
         if save_model:
             torch.save(self.model.checkpoint_model.state_dict(), dir + f"{self.fname}.pt")
 
         if save_fig:
-            self.logger.save_fig(f"{dir}{self.fname}.png")
-        print(f'finished\n\n')
+            print('\tSaving training fig to ', img_fname)
+            self.logger.save_fig(img_fname)
+
+        if self.save_with_heatmap:
+            print('\tSaving heatmap to ', img_fname)
+            if (self.traj_heatmap.qued_trajectory is None
+                    and self.state_history is not None):
+                self.traj_heatmap.que_trajectory(self.state_history)
+
+            elif self.traj_heatmap.qued_trajectory is None and self.state_history is None:
+                print("\tNo heatmap found during saving. Skipping...")
+                print(f'\tfinished {self.fname}\n\n')
+                return
+
+
+            fig = plt.figure(figsize=(6.5,5.25),constrained_layout=True)
+            train_fig, hm_fig = fig.subfigures(2,1,height_ratios=(2,1))
+
+
+            # add training img
+            train_ax = train_fig.add_subplot(111)
+            img = plt.imread(img_fname)
+            train_ax.imshow(img)
+            train_ax.set_xticks([])
+            train_ax.set_yticks([])
+            train_ax.set_title(self.fname,fontsize=6)
+
+            # add heatmaps
+            ax_dict = {
+                'onion': hm_fig.add_subplot(131),
+                'dish': hm_fig.add_subplot(132),
+                'soup': hm_fig.add_subplot(133)
+            }
+            self.traj_heatmap.custom_preview(ax_dict)
+            for key, ax in ax_dict.items():
+                # ax.axis('off')
+                # ax.set_title(key)
+                ax.set_xticks([])
+                ax.set_yticks([])
+                ax.set_xlabel(key)
+
+            fig.savefig(img_fname)
+            plt.close(fig)
+        print(f'\tfinished {self.fname}\n\n')
+
+
 
 
 

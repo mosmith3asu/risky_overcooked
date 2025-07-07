@@ -5,6 +5,22 @@ print('\\'.join(os.getcwd().split('\\')[:-1]))
 sys.path.append('\\'.join(os.getcwd().split('\\')[:-1]))
 
 
+def search_config_value(config, target_key, level=0):
+    found = None
+    if isinstance(config, dict):
+        for key, val in config.items():
+            if key == target_key:
+                assert found is None, f"Key '{target_key}' found multiple times in the configuration."
+                found = config[key]
+            else:
+                _found = search_config_value(val, target_key, level=level + 1)
+                if _found is not None:
+                    assert found is None, f"Key '{target_key}' found multiple times in the configuration."
+                    found = _found
+    if level == 0:
+        assert found is not None, f"Key '{target_key}' not found in the configuration."
+    return found
+
 def set_config_value(config, target_key, new_value, level=0):
     """
     Recursively searches for target_key in a nested dictionary d and sets its value to new_value.

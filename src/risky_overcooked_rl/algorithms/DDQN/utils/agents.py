@@ -15,9 +15,8 @@ if is_ipython:
     from IPython import display
 from risky_overcooked_rl.algorithms.DDQN.utils.memory import ReplayMemory_Prospect
 from risky_overcooked_rl.utils.risk_sensitivity import CumulativeProspectTheory_Compiled
-from risky_overcooked_rl.utils.risk_sensitivity_compiled import CumulativeProspectTheory
-from risky_overcooked_rl.algorithms.DDQN import get_absolute_save_dir
-from risky_overcooked_rl.utils.state_utils import invert_obs, flatten_next_prospects,invert_joint_action
+from risky_overcooked_rl.algorithms.DDQN import get_absolute_save_dir, search_config_value
+from risky_overcooked_rl.utils.state_utils import invert_obs
 from risky_overcooked_rl.algorithms.DDQN.utils.game_thoery import QuantalResponse_torch
 
 import numpy as np
@@ -30,13 +29,13 @@ plt.ion()
 
 class SelfPlay_QRE_OSA(object):
     @classmethod
-    def from_file(cls,obs_shape, n_actions, agents_config, fname):
+    def from_file(cls,obs_shape, n_actions, agents_config, fname,save_dir = None):
 
         # instantiate base class -------------
         agents = cls(obs_shape, n_actions, agents_config)
 
         # find saved models absolute dir -------------
-        dir = get_absolute_save_dir()
+        dir = get_absolute_save_dir() if save_dir is None else save_dir
 
         # select file to load ---------------
         files = os.listdir(dir)
@@ -55,7 +54,10 @@ class SelfPlay_QRE_OSA(object):
         print(f'#########################################\n')
 
         # Load file and update base class ---------
-        loaded_model = torch.load(PATH, weights_only=True, map_location=agents_config['model']['device'])
+        try:
+            loaded_model = torch.load(PATH, weights_only=True, map_location=agents_config['model']['device'])
+        except:
+            loaded_model = torch.load(PATH, weights_only=False, map_location=agents_config['model']['device'])
         agents.model.load_state_dict(loaded_model)
         agents.target.load_state_dict(loaded_model)
         agents.checkpoint_model.load_state_dict(loaded_model)

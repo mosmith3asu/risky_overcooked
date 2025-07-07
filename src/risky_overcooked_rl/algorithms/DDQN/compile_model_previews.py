@@ -5,18 +5,20 @@ from risky_overcooked_rl.algorithms.DDQN import get_absolute_save_dir
 import os
 
 class CompiledModelPreview:
-    def __init__(self, layout, p_slip,n_trials=50,seed=42,overwrite_dict=None):
+    def __init__(self, layout, p_slip,n_trials=50,seed=42,overwrite_dict=None,agents=('Averse', 'Rational', 'Seeking')):
         fig_sz = (10, 7)
         self.layout = layout
         self.p_slip = p_slip
         self.items = ('onion','dish')
         self.dir = get_absolute_save_dir()
-
-        hms = {
-            # 'Averse': None,
-            'Rational': None,
-            # 'Seeking': None
-        }
+        hms = {}
+        for agent in agents:
+            hms[agent] = None
+        # hms = {
+        #     'Averse': None,
+        #     'Rational': None,
+        #     'Seeking': None
+        # }
         titles = []
         # Populate the heatmap data
         print(f'Running {layout} with p_slip={p_slip}')
@@ -91,22 +93,17 @@ class CompiledModelPreview:
 
 
 def main():
-    CMP = CompiledModelPreview(layout='risky_tree7', p_slip=0.5)
+    # CMP = CompiledModelPreview(layout='risky_tree7', p_slip=0.4)
     # CMP = CompiledModelPreview(layout='risky_tree', p_slip=0.3)
     # CMP = CompiledModelPreview(layout='risky_handoff', p_slip=0.25)
     # CMP = CompiledModelPreview(layout='risky_roundabout', p_slip=0.25)
     # CMP = CompiledModelPreview(layout='risky_mixed_coordination', p_slip=0.2)
 
-    # CMP = CompiledModelPreview(layout='risky_coordination_ring', p_slip=0.4)
-    # CMP = CompiledModelPreview(layout='risky_multipath', p_slip=0.4)
+    CMP = CompiledModelPreview(layout='risky_mixed_coordination', p_slip=0.5, agents=('Seeking', 'Rational'))
+    # CMP = CompiledModelPreview(layout='risky_multipath7', p_slip=0.25,agents=('Averse','Rational', 'Seeking'))
 
-    # CMP = CompiledModelPreview(layout='risky_roundabout', p_slip=0.4)
+    # CMP = CompiledModelPreview(layout='risky_multipath7', p_slip=0.25,agents=('Averse','Rational', 'Seeking'))
 
-
-    # CMP = CompiledModelPreview(layout='risky_coordination_ring', p_slip=0.4,
-    #                            overwrite_dict = {'num_hidden_layers':5,'neglect_boarders':False})
-    # CMP = CompiledModelPreview(layout='risky_multipath', p_slip=0.1,
-    #                            overwrite_dict={'num_hidden_layers': 5, 'neglect_boarders': False})
     plt.ioff()
     plt.show()
 

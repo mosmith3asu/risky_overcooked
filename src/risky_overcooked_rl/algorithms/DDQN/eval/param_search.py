@@ -3,7 +3,7 @@ import sys
 import os
 print('\\'.join(os.getcwd().split('\\')[:-1]))
 sys.path.append('\\'.join(os.getcwd().split('\\')[:-1]))
-from risky_overcooked_rl.algorithms.DDQN.utils.curriculum import CirriculumTrainer
+from risky_overcooked_rl.algorithms.DDQN.utils.curriculum import CurriculumTrainer
 from risky_overcooked_rl.algorithms.DDQN.utils.agents import SelfPlay_QRE_OSA_CPT
 import risky_overcooked_rl.algorithms.DDQN as Algorithm
 from itertools import product
@@ -11,7 +11,7 @@ from copy import deepcopy
 import random
 
 def train_worker(config):
-    CirriculumTrainer(SelfPlay_QRE_OSA_CPT, config).run()
+    CurriculumTrainer(SelfPlay_QRE_OSA_CPT, config).run()
     # print(config)
 
 # def set_nested_key_val(config,key,val):

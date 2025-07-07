@@ -78,15 +78,28 @@ class QuantalResponse_torch:
         """Sample actions from strategies"""
         action_probs, all_ne_values = self.compute_EQ(NF_games)
 
+        # New cpu version
+        action_probs = action_probs.cpu().detach().numpy()
         all_joint_actions = []
-        for _ in action_probs:
-            a1, a2 = torch.multinomial(action_probs[0, :], 1).detach().cpu().numpy().flatten()
+        for prob in action_probs:
+            a1 = np.random.choice(len(prob[0]), p=prob[0])  # Sample action for agent 1
+            a2 = np.random.choice(len(prob[1]), p=prob[1])  # Sample action for agent 2
             action_idxs = (a1, a2)
             joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
             all_joint_actions.append(joint_action_idx)
         joint_action_idx = np.array(all_joint_actions)[0]
         joint_action = self.joint_action_space[joint_action_idx]
         return joint_action, joint_action_idx, action_probs
+
+        # all_joint_actions = []
+        # for i in action_probs:
+        #     a1, a2 = torch.multinomial(action_probs[0, :], 1).detach().cpu().numpy().flatten()
+        #     action_idxs = (a1, a2)
+        #     joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
+        #     all_joint_actions.append(joint_action_idx)
+        # joint_action_idx = np.array(all_joint_actions)[0]
+        # joint_action = self.joint_action_space[joint_action_idx]
+        # return joint_action, joint_action_idx, action_probs
 
 
 

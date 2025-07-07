@@ -1030,8 +1030,10 @@ class OvercookedState(object):
 
 BASE_REW_SHAPING_PARAMS = {
     "PLACEMENT_IN_POT_REW": 3, # shared reward if both agents interact
-    "DISH_PICKUP_REWARD": 3,
-    "SOUP_PICKUP_REWARD": 5, # shared reward if both agents interact
+    # "DISH_PICKUP_REWARD": 3,
+    "DISH_PICKUP_REWARD": 0, # encourages behavior for picking up dishes and slipping
+    # "SOUP_PICKUP_REWARD": 5, # shared reward if both agents interact
+    "SOUP_PICKUP_REWARD": 3,  # shared reward if both agents interact
     "DISH_DISP_DISTANCE_REW": 0,
     "POT_DISTANCE_REW": 0,
     "SOUP_DISTANCE_REW": 0,
@@ -1691,9 +1693,13 @@ class OvercookedGridworld(object):
         # If they are waiting or interacting ==> no slip
         # same_position = np.all(old_player_state.position==old_player_state.position)
         # same_orientation =np.all(old_player_state.orientation==old_player_state.orientation)
+
         # if same_position and same_orientation: can_slip = False
+        picked_up_item = old_player_state.has_object() == False and \
+                         new_player_state.has_object() == True  # resolves picking up from counter
         same_pos_and_or = np.all(np.array(old_player_state.pos_and_or)==np.array(new_player_state.pos_and_or ))
-        if same_pos_and_or: can_slip = False
+        if same_pos_and_or and not picked_up_item: can_slip = False
+        # if old_player_state == new_player_state: can_slip = False
 
         # If they do not have a held item to begin with ==> no slipping
         if not old_player_state.has_object(): can_slip = False
@@ -2634,9 +2640,8 @@ class OvercookedGridworld(object):
                 assert true_state.players[iplayer].has_object() == next_state.players[
                     iplayer].has_object(), f'P{iplayer + 1} unexpectedly lost object'
 
-        # can_slip = [self.is_water(next_state.players[p].position) and held_objs[p] is not None for p in range(2)]
-        true_next_state = next_state.deepcopy()
-        true_next_obs = make_obs(true_next_state)
+        # true_next_state = next_state.deepcopy()
+        # true_next_obs = make_obs(true_next_state)
 
         ########################################################################
         # ENUMERATE ALL POSSIBLE OUTCOMES #####################################
@@ -2715,99 +2720,102 @@ class OvercookedGridworld(object):
         return self.get_lossless_encoding_vector(self.get_standard_start_state()).shape
 
     def get_lossless_encoding_vector_astensor(self, overcooked_state,device):
-        # feature_vector = self.get_lossless_encoding_vector(overcooked_state)
-        # feature_vector =  torch.tensor(feature_vector).to(device=device, non_blocking=True).unsqueeze(0)
+        feat_vec = self.get_lossless_encoding_vector(overcooked_state)
+        return torch.from_numpy(feat_vec).cuda(non_blocking=True).float()
+
+        # # feature_vector = self.get_lossless_encoding_vector(overcooked_state)
+        # # feature_vector =  torch.tensor(feature_vector).to(device=device, non_blocking=True).unsqueeze(0)
+        # # return feature_vector
+        #
+        # IDX_TO_OBJ = ["onion", "dish", "soup"]
+        # OBJ_TO_IDX = {o_name: idx for idx, o_name in enumerate(IDX_TO_OBJ)}
+        #
+        # n_objects = 3 # (onion, dish, soup)
+        # n_player_coord = 2 #(x,y)
+        # n_player_orient = 4 # (N,S,E,W)
+        # n_pot = len(self.get_pot_locations())
+        #
+        # # feature_dims = {'player_i_coord':   n_player_coord,
+        # #               'player_i_orient':    n_player_orient,
+        # #               'player_i_objects':   n_objects,
+        # #               'player_j_coord':     n_player_coord,
+        # #               'player_j_orient':    n_player_orient,
+        # #               'player_j_objects':   n_objects,
+        # #                 'counter_objects':    n_objects*len(self.reachable_counters),
+        # #                 'pot_num_ingred':     n_pot, # [0,1,2,3 (cooking)] + [4 (ready) if not using other feature]
+        # #                 # 'pot_is_ready':       n_pot # [0,1]
+        # #               }
+        #
+        # n_player_feat = n_player_coord + n_player_orient + n_objects
+        # n_counter_feat = len(self.reachable_counters)*n_objects
+        # # n_pot_feat = 3 # (num_ingredients, cooking_time, is_ready)
+        # # n_pot_feat = 2 # (num_ingredients, is_ready)
+        # n_pot_feat = 1  # (status)
+        #
+        # _i = 0 # running index
+        # feature_vector = torch.empty([2*n_player_feat + n_counter_feat +n_pot*n_pot_feat],device=device)
+        # # PLAYER FEATURES #########################################
+        # players = overcooked_state.players
+        # for i, player in enumerate(players):
+        #     # Get position features ---------------
+        #     feature_vector[_i:_i+n_player_coord] = torch.tensor(player.position,device=device)
+        #     _i += n_player_coord
+        #
+        #     # Get orientation features ---------------
+        #     orientation_idx = Direction.DIRECTION_TO_INDEX[player.orientation]
+        #     feature_vector[_i:_i+n_player_orient] = torch.eye(4,device=device)[orientation_idx]
+        #     _i += n_player_orient
+        #
+        #     # Get holding features (1-HOT)---------------
+        #     obj = player.held_object
+        #     if obj is None:
+        #         feature_vector[_i:_i+n_objects] = torch.zeros([1,len(IDX_TO_OBJ)],device=device)
+        #     else:
+        #         held_obj_name = obj.name
+        #         obj_idx = OBJ_TO_IDX[held_obj_name]
+        #         feature_vector[_i:_i + n_objects] = torch.eye(len(IDX_TO_OBJ), device=device)[obj_idx]
+        #     _i += n_objects
+        #
+        #
+        # # WORLD FEATURES #########################################
+        # # get counter status feature vector (1-Hot) ---------------
+        # counter_locs = self.reachable_counters  # self.mdp.get_counter_locations()
+        # counter_indicator_arr = torch.zeros([len(counter_locs), len(IDX_TO_OBJ)],device=device)
+        # counter_objs = self.get_counter_objects_dict(overcooked_state)  # dictionary of pos:objects
+        # for counter_obj, counter_loc in counter_objs.items():
+        #     if not counter_loc[0] in self.neglected_counters:
+        #         iobj = OBJ_TO_IDX[counter_obj]
+        #         icounter = counter_locs.index(counter_loc[0])
+        #         counter_indicator_arr[icounter, iobj] = 1
+        # feature_vector[_i:_i + n_counter_feat] = counter_indicator_arr.flatten()
+        # _i += n_counter_feat
+        #
+        # # get pot status feature vector ---------------
+        # pot_locs = self.get_pot_locations()
+        # for pot_index, pot_loc in enumerate(pot_locs):
+        #     is_empty = not overcooked_state.has_object(pot_loc)
+        #     if is_empty:
+        #         feature_vector[_i:_i + n_pot_feat] = 0
+        #     else:
+        #         soup = overcooked_state.get_object(pot_loc)
+        #         if soup.is_ready:               num_ingred = 3; is_ready = 1;  cook_time = 20
+        #         elif soup.is_cooking:           num_ingred = 3; is_ready = 0;  cook_time = soup.cook_time
+        #         elif len(soup.ingredients) > 0: num_ingred = len(soup.ingredients); is_ready = 0; cook_time = 0
+        #         else: raise ValueError(f"Invalid pot state {soup}")
+        #         if n_pot_feat== 1: # (status) ------------
+        #             feature_vector[_i:_i + n_pot_feat] = torch.tensor([num_ingred + is_ready], device=device)
+        #         elif n_pot_feat==2: # (num_ing, is_ready) ------------
+        #             feature_vector[_i:_i + n_pot_feat] = torch.tensor([num_ingred, is_ready], device=device)
+        #         elif n_pot_feat==3: # (num_ing, cook_time, is_ready) ------------
+        #             feature_vector[_i:_i + n_pot_feat] = torch.tensor([num_ingred, cook_time, is_ready], device=device)
+        #         else: raise ValueError(f'Invalid n_pot_feat value={n_pot_feat}')
+        #     _i += n_pot_feat
+        #
+        # # features["pot_status"] = pot_labels
+        #
+        # # Create feature vector ---------------
+        # # feature_vector = np.concatenate([item for item in features.values()])
         # return feature_vector
-
-        IDX_TO_OBJ = ["onion", "dish", "soup"]
-        OBJ_TO_IDX = {o_name: idx for idx, o_name in enumerate(IDX_TO_OBJ)}
-
-        n_objects = 3 # (onion, dish, soup)
-        n_player_coord = 2 #(x,y)
-        n_player_orient = 4 # (N,S,E,W)
-        n_pot = len(self.get_pot_locations())
-
-        # feature_dims = {'player_i_coord':   n_player_coord,
-        #               'player_i_orient':    n_player_orient,
-        #               'player_i_objects':   n_objects,
-        #               'player_j_coord':     n_player_coord,
-        #               'player_j_orient':    n_player_orient,
-        #               'player_j_objects':   n_objects,
-        #                 'counter_objects':    n_objects*len(self.reachable_counters),
-        #                 'pot_num_ingred':     n_pot, # [0,1,2,3 (cooking)] + [4 (ready) if not using other feature]
-        #                 # 'pot_is_ready':       n_pot # [0,1]
-        #               }
-
-        n_player_feat = n_player_coord + n_player_orient + n_objects
-        n_counter_feat = len(self.reachable_counters)*n_objects
-        # n_pot_feat = 3 # (num_ingredients, cooking_time, is_ready)
-        # n_pot_feat = 2 # (num_ingredients, is_ready)
-        n_pot_feat = 1  # (status)
-
-        _i = 0 # running index
-        feature_vector = torch.empty([2*n_player_feat + n_counter_feat +n_pot*n_pot_feat],device=device)
-        # PLAYER FEATURES #########################################
-        players = overcooked_state.players
-        for i, player in enumerate(players):
-            # Get position features ---------------
-            feature_vector[_i:_i+n_player_coord] = torch.tensor(player.position,device=device)
-            _i += n_player_coord
-
-            # Get orientation features ---------------
-            orientation_idx = Direction.DIRECTION_TO_INDEX[player.orientation]
-            feature_vector[_i:_i+n_player_orient] = torch.eye(4,device=device)[orientation_idx]
-            _i += n_player_orient
-
-            # Get holding features (1-HOT)---------------
-            obj = player.held_object
-            if obj is None:
-                feature_vector[_i:_i+n_objects] = torch.zeros([1,len(IDX_TO_OBJ)],device=device)
-            else:
-                held_obj_name = obj.name
-                obj_idx = OBJ_TO_IDX[held_obj_name]
-                feature_vector[_i:_i + n_objects] = torch.eye(len(IDX_TO_OBJ), device=device)[obj_idx]
-            _i += n_objects
-
-
-        # WORLD FEATURES #########################################
-        # get counter status feature vector (1-Hot) ---------------
-        counter_locs = self.reachable_counters  # self.mdp.get_counter_locations()
-        counter_indicator_arr = torch.zeros([len(counter_locs), len(IDX_TO_OBJ)],device=device)
-        counter_objs = self.get_counter_objects_dict(overcooked_state)  # dictionary of pos:objects
-        for counter_obj, counter_loc in counter_objs.items():
-            if not counter_loc[0] in self.neglected_counters:
-                iobj = OBJ_TO_IDX[counter_obj]
-                icounter = counter_locs.index(counter_loc[0])
-                counter_indicator_arr[icounter, iobj] = 1
-        feature_vector[_i:_i + n_counter_feat] = counter_indicator_arr.flatten()
-        _i += n_counter_feat
-
-        # get pot status feature vector ---------------
-        pot_locs = self.get_pot_locations()
-        for pot_index, pot_loc in enumerate(pot_locs):
-            is_empty = not overcooked_state.has_object(pot_loc)
-            if is_empty:
-                feature_vector[_i:_i + n_pot_feat] = 0
-            else:
-                soup = overcooked_state.get_object(pot_loc)
-                if soup.is_ready:               num_ingred = 3; is_ready = 1;  cook_time = 20
-                elif soup.is_cooking:           num_ingred = 3; is_ready = 0;  cook_time = soup.cook_time
-                elif len(soup.ingredients) > 0: num_ingred = len(soup.ingredients); is_ready = 0; cook_time = 0
-                else: raise ValueError(f"Invalid pot state {soup}")
-                if n_pot_feat== 1: # (status) ------------
-                    feature_vector[_i:_i + n_pot_feat] = torch.tensor([num_ingred + is_ready], device=device)
-                elif n_pot_feat==2: # (num_ing, is_ready) ------------
-                    feature_vector[_i:_i + n_pot_feat] = torch.tensor([num_ingred, is_ready], device=device)
-                elif n_pot_feat==3: # (num_ing, cook_time, is_ready) ------------
-                    feature_vector[_i:_i + n_pot_feat] = torch.tensor([num_ingred, cook_time, is_ready], device=device)
-                else: raise ValueError(f'Invalid n_pot_feat value={n_pot_feat}')
-            _i += n_pot_feat
-
-        # features["pot_status"] = pot_labels
-
-        # Create feature vector ---------------
-        # feature_vector = np.concatenate([item for item in features.values()])
-        return feature_vector
 
     def get_lossless_encoding_vector(self, overcooked_state,is_reversed=False):
         IDX_TO_OBJ = ["onion", "dish", "soup"]

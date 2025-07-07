@@ -9,10 +9,8 @@ from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
 from itertools import count
 from src.risky_overcooked_py.mdp.actions import Action
 import risky_overcooked_rl.algorithms.DDQN as Algorithm
-from risky_overcooked_rl.utils.evaluation_tools import CoordinationFluency
 import pickle
-import pandas as pd
-from risky_overcooked_rl.utils.rl_logger import TrajectoryHeatmap
+from risky_overcooked_rl.utils.visualization import TrajectoryHeatmap
 
 class PolicyHeatmap():
     def __init__(self,layout,p_slip,human_type, robot_type = 'Oracle',
@@ -126,9 +124,10 @@ class PolicyHeatmap():
         elif robot == 'RS-ToM':
             names = list(self.policies.keys())
             models = list(self.policies.values())
-        elif robot == 'Rational':
+        elif robot in ['Averse','Rational','Seeking']:
             names = ['Rational']
-            models = [self.policies['Rational']]
+            models = [self.policies[robot]]
+
         else: raise ValueError(f'Invalid robot condition: {robot}')
 
 

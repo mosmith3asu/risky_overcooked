@@ -4,8 +4,8 @@
 
 # Env Params ----------------
 env:
-  'LAYOUT': "risky_mixed_coordination4"   # layout name
-  "p_slip": 'default'                         # probability of slipping in puddle
+  'LAYOUT': "risky_spiral8"   # layout name
+  "p_slip": 1.0                        # probability of slipping in puddle
   'HORIZON': 200                        # number of time steps per episode
 #  'time_cost': -0.2                     # cost per time step (<0: -0.2 ==> 1soup/100steps)
   'time_cost': -0.34                     # cost per time step (<0: -0.2+SHAPED REWARD ==> 1soup/100steps)

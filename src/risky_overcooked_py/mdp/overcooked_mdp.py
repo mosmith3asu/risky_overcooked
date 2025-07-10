@@ -1685,26 +1685,33 @@ class OvercookedGridworld(object):
         return pos in self.terrain_pos_dict["W"]
 
     def check_can_slip(self,old_player_state,new_player_state):
-        can_slip = True
-
         # They end their turn in water
-        if not self.is_water(new_player_state.position): can_slip = False
+        if not self.is_water(new_player_state.position): return False
+        # If they do not have a held item  ==> no slipping
+        if not new_player_state.has_object(): return False
+        # if not old_player_state.has_object(): return False
+        return True
 
-        # If they are waiting or interacting ==> no slip
-        # same_position = np.all(old_player_state.position==old_player_state.position)
-        # same_orientation =np.all(old_player_state.orientation==old_player_state.orientation)
-
-        # if same_position and same_orientation: can_slip = False
-        picked_up_item = old_player_state.has_object() == False and \
-                         new_player_state.has_object() == True  # resolves picking up from counter
-        same_pos_and_or = np.all(np.array(old_player_state.pos_and_or)==np.array(new_player_state.pos_and_or ))
-        if same_pos_and_or and not picked_up_item: can_slip = False
-        # if old_player_state == new_player_state: can_slip = False
-
-        # If they do not have a held item to begin with ==> no slipping
-        if not old_player_state.has_object(): can_slip = False
-
-        return can_slip
+        # can_slip = True
+        #
+        # # They end their turn in water
+        # if not self.is_water(new_player_state.position): can_slip = False
+        #
+        # # If they are waiting or interacting ==> no slip
+        # # same_position = np.all(old_player_state.position==old_player_state.position)
+        # # same_orientation =np.all(old_player_state.orientation==old_player_state.orientation)
+        #
+        # # if same_position and same_orientation: can_slip = False
+        # picked_up_item = old_player_state.has_object() == False and \
+        #                  new_player_state.has_object() == True  # resolves picking up from counter
+        # same_pos_and_or = np.all(np.array(old_player_state.pos_and_or) == np.array(new_player_state.pos_and_or))
+        # if same_pos_and_or and not picked_up_item: can_slip = False
+        # # if old_player_state == new_player_state: can_slip = False
+        #
+        # # If they do not have a held item to begin with ==> no slipping
+        # if not old_player_state.has_object(): can_slip = False
+        #
+        # return can_slip
     def resolve_enter_water(self, state, new_state,events_infos):
         """
         If a player enters a puddle, they have a p_slip chance to drop their held item
@@ -2664,7 +2671,23 @@ class OvercookedGridworld(object):
             # Held object -----------------------
             prob = 1 - self.p_slip
             if not next_state.players[iplayer].has_object():
-                next_state.players[iplayer].set_object(held_objs[iplayer])
+                # next_state.players[iplayer].set_object(held_objs[iplayer])
+
+                if held_objs[iplayer] is not None:
+                    next_state.players[iplayer].set_object(held_objs[iplayer])
+                else: # interacting with counter (pick up)
+                    pos = next_state.players[iplayer].position
+                    orientation = next_state.players[iplayer].orientation
+
+                    # get object player is facing and pick up
+                    adj_pos = Action.move_in_direction(pos, orientation)
+                    for obj in state.objects.values():
+                        if adj_pos == obj.position:
+                            next_state.players[iplayer].set_object(obj)
+                            break
+
+
+
             outcomes.append([joint_action, make_obs(next_state), prob])
 
         # Both players can slip

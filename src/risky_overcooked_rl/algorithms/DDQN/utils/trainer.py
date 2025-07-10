@@ -69,6 +69,7 @@ class Trainer:
         obs_shape = self.mdp.get_lossless_encoding_vector_shape()
         master_config['trainer']['obs_shape'] = obs_shape
 
+
         self.LAYOUT = layout
         self.shared_rew = env_config['shared_rew']
 

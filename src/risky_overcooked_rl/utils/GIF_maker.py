@@ -50,12 +50,13 @@ class GIF_maker():
 
 def main():
     agent_type = 'seeking'
-    LAYOUT = 'risky_coordination_ring'
+    # LAYOUT = 'risky_coordination_ring'
     # LAYOUT = 'risky_multipath_long'
     # LAYOUT = 'risky_dualpath_long'
     # LAYOUT = 'risky_dualpath'
     # LAYOUT = 'risky_multipath'
     # LAYOUT = 'forced_coordination'
+    LAYOUT = 'risky_spiral8'
 
     S,W,N,E,X,I = 'S','W','N','E','X','I'
     gifer = GIF_maker(LAYOUT,HORIZON=200)
@@ -126,6 +127,44 @@ def main():
     [I,S, 0],
     [X,X, 0],
     ]
+    seeking_joint_traj = [
+        [W, X,1],
+        [W, X,1],  # P2 PICK ONION
+        [W, X,1],
+        [S, X,1],
+        [W, X,1],  # P1 PICK ONION
+        [I, X,1],
+        [N, X,1],  # P2 PLACE ONION 1 | P1 DROP ONION
+        [E, X,1],
+        [N, X,1],
+        [I, X,1],  # P1 PICK ONION
+        [E, X,1],
+        [N, X,1],  # P2 PICK ONION
+        [W, X,1],
+        [I, X,1],
+        [S, X,1],  # P1 PLACE ONION 2
+        [N, X,1],  # P1 PLACE ONION 2
+        [S, X,1],  # P1 PLACE ONION 2
+        [E, X,1],
+        # RESET
+        [W, X,1],
+        [W, X,1],  # P2 PICK ONION
+        [W, X,1],
+        [S, X,1],
+        [W, X,1],  # P1 PICK ONION
+        [I, X,1],
+        [N, X,1],  # P2 PLACE ONION 1 | P1 DROP ONION
+        [E, X,1],
+        [N, X,1],
+        [I, X,1],  # P1 PICK ONION
+        [E, X,1],
+        [N, X,1],  # P2 PICK ONION
+        [W, X,1],
+        [I, X,1],
+        [S, X,1],  # P1 PLACE ONION 2
+        [E, X,1],
+    ]
+
     averse_joint_traj = [
         [S, W, 1],
         [W, I, 1],# P2 PICK UP ONION

@@ -11,6 +11,21 @@ from itertools import count
 from risky_overcooked_rl.utils.state_utils import FeasibleActionManager
 import torch
 
+import multiprocessing
+
+import dill
+
+class DillProcess(multiprocessing.Process):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._target = dill.dumps(self._target)  # Save the target function as bytes, using dill
+
+    def run(self):
+        if self._target:
+            self._target = dill.loads(self._target)    # Unpickle the target function before executing
+            self._target(*self._args, **self._kwargs)  # Execute the target function
+
 
 import random
 from datetime import datetime
@@ -66,6 +81,8 @@ class Trainer:
         overwrite['neglect_boarders'] = neglect_boarders
         self.mdp = OvercookedGridworld.from_layout_name(layout,**overwrite)
         self.env = OvercookedEnv.from_mdp(self.mdp, horizon=horizon,time_cost=time_cost)
+        self.test_env = OvercookedEnv.from_mdp(self.mdp, horizon=horizon, time_cost=time_cost)
+
         obs_shape = self.mdp.get_lossless_encoding_vector_shape()
         master_config['trainer']['obs_shape'] = obs_shape
 
@@ -113,6 +130,8 @@ class Trainer:
             self.model = model_object.from_file(obs_shape, n_actions, agents_config, loads)
             # raise ValueError(f"Invalid load option: {config['loads']}")
 
+        self.eval_model = self.model.deepcopy(base_only=True)
+
 
 
 
@@ -147,7 +166,8 @@ class Trainer:
         def get_epsilon(): return self.epsilon
         def get_prog(): return f'{round(self.iteration/self.ITERATIONS,2)*100}%'
         def get_qval_range():
-            return self.model.qval_range# if hasattr(self.model, 'qval_range') else None
+            # return self.model.qval_range if hasattr(self.model, 'qval_range') else None
+            return str(self.model.qval_range) if hasattr(self.model, 'qval_range') else None
 
         self.risk_taken = deque(maxlen=10)  # to track risk taken by agents
         def get_risk_taken():
@@ -254,6 +274,7 @@ class Trainer:
         # data['shared_rew'] = master_config['trainer']['shared_rew']
         # data['feasible_actions'] = master_config['trainer']['feasible_actions']
         # data['Auto Save'] = master_config['save']['auto_save']
+        data['CurrSampling'] = master_config['trainer']['curriculum']['sampling']
 
         # data['SCHEDULES'] = '================================'
         data['epsilon'] = list(master_config['trainer']['schedules']['epsilon_sched'].values())
@@ -341,15 +362,15 @@ class Trainer:
 
 
     def run(self):
-        train_rewards = []
-        train_losses = []
+
+        pending_tests = []
         # Main training Loop
         for it in range(self.ITERATIONS):
+            train_rewards = []
+            train_losses = []
             self.logger.spin()
 
             # Training Step ##########################################
-            # Set Iteration parameters
-
             self._p_rand_start = self.random_start_sched[it]
 
             # Perform Rollout
@@ -389,43 +410,60 @@ class Trainer:
             train_losses.append(rollout_info['mean_loss'])
 
             # Testing Step ##########################################
-            # time4test = (it % self.test_interval == 0 and it > 2)
-            time4test = (it % self.test_interval == 0)
-            if time4test:
+            if it % self.test_interval == 0 and it >0:
+                # Rollout async test episodes ----------------------
+                proc, queue = self.async_test_start(self.N_tests)
+                pending_tests.append((proc, queue, it))  # add to pending tests
 
-                # Rollout test episodes ----------------------
-                test_rewards = []
-                test_shaped_rewards = []
-                for test in range(self.N_tests):
-                    test_reward, test_shaped_reward, state_history, action_history, aprob_history =\
-                        self.test_rollout(rationality=self.test_rationality)
-                    test_rewards.append(test_reward)
-                    test_shaped_rewards.append(test_shaped_reward)
-                    # if not self.has_checkpointed:
-                    #     self.traj_visualizer.que_trajectory(state_history)
-                    #     self.traj_heatmap.que_trajectory(state_history)
+            test_results, pending_tests = self.async_test_check(pending_tests)
+            for res in test_results:
+                test_reward = res['test_reward']
+                test_shaped_reward = res['test_shaped_reward']
+                state_history = res['state_history']
+                # action_history = res['action_history']
+                # aprob_history = res['aprob_history']
 
-                # Checkpointing ----------------------
-                self.test_rewards.append(np.mean(test_rewards))  # for checkpointing
+                self.test_rewards.append(test_reward)  # for checkpointing
                 self.train_rewards.append(np.mean(train_rewards))  # for checkpointing
-                self.checkpoint(it,state_history)
+
+                self.checkpoint(it, state_history)
+
+                self.logger.log(test_reward=[it, np.mean(self.test_rewards)],
+                                train_reward=[it, np.mean(self.train_rewards)],
+                                loss=[it, np.mean(train_losses)])
+                self.logger.draw()
+
+                # test_rewards = []
+                # test_shaped_rewards = []
+                # for test in range(self.N_tests):
+                #     test_reward, test_shaped_reward, state_history, action_history, aprob_history =\
+                #         self.test_rollout(rationality=self.test_rationality)
+                #     test_rewards.append(test_reward)
+                #     test_shaped_rewards.append(test_shaped_reward)
+                #     # if not self.has_checkpointed:
+                #     #     self.traj_visualizer.que_trajectory(state_history)
+                #     #     self.traj_heatmap.que_trajectory(state_history)
+                #
+                # # Checkpointing ----------------------
+                # self.test_rewards.append(np.mean(test_rewards))  # for checkpointing
+                # self.train_rewards.append(np.mean(train_rewards[-1]))  # for checkpointing
+                # self.checkpoint(it,state_history)
                 # if self.checkpoint(it):  # check if should checkpoint
                 #     self.traj_visualizer.que_trajectory(state_history) # load preview of checkpointed trajectory
                 #     self.traj_heatmap.que_trajectory(state_history)
                 # Logging ----------------------
-                self.logger.log(test_reward=[it, np.mean(test_rewards)],
-                           train_reward=[it, np.mean(train_rewards)],
-                           loss=[it, np.mean(train_losses)])
-                self.logger.draw()
+                # self.logger.log(test_reward=[it, np.mean(test_rewards)],
+                #            train_reward=[it, np.mean(train_rewards)],
+                #            loss=[it, np.mean(train_losses)])
+                # self.logger.draw()
                 if self.enable_report:
                     print(f"\nTest: | nTests= {self.N_tests} "
-                          f"| Ave Reward = {np.mean(test_rewards)} "
-                          f"| Ave Shaped Reward = {np.mean(test_shaped_rewards)}"
+                          f"| Ave Reward = {np.mean(self.test_rewards)} "
+                          f"| Ave Shaped Reward = {np.mean(test_shaped_reward)}"
                           # f"\n{action_history}\n"#, f"{aprob_history[0]}\n"
                           )
 
-                train_rewards = []
-                train_losses = []
+
         self.logger.wait_for_close(enable=self.wait_for_close)
         # self.logger.wait_for_close(enable=True)
         if self.auto_save: self.save()
@@ -591,6 +629,42 @@ class Trainer:
         self.model.target.train()
         if get_info: return test_reward, test_shaped_reward, state_history, action_history, aprob_history, rollout_info
         else: return test_reward, test_shaped_reward, state_history, action_history, aprob_history
+
+
+    def async_test_start(self, n_tests):
+        self.eval_model.load_state_dict(self.model)  # load eval model
+
+        if hasattr(self.eval_model, '_memory'):
+            delattr(self.eval_model, '_memory')
+
+
+        # assert not hasattr(self.eval_model, 'CPT'), 'Cannot run async test with compiled CPT model. '
+        # assert not hasattr(self.test_env, 'CPT'), 'Cannot run async test with compiled CPT model. '
+
+        queue = multiprocessing.Queue()
+        proc = multiprocessing.Process(
+            target=async_test_rollout,
+            args=(queue, self.env, self.eval_model, n_tests,self.test_rationality)
+        )
+
+        # proc = DillProcess( target=async_test_rollout,
+        #             args=(queue, self.env, self.eval_model, n_tests,self.test_rationality)
+        #             )
+        proc.daemon = True
+        proc.start()
+        return proc, queue
+
+    def async_test_check(self,pending):
+        all_results = []
+        all_start_ep = []
+        for proc, queue, start_ep in pending[:]:
+            if not proc.is_alive() or not queue.empty():
+                if not queue.empty():
+                    results = queue.get()
+                    pending.remove((proc, queue, start_ep))
+                    all_results.append(results)
+                    all_start_ep.append(start_ep)
+        return all_start_ep,all_results, pending
 
     ################################################################
     # State Randomizer #############################################
@@ -771,6 +845,60 @@ class Trainer:
 
 
 
+def async_test_rollout(q,env,model,n_tests,test_rationality):
+    rshape_scale = 0
+    epsilon = 0
+    rationality = test_rationality
+    display_phi = False
+    device = model.device
 
+    # cant change when async test and train running at same time
+    # self.model.model.eval()
+    # self.model.target.eval()
+    model.rationality = rationality
+
+    test_reward = 0
+    test_shaped_reward = 0
+    state_history = []
+    action_history = []
+    aprob_history = []
+
+    for _ in range(n_tests):
+        env.reset()
+        state_history.append(env.state.deepcopy().freeze())
+
+        for t in range(env.horizon):
+            obs = env.mdp.get_lossless_encoding_vector_astensor(env.state, device=device).unsqueeze(0)
+            joint_action, joint_action_idx, action_probs = model.choose_joint_action(obs, epsilon=epsilon)
+
+            next_state, reward, done, info = env.step(joint_action)
+
+            # Track reward traces
+            test_reward += reward
+            test_shaped_reward += rshape_scale * np.mean(info["shaped_r_by_agent"]) * np.ones(2)
+
+            # Track state-action history
+            action_history.append(joint_action_idx)
+            aprob_history.append(action_probs)
+            state_history.append(next_state.deepcopy().freeze())
+
+            if done:  break
+            env.state = next_state
+
+    # cant change when async test and train running at same time
+    # self.model.model.train()
+    # self.model.target.train()
+
+    test_reward = test_reward / n_tests
+    test_shaped_reward = test_shaped_reward / n_tests
+
+    res = {
+        'test_reward': test_reward,
+        'test_shaped_reward': test_shaped_reward,
+        'state_history': state_history,
+        'action_history': action_history,
+        'aprob_history': aprob_history
+    }
+    q.put(res)
 if __name__ == "__main__":
     raise NotImplementedError

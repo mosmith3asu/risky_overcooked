@@ -52,14 +52,15 @@ class CumulativeProspectTheory_Compiled:
         elif self.delta_p != 1: self.is_rational = False
         elif self.delta_n != 1: self.is_rational = False
 
-    def expectation_samples(self,prospect_next_values, prospect_p_next_states,prospect_masks,reward,gamma):
+    def expectation_samples(self,prospect_next_values, prospect_p_next_states,prospect_masks,reward,gamma,done):
+
         BATCH_SIZE = len(prospect_masks)
         self.expected_td_targets = np.zeros(BATCH_SIZE, dtype=np.float32)
         for i in range(BATCH_SIZE):
             prospect_mask = prospect_masks[i]
             prospect_values = prospect_next_values[prospect_mask, :]
             prospect_probs = prospect_p_next_states[prospect_mask, :]
-            prospect_td_targets = reward[i, :] + (gamma) * prospect_values  # * (1 - done[i, :]) #(solving infinite horizon)
+            prospect_td_targets = reward[i, :] + (gamma) * prospect_values# * (1 - done[i, :]) #(solving infinite horizon)
 
             if self.is_rational:
                 self.expected_td_targets[i] = np.sum(prospect_td_targets.flatten() * prospect_probs.flatten())

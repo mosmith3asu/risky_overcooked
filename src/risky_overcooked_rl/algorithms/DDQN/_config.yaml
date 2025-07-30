@@ -4,11 +4,11 @@
 
 # Env Params ----------------
 env:
-  'LAYOUT': "risky_spiral8"   # layout name
-  "p_slip": 1.0                        # probability of slipping in puddle
+  'LAYOUT': "risky_handoff"   # layout name
+  "p_slip": 0.3                        # probability of slipping in puddle
   'HORIZON': 200                        # number of time steps per episode
 #  'time_cost': -0.2                     # cost per time step (<0: -0.2 ==> 1soup/100steps)
-  'time_cost': -0.34                     # cost per time step (<0: -0.2+SHAPED REWARD ==> 1soup/100steps)
+  'time_cost': -0.3                     # cost per time step (<0: -0.2+SHAPED REWARD ==> 1soup/100steps)
   'shared_rew': False                  # share reward between agents
   neglect_boarders: True              # whether to exclude boarder counter in state representation (reduces state space sz)
 #  neglect_boarders: False              # whether to exclude boarder counter in state representation (reduces state space sz)
@@ -45,9 +45,11 @@ trainer:
 
     curriculum: # TODO: add ALL
       curriculum_mem: 10      # number of iterations to check curriculum over
-      sampling_decay: 0.5    # recursive decay on likelihood of sampling past curriculum
+      sampling: 'uniform'
+      sampling_decay: 0.3    # recursive decay on likelihood of sampling past curriculum
       completed_epsilon: 0.5  # epsilon for previously completed curriculum is done
       min_iter: 100           # minimum number of iterations to run before checking for curriculum
+      reset_on_service: True # whether to reset curriculum on delivery of soup to service window
 
 
       add_rshape_goals: False # whether to add reward shaping goals to curriculum
@@ -139,7 +141,7 @@ agents:
 
 logger:
     'enable_report': False # enables command line reporting
-    'note': 'NO MEANREF'    # additional notes presented in RL-Logger
+    'note': ''    # additional notes presented in RL-Logger
 
 
 save:

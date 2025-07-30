@@ -142,6 +142,10 @@ def main():
         [N, X,1],  # P2 PICK ONION
         [W, X,1],
         [I, X,1],
+        [X, X,1],
+        [X, X,1],
+        [E, X, 1],
+        [W, X, 1],
         [S, X,1],  # P1 PLACE ONION 2
         [N, X,1],  # P1 PLACE ONION 2
         [S, X,1],  # P1 PLACE ONION 2

@@ -68,6 +68,9 @@ class SelfPlay_QRE_OSA(object):
     def __init__(self, obs_shape, n_actions, agents_config,**kwargs):
 
         # Instatiate Base Config -------------
+        self.init_params = {'obs_shape':obs_shape,  'n_actions':n_actions,  'agents_config':agents_config  }
+        self.init_params.update(kwargs)
+
         self.num_agents = 2
         self.joint_action_dim = n_actions
         self.player_action_dim = int(np.sqrt(n_actions))
@@ -260,6 +263,25 @@ class SelfPlay_QRE_OSA(object):
         self.target.load_state_dict(target_net_state_dict)
         return self.target
 
+    def deepcopy(self,base_only=False, with_memory=False):
+        new_model = SelfPlay_QRE_OSA(**self.init_params) if base_only\
+            else  self.__class__(**self.init_params)
+
+        new_model.model.load_state_dict(self.model.state_dict())
+        new_model.target.load_state_dict(self.target.state_dict())
+        new_model.checkpoint_model.load_state_dict(self.checkpoint_model.state_dict())
+        if with_memory:
+            new_model._memory = self._memory.deepcopy()
+        return new_model
+    def load_state_dict(self,other, **kwargs):
+        """Load state dict from another model"""
+        if isinstance(other, self.__class__):
+            self.model.load_state_dict(other.model.state_dict(), **kwargs)
+            self.target.load_state_dict(other.target.state_dict(), **kwargs)
+            self.checkpoint_model.load_state_dict(other.checkpoint_model.state_dict(), **kwargs)
+        else:
+            raise ValueError(f'Cannot load state dict from non {self.__class__.__name__} model')
+
 class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
     def __init__(self, obs_shape, n_actions, agents_config, **kwargs):
         super().__init__(obs_shape, n_actions, agents_config, **kwargs)
@@ -348,13 +370,19 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
         state = torch.cat(batch.state)
         action = torch.cat(batch.action)
         reward = np.vstack(batch.reward)
+        done = np.vstack(batch.done,dtype=int)
+        # done = np.array(done,dtype=int)
 
         # # Q-Learning with target network
         # q_value = self.model(state).gather(1, action)
         qA = self.model(state)
         q_value = qA.gather(1, action)
-        self.qval_range = f'[{torch.round(torch.min(qA))}, {torch.round(torch.max(qA))}]'  # (for logger)
-
+        self.qval_range = [np.round(torch.min(qA).cpu().detach().numpy(),1),
+                          np.round(torch.max(qA).cpu().detach().numpy(),1),
+                          np.round(torch.mean(qA).cpu().detach().numpy(),1)] # (for logger)
+        # _qA = qA.cpu().detach().numpy()
+        # print(f'Q={[np.min(_qA),np.max(_qA),np.mean(_qA)]}, '
+        #       f'r={[np.min(reward),np.max(reward),np.mean(reward)]}')
 
         # Batch calculate Q(s'|pi) and form mask for later condensation to expectation --------------------------------
         all_next_states, all_p_next_states, prospect_idxs = self.flatten_next_prospects(batch.next_prospects)
@@ -372,7 +400,8 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
             all_p_next_states = np.array(all_p_next_states).reshape(-1, 1)
 
             expected_value = self.CPT.expectation_samples(all_next_q_value, all_p_next_states,
-                                                               prospect_idxs, reward, self.gamma)
+                                                               prospect_idxs, reward, self.gamma, done
+                                                          )
 
             # self.qval_range = f'[{np.round(np.min(expected_value))}, {np.round(np.max(expected_value))}]' # (for logger)
 

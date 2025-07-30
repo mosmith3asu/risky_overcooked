@@ -33,23 +33,85 @@ jobs:
 #        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
 #        decay: 1.0      # higher values = faster decay
 
-  risky_spiral8:
-    agents: ['neutral']
-    p_slips: [0.3,0.35,0.4,0.45]
+#  risky_spiral8:
+#    agents: ['seeking','averse']
+#    p_slips: [0.2]
+#
+#    set:
+#      HORIZON: 360
+#  risky_handoff2:
+#    agents: ['seeking']
+#    p_slips: [ 0.25,0.35]
+#    set:
+#      HORIZON: 200
+#  risky_shortcuts2:
+#    agents: [ 'neutral' ]
+#    p_slips: [0.2, 0.25,0.35,0.4 ]
+#    set:
+#      HORIZON: 200
+#  risky_tree:
+#    agents: ['averse']
+#    p_slips: [ 0.25]
+#    set:
+#      HORIZON: 360
+#      note: 'added DONE'
+#  risky_tree9:
+#    agents: ['averse','neutral']
+#    p_slips: [0.25]
+#
+#    set:
+#      note: 'new Curr sample'
+#      sampling: 'decay'
+##      reset_on_service: False # whether to reset curriculum on delivery of soup to service window
+##      sampling: 'decay2'
+##      sampling: 'uniform'
+#
+#      gamma: 0.99
+#      HORIZON: 360
+#      time_cost: -0.3
+#      rshape_sched:
+#        start: 1.0        # starting value
+#        end: 0.1        # ending value
+#        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+#        decay: 1.0      # higher values = faster decay
+#      epsilon_sched:
+#        start: 1.0        # starting value
+#        end: 0.1        # ending value
+#        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+#        decay: 1.0      # higher values = faster decay
+##      subtask_goals:
+##        # specifies success threshold to move to next curriculum
+##        # average number of soups delivered over curriculum_mem needed to advance
+##        deliver_soup: 1   # agents starts with cooked soup and must cary to service window
+##        pick_up_soup: 1.15     # agents starts with dish and must pick up soup from pot
+##        pick_up_dish: 1.15   # agents starts with nothing and must pick up dish
+##        #        wait_to_cook: 3     # agents starts with nothing and must wait to cook
+##        deliver_onion3: 1.3 # agents starts with onion and must deliver to pot
+##        pick_up_onion3: 1.3 # agents starts with nothing and must pick up onion
+##        deliver_onion2: 1.45   # agents starts with onion and must deliver to pot
+##        pick_up_onion2: 1.45  # agents starts with nothing and must pick up onion
+##        deliver_onion1: 1.6   # agents starts with onion and must deliver to pot
+##        full_task: 999 # pick_up_onion1 = full_task
+
+#
+  risky_shortcuts2:
+    agents: ['seeking']
+    p_slips: [0.2,0.25,0.3]
+
     set:
-      HORIZON: 360
-      time_cost: -0.3 # rational does 0.6
-      ITERATIONS: 15_000 # number of iterations to run for each agent
-      EXTRA_ITERATIONS: 15_000 # number of iterations to run for each agent
-      sampling_decay: 0.3
+      note: 'new Curr sample'
+      sampling: 'uniform'
+
       gamma: 0.99
+      HORIZON: 360
+      time_cost: -0.3
       rshape_sched:
         start: 1.0        # starting value
-        end: 0.1        # ending value
+        end: 1.0          # ending value
         duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
         decay: 1.0      # higher values = faster decay
       epsilon_sched:
         start: 1.0        # starting value
-        end: 0.1        # ending value
-        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+        end: 0.05        # ending value
+        duration: 0.5 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
         decay: 1.0      # higher values = faster decay

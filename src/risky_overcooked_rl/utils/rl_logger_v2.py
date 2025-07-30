@@ -633,7 +633,7 @@ class RLLogger_V2:
         for lineplot in self.lineplots:
             lineplot.draw()
         self.status.draw()
-        self.checkpoint.draw(enable=self._enable_checkpointing)
+        if self.checkpoint is not None: self.checkpoint.draw(enable=self._enable_checkpointing)
         self.settings.draw()
         for item in self.items.values():
             item.draw()

@@ -7,7 +7,7 @@ import gymnasium
 import numpy as np
 import pygame
 import tqdm
-
+from functools import partial
 from risky_overcooked_py.mdp.actions import Action
 from risky_overcooked_py.mdp.overcooked_mdp import (
     EVENT_TYPES,
@@ -29,7 +29,8 @@ from risky_overcooked_py.visualization.state_visualizer import StateVisualizer
 DEFAULT_ENV_PARAMS = {"horizon": 400}
 
 MAX_HORIZON = 1e10
-
+def _ignore_mpd_gen(mdp, outside_info):
+    return mdp
 
 class OvercookedEnv(object):
     """
@@ -84,7 +85,7 @@ class OvercookedEnv(object):
         self.mlam_params = mlam_params
         self.start_state_fn = start_state_fn
         self.info_level = info_level
-        self.reset(outside_info=initial_info)
+        self.reset(regen_mdp=True, outside_info=initial_info)
         if self.horizon >= MAX_HORIZON and self.info_level > 0:
             print(
                 "Environment has (near-)infinite horizon and no terminal states. \
@@ -134,7 +135,10 @@ class OvercookedEnv(object):
         assert isinstance(mdp, OvercookedGridworld)
         if num_mdp is not None:
             assert num_mdp == 1
-        mdp_generator_fn = lambda _ignored: mdp
+        # mdp_generator_fn = lambda _ignored: mdp
+        mdp_generator_fn = partial(_ignore_mpd_gen, mdp)
+        # assert callable(mdp_generator_fn), ('dsafdsfa')
+
         return OvercookedEnv(
             mdp_generator_fn=mdp_generator_fn,
             start_state_fn=start_state_fn,
@@ -297,7 +301,7 @@ class OvercookedEnv(object):
         """
         return self.mdp.featurize_state(state, self.mlam, num_pots=num_pots)
 
-    def reset(self, regen_mdp=True, outside_info={}):
+    def reset(self, regen_mdp=False, outside_info={}):
         """
         Resets the environment. Does NOT reset the agent.
         Args:

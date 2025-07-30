@@ -70,6 +70,22 @@ def main():
     print(f'Running {len(config_list)} configurations on {N_workers} workers')
     pool = mp.Pool(processes=N_workers)
     res = pool.map(train_worker, config_list)
+    #
+
+
+    # processes = []
+    # for i, config in enumerate(config_list):
+    #     proc = mp.Process(
+    #         target=train_worker,
+    #         args=(config,)
+    #     )
+    #     # proc.daemon = True
+    #     proc.start()
+    #     processes.append(proc)
+    #
+    # for proc in processes:
+    #     proc.join()
+
 
 if __name__ == "__main__":
     main()

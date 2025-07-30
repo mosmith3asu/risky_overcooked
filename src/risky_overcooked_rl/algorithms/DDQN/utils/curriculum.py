@@ -16,13 +16,19 @@ class CurriculumTrainer(Trainer):
         curriculum_config = master_config['trainer']['curriculum']
         self.schedule_decay = curriculum_config.get('schedule_decay',1.0)
         self.schedules = master_config['trainer']['schedules']
+        # self.reset_on_service = master_config['trainer']['curriculum'].get('reset_on_service', True)
         self.curriculum = Curriculum(self.env,curriculum_config)
 
 
     def run(self):
+        self.logger.enable_checkpointing(True)
+        pending_tests = []  # to keep track of async test processes
 
         # Main training Loop
         for it in range(self.ITERATIONS + self.EXTRA_ITERATIONS):
+            train_rewards = []
+            train_losses = []
+
             self.training_iteration = it
             cit = self.curriculum.iteration
             self.logger.loop_iteration()
@@ -43,6 +49,8 @@ class CurriculumTrainer(Trainer):
                                         rshape_scale=self.rshape_sched[cit],
                                         p_rand_start=self.random_start_sched[cit])
 
+            train_rewards.append(cum_reward + cum_shaped_rewards)
+            train_losses.append(rollout_info['mean_loss'])
 
             did_update = (rollout_info['mean_loss']!=0)
             self.risk_taken.append(rollout_info['risks_taken'])
@@ -54,13 +62,15 @@ class CurriculumTrainer(Trainer):
                 step_val = rollout_info['reward_latest_curriculum']
                 if step_val is not None:
                     is_next_curriculum = self.curriculum.step_curriculum(step_val)
+                else:
+                    is_next_curriculum = False
                 # is_next_curriculum = self.curriculum.step_curriculum(cum_reward)
 
                 if is_next_curriculum:
                     self.init_sched(self.schedules, eps_decay=self.schedule_decay, rshape_decay=self.schedule_decay)
 
-                if self.curriculum.curr_curriculum_name in self.curriculum.curriculums[-3:-1]:
-                    self.logger.enable_checkpointing(True)
+                # if self.curriculum.curr_curriculum_name in self.curriculum.curriculums[-3:-1]:
+                #     self.logger.enable_checkpointing(True)
 
             # Report ###########################################
             if self.enable_report:
@@ -72,19 +82,43 @@ class CurriculumTrainer(Trainer):
                             )
 
             # Testing Step ##########################################
-            time4test = (it % self.test_interval == 0)
-            if time4test:
-                self.curriculum.eval('on')
+            # if it % self.test_interval == 0 and it > 0:
+            #     # Rollout async test episodes ----------------------
+            #     proc, queue = self.async_test_start(self.N_tests)
+            #     pending_tests.append((proc, queue, it))  # add to pending tests
+            #
+            # all_test_it, test_results, pending_tests = self.async_test_check(pending_tests)
+            # for test_it, res in zip(all_test_it,test_results):
+            #     test_reward = res['test_reward']
+            #     # test_shaped_reward = res['test_shaped_reward']
+            #     # state_history = res['state_history']
+            #     # action_history = res['action_history']
+            #     # aprob_history = res['aprob_history']
+            #
+            #     self.test_rewards.append(test_reward)  # for checkpointing
+            #     self.train_rewards.append(np.mean(train_rewards))  # for checkpointing
+            #
+            #     # self.checkpoint(it, state_history)
+            #
+            #     self.logger.log(test_reward=[test_it, np.mean(self.test_rewards)])
+            #     self.logger.draw()
 
+            time4test = (it % self.test_interval == 0 and it>0)
+            if time4test:
                 # Rollout test episodes ----------------------
                 test_rewards = []
                 test_shaped_rewards = []
+                state_historys = []
                 for test in range(self.N_tests):
                     test_reward, test_shaped_reward, state_history, action_history, aprob_history =\
                         self.test_rollout(rationality=self.test_rationality)
                     test_rewards.append(test_reward)
                     test_shaped_rewards.append(test_shaped_reward)
-                self.state_history = state_history
+                    state_historys += state_history
+
+                self.state_history = state_historys
+                # self.test_rewards.append(np.mean(test_rewards))
+                # self.train_rewards.append(np.mean(test_rewards))
 
                 # Logging ----------------------
                 self.logger.log(test_reward=[it, np.mean(test_rewards)])
@@ -95,7 +129,6 @@ class CurriculumTrainer(Trainer):
                           f"| Ave Shaped Reward = {np.mean(test_shaped_rewards)}"
                           )
 
-                self.curriculum.eval('off')
 
             # Close Iteration ########################################
             # Check if model training is failing and halt -----------
@@ -121,13 +154,13 @@ class CurriculumTrainer(Trainer):
 
 
         state,sampled_curriculum = self.curriculum.sample_curriculum_state()
-        is_latest_curriculum = sampled_curriculum == self.curriculum.curr_curriculum_name
+        # is_latest_curriculum = sampled_curriculum == self.curriculum.curr_curriculum_name
         self.curriculum.subtask_iters[sampled_curriculum] += 1
 
         t_latest_curriculum = 0  # total timesteps for this curriculum
         reward_latest_curriculum = 0  # total sparse reward for this curriculum
 
-        if not is_latest_curriculum:
+        if not self.curriculum.is_latest_curriculum:
             eps_gain = self.curriculum.completed_epsilon
             epsilon = max(eps_gain * init_epsilon, self.epsilon_sched[-1]) if eps_gain is not None else epsilon
 
@@ -165,13 +198,18 @@ class CurriculumTrainer(Trainer):
         for t in range(self.env.horizon+1):#itertools.count():
             if t%5==0: self.logger.spin()
 
-            old_state = self.env.state.deepcopy()
-            obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=self.device).unsqueeze(0)
-            feasible_JAs = self.feasible_action.get_feasible_joint_actions(self.env.state, as_joint_idx=True)
-            joint_action, joint_action_idx, action_probs = self.model.choose_joint_action(obs,
-                                                                                          epsilon=epsilon,
-                                                                                          feasible_JAs=feasible_JAs)
+            old_state = self.env.state.deepcopy().freeze()
+            # obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=self.device).unsqueeze(0)
+            obs = self.mdp.get_lossless_encoding_vector_astensor(old_state, device=self.device).unsqueeze(0)
+
+            # feasible_JAs = self.feasible_action.get_feasible_joint_actions(self.env.state, as_joint_idx=True)
+            feasible_JAs = self.feasible_action.get_feasible_joint_actions(old_state, as_joint_idx=True)
+
+            joint_action, joint_action_idx, action_probs = \
+                self.model.choose_joint_action(obs,epsilon=epsilon, feasible_JAs=feasible_JAs)
+
             next_state, sparse_reward, done, info = self.env.step(joint_action, get_mdp_info=True)
+
             next_state_prospects = self.mdp.one_step_lookahead(old_state, # must be called after step....
                                                                joint_action=Action.ALL_JOINT_ACTIONS[joint_action_idx],
                                                                as_tensor=True, device=self.device)
@@ -186,8 +224,8 @@ class CurriculumTrainer(Trainer):
             cum_sparse_reward += sparse_reward
             cum_shaped_reward += shaped_rewards
 
-            reward_latest_curriculum += sparse_reward if is_latest_curriculum else 0 #TODO: ReMOVE?
-            t_latest_curriculum += 1 if is_latest_curriculum else 0
+            reward_latest_curriculum += sparse_reward if self.curriculum.is_latest_curriculum else 0 #TODO: ReMOVE?
+            t_latest_curriculum += 1 if self.curriculum.is_latest_curriculum else 0
 
             # Store in memory ----------------
             self.model._memory.double_push(state=obs,
@@ -205,7 +243,8 @@ class CurriculumTrainer(Trainer):
             # Terminate episode ##################################
             if done:
                 break
-            elif self.curriculum.is_reset_needed(self.env.state,sparse_reward,info):  # Curriculum Complete, reset state in this episode
+            elif self.curriculum.is_reset_needed(self.env.state,sparse_reward,info):
+                # Curriculum Complete, reset state in this episode
                 # Sample new curriculum state
                 self.env.state , sampled_curriculum= self.curriculum.sample_curriculum_state()
                 is_latest_curriculum = sampled_curriculum == self.curriculum.curr_curriculum_name
@@ -262,6 +301,8 @@ class Curriculum:
 
 
         # Parse Curriculum Config ----------------
+        self.sampling = curriculum_config['sampling']
+        assert self.sampling in ['pdf', 'uniform', 'decay','decay2'], 'unknown curriculum sampling'
         self.sampling_decay = curriculum_config['sampling_decay']
         self.min_iterations = curriculum_config['min_iter']
         self.completed_epsilon = curriculum_config['completed_epsilon']
@@ -269,6 +310,8 @@ class Curriculum:
         self.save_fig_on_fail = curriculum_config['failure_checks']['save_fig']
         self.save_model_on_fail = curriculum_config['failure_checks']['save_model']
         add_rshape_thresh = curriculum_config['add_rshape_goals']
+
+        self.reset_on_service = curriculum_config['reset_on_service']
 
         self.failure_thresh = curriculum_config['failure_checks']
         self.subtask_goals = curriculum_config['subtask_goals']
@@ -306,8 +349,6 @@ class Curriculum:
                     shaped_rewards += self.mdp.reward_shaping_params['DISH_PICKUP_REWARD']
 
             self.curriculum_step_threshs[key] = (soup_reward + shaped_rewards) * num_soups + timecost_offset
-
-
 
         self.curriculums = list(self.curriculum_step_threshs.keys())
 
@@ -395,30 +436,49 @@ class Curriculum:
         state = self.add_onions_to_pots(state, n_onions=n_onions)
         return state
 
-    def sample_curriculum_state(self, pdf_sample=False):
-
-
-
-        if pdf_sample:
+    def sample_curriculum(self):
+        if self.sampling == 'pdf':
             i = self.pdf_curriculum_sample(self.current_curriculum)
-        else:
+        elif self.sampling == 'uniform':
+            i = np.random.randint(0, len(self.curriculums))
+            self.current_curriculum = -1
+        elif self.sampling == 'decay':
+            # only sample previous curriculums
             pi = [self.sampling_decay**(self.current_curriculum-i) for i in range(self.current_curriculum+1)]
             i = np.random.choice(np.arange(self.current_curriculum+1), p=np.array(pi)/np.sum(pi))
+        elif self.sampling == 'decay2':
+            # also sample future curriculum
+            pi = [self.sampling_decay ** (self.current_curriculum - i) for i in range(self.current_curriculum + 1)]
+            pi = 0.95*np.array(pi) / np.sum(pi)
+
+            rem_curric = len(self.curriculums) - (self.current_curriculum+1)
+            pj = 0.05*np.ones(rem_curric)/rem_curric # probability of sampling future curriculum
+
+            p= np.concatenate((pi, pj))
+            p = p/np.sum(p)
+            i = np.random.choice(len(self.curriculums), p=p)
 
         self.sampled_curriculum = self.curriculums[i]
+        return self.sampled_curriculum
+
+    def sample_curriculum_state(self):
+
+        self.sampled_curriculum = self.sample_curriculum()
+
         state = self.init_random_state()
 
-        if self.curriculums[i] == 'full_task':
+        if self.sampled_curriculum == 'full_task':
             state = self.env.state # undo random start loc
 
-        elif 'deliver_onion' in self.curriculums[i]:
-            N = int(self.curriculums[i][-1])  # number of onions to deliver
-            state = self.deliver_onion(N, state)
-        elif 'pick_up_onion' in self.curriculums[i]:
-            N = int(self.curriculums[i][-1])  # number of onions to deliver
+        elif 'deliver_onion' in self.sampled_curriculum:
+            N = int(self.sampled_curriculum[-1])  # number of onions to deliver
             state = self.deliver_onion(N, state)
 
-        elif self.curriculums[i] == 'pick_up_dish':
+        elif 'pick_up_onion' in self.sampled_curriculum:
+            N = int(self.sampled_curriculum[-1])  # number of onions to deliver
+            state = self.deliver_onion(N, state)
+
+        elif self.sampled_curriculum == 'pick_up_dish':
             """
             Initiate pot with soup finished cooking
             - other pots partially filled = likely since already waited for soup to cook
@@ -438,7 +498,7 @@ class Curriculum:
             state = self.add_held_objs(state, held_objs)
             state = self.add_onions_to_pots(state, n_onions=n_onions, cooking_tick=cooking_tick)  # finished soup is cooked
 
-        elif self.curriculums[i] == 'pick_up_soup':
+        elif self.sampled_curriculum == 'pick_up_soup':
             """
             Initiate pot with finished soup and [P1 or P2] holding plate
             - more than one soup finished cooking is unlikely
@@ -455,7 +515,7 @@ class Curriculum:
             state = self.add_onions_to_pots(state, n_onions = n_onions, cooking_tick=cooking_tick)  # finished soup is cooked
 
 
-        elif self.curriculums[i] == 'deliver_soup':
+        elif self.sampled_curriculum == 'deliver_soup':
             """
             Init [P1 or P2] with held soup 
             - both holding soup is unnecessary 
@@ -463,7 +523,7 @@ class Curriculum:
             - one pot likely empty and others likely partial filled
             """
             n_onions = 0
-            partner_item = np.random.choice([None, "onion"], p=[0.9, 0.1])
+            partner_item = np.random.choice([None, "onion"], p=[0.8, 0.2])
             held_objs = [["soup",partner_item],  [ partner_item, "soup"]]
             cooking_tick = None
 
@@ -476,7 +536,7 @@ class Curriculum:
                     break
 
         else:
-            raise ValueError(f"Invalid curriculum mode '{self.curriculums[i]}'")
+            raise ValueError(f"Invalid curriculum mode '{self.sampled_curriculum}'")
         return state, self.sampled_curriculum
 
     def eval(self,status):
@@ -528,36 +588,22 @@ class Curriculum:
             raise ValueError(f"Invalid goal type '{goal}' for logical start location")
         asset_loc = locs[np.random.randint(len(locs))]
         goal_pos = None
-
+        checked_terrains = []
         # Get walkable space next to dispenser, pot, ect
-        valid_terrain = (" ", "1", "2")
+        valid_terrain = (' ', '1', '2')
+        ny = len(self.mdp.terrain_mtx)-1
+        nx = len(self.mdp.terrain_mtx[0])-1
         for d in Direction.ALL_DIRECTIONS:
             adj_goal_pos = Action.move_in_direction(asset_loc, d)
-            # print(f'Checking terrain at {adj_goal_pos} with dir {d}')
-
-            # if (0 <= adj_goal_pos[0] <= np.array(self.mdp.terrain_mtx).shape[0] - 1
-            #         and 0 <= adj_goal_pos[1] <= np.array(self.mdp.terrain_mtx).shape[1] - 1):
-            if (0 <= adj_goal_pos[0] <= np.array(self.mdp.terrain_mtx).shape[0]
-                    and 0 <= adj_goal_pos[1] <= np.array(self.mdp.terrain_mtx).shape[1] ):
+            if (0 <= adj_goal_pos[0] <= nx and 0 <= adj_goal_pos[1] <= ny):
                 terrain = self.mdp.get_terrain_type_at_pos(adj_goal_pos)
-                # print(f'Checking terrain {terrain} at {adj_goal_pos} with dir {d}')
+                checked_terrains.append(terrain)
                 if terrain in valid_terrain:
-                    # print(f"Found valid terrain [{terrain}] at {adj_goal_pos} next to {goal}[{self.mdp.get_terrain_type_at_pos(asset_loc)}] at {asset_loc}")
                     goal_pos = adj_goal_pos
                     break
         assert goal_pos is not None, f"Could not find valid position next to" \
-                                     f" {goal}[{self.mdp.get_terrain_type_at_pos(asset_loc)}] at {asset_loc}"
-        # if self.mdp.get_terrain_type_at_pos(goal_pos) not in valid_terrain:
-        #     for d in Direction.ALL_DIRECTIONS:
-        #         adj_goal_pos = Action.move_in_direction(goal_pos, d)
-        #
-        #         if (0<= adj_goal_pos[0] <= np.array(self.mdp.terrain_mtx).shape[0]-1
-        #                 and 0<= adj_goal_pos[1] <= np.array(self.mdp.terrain_mtx).shape[1]-1):
-        #
-        #             terrain = self.mdp.get_terrain_type_at_pos(adj_goal_pos)
-        #             if terrain in valid_terrain:
-        #                 goal_pos = adj_goal_pos
-        #                 break
+                                     f" {goal}[{self.mdp.get_terrain_type_at_pos(asset_loc)}] at {asset_loc} \n" \
+                                     f"\t checked: {checked_terrains}"
 
         # Find start positions within desired distance
         valid_start_pos = []
@@ -650,21 +696,12 @@ class Curriculum:
         - slipping reset does not produce good results
         """
 
-        if not self.sampled_curriculum == 'full_task':
-            # if reward == 20: return True # reward for delivering soup
-            # # elif len(state.all_objects_list) ==0: return True # lost all objects
-
+        if (self.reset_on_service
+                and not self.sampled_curriculum == 'full_task'
+                and self.sampling != 'uniform'
+        ):
             was_soup_delivered = np.any(info['mdp_info']['event_infos']['soup_delivery'])
-            # no_held_objs = np.all([player.has_object() for player in state.players])
-            # was_onion_slip = np.any(info['mdp_info']['event_infos']['onion_slip'])
-            # was_dish_slip = np.any(info['mdp_info']['event_infos']['dish_slip'])
-
-            if was_soup_delivered:
-                return True  # delivering soup
-            # if 'onion' in self.sampled_curriculum and was_onion_slip and no_held_objs:
-            #     return True # onion slipped
-            # if 'dish' in self.sampled_curriculum and was_dish_slip and no_held_objs:
-            #     return True
+            if was_soup_delivered:  return True  # delivering soup
         return False
 
     ########################################################################################################
@@ -684,4 +721,9 @@ class Curriculum:
         # prog = self.iteration/self.start_near_goal_iters
         dist = np.clip(round(prog*self._max_dist2goal),1,self._max_dist2goal+1)
         return dist
+
+    @property
+    def is_latest_curriculum(self):
+        if self.sampling == 'uniform': return True
+        else: return self.sampled_curriculum == self.curr_curriculum_name
 

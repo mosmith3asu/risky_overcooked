@@ -29,51 +29,11 @@ class Recipe:
     _configured = False
     _conf = {}
 
-
-    # def __reduce__(self):
-    #     """
-    #     Custom __reduce__ method to allow pickling of Recipe objects.
-    #     This is necessary because the default pickling behavior does not
-    #     work with class properties and class methods.
-    #     """
-    #     # raise NotImplementedError('pickle not implemented')
-    #     # return(Recipe, (self.ingredients,))
-    #     class_dict = {'_conf': self._conf,
-    #                   '_configured': self._configured,
-    #                   '_computed': self._computed,
-    #                   'ALL_RECIPES_CACHE': self.ALL_RECIPES_CACHE,
-    #                   '_delivery_reward':self._delivery_reward,
-    #                   '_value_mapping': self._value_mapping,
-    #                   }
-    #
-    #     class_dict.update(self.__dict__)
-    #
-    #     # super(Recipe, self)
-    #     return (self.__class__, (self.ingredients,class_dict))
-    #
-    # def __getstate__(self):
-    #     raise NotImplementedError('pickle not implemented')
-    #
-    #
-    # def __setstate__(self, state):
-    #     raise NotImplementedError('pickle not implemented')
-
-
-    def __new__(cls, ingredients,*args):
-        # if len(args) > 0:
-        #     # cls._conf, cls._configured, cls._computed = args[0]
-        #     for key,val in args[0].items():
-        #         setattr(cls, key, val)
-
-        # print("Creating new recipe with ingredients: ", ingredients)
-        # Removed for interfering with async testing
+    def __new__(cls, ingredients):
         if not cls._configured:
             raise OvercookedException(
                 "Recipe class must be configured before recipes can be created"
             )
-            # warnings.warn("Recipe class must be configured before recipes can be created")
-
-
         # Some basic argument verification
         if (
             not ingredients
@@ -102,12 +62,7 @@ class Recipe:
         cls.ALL_RECIPES_CACHE[key] = super(Recipe, cls).__new__(cls)
         return cls.ALL_RECIPES_CACHE[key]
 
-    def __init__(self, ingredients,*args):
-        if len(args) > 0:
-            # cls._conf, cls._configured, cls._computed = args[0]
-            for key, val in args[0].items():
-                setattr(self, key, val)
-
+    def __init__(self, ingredients):
         self._ingredients = ingredients
 
     def __getnewargs__(self):
@@ -279,7 +234,6 @@ class Recipe:
         cls._tomato_time = None
 
         ## Basic checks for validity ##
-        # print("Configuring Recipe class with configuration: ", conf)
 
         # Mutual Exclusion
         if (
@@ -440,8 +394,7 @@ class ObjectState(object):
         """
         self.name = name
         self._position = tuple(position)
-        self._player_interacts = (False,False) if player_interacts is None else tuple(player_interacts)
-        self._frozen = False
+        self.player_interacts = [False,False] if player_interacts is None else player_interacts
 
     @property
     def position(self):
@@ -449,25 +402,7 @@ class ObjectState(object):
 
     @position.setter
     def position(self, new_pos):
-        assert not self._frozen, f'{self.__class__.__name__}: {self.name} is frozen, cannot set value'
         self._position = new_pos
-
-    @property
-    def player_interacts(self):
-        return self._player_interacts
-    @player_interacts.setter
-    def player_interacts(self, new_interacts):
-        raise AttributeError('Use set command: set_player_interacts')
-        # assert not self._frozen, f'{self.__class__.__name__}: {self.name} is frozen, cannot set value'
-        # self.player_interacts = new_interacts
-    def set_player_interact(self, player_idx, did_interact):
-        assert not self._frozen, f'{self.__class__.__name__}: {self.name} is frozen, cannot set value'
-        interacts = list(self._player_interacts)
-        interacts[player_idx] = did_interact
-        self._player_interacts = tuple(interacts)
-    def set_player_interacts(self, interacts):
-        assert not self._frozen, f'{self.__class__.__name__}: {self.name} is frozen, cannot set value'
-        self._player_interacts = tuple(interacts)
 
     def is_valid(self):
         return self.name in ["onion", "tomato", "dish"]
@@ -496,14 +431,6 @@ class ObjectState(object):
         obj_dict = copy.deepcopy(obj_dict)
         return ObjectState(**obj_dict)
 
-    def freeze(self):
-        self._frozen = True
-        return self
-
-    def unfreeze(self):
-        self._frozen = False
-        return self
-
 
 class SoupState(ObjectState):
     def __init__(
@@ -530,8 +457,7 @@ class SoupState(ObjectState):
         self._cooking_tick = cooking_tick
         self._recipe = None
         self._cook_time = cook_time
-        self._freeze = False
-
+        self.player_interacts = [False, False] if player_interacts is None else player_interacts
 
     def __eq__(self, other):
         return (
@@ -573,7 +499,6 @@ class SoupState(ObjectState):
 
     @ObjectState.position.setter
     def position(self, new_pos):
-        assert not self._frozen, f'{self.__class__.__name__}: {self.name} is frozen, cannot set value'
         self._position = new_pos
         for ingredient in self._ingredients:
             ingredient.position = new_pos
@@ -648,10 +573,6 @@ class SoupState(ObjectState):
         self._cooking_tick = self.cook_time
 
     def add_ingredient(self, ingredient):
-        assert not self._frozen, f'{self.__class__.__name__}: {self.name} is frozen, cannot set value'
-        if self._freeze: ingredient.freeze()
-        else: ingredient.unfreeze()
-
         if not ingredient.name in Recipe.ALL_INGREDIENTS:
             raise ValueError("Invalid ingredient")
         if self.is_full:
@@ -776,18 +697,6 @@ class SoupState(ObjectState):
             soup.auto_finish()
         return soup
 
-    def freeze(self):
-        self._frozen = True
-        return self
-
-    def unfreeze(self):
-        self._frozen = False
-        return self
-
-
-
-
-
 
 
 class PlayerState(object):
@@ -801,54 +710,16 @@ class PlayerState(object):
     """
 
     def __init__(self, position, orientation,idx,held_object=None):
-        self._position = tuple(position)
-        self._orientation = tuple(orientation)
-        self._held_object = held_object
-        self._idx = idx
-        self._dropped_obj = 'none'
+        self.position = tuple(position)
+        self.orientation = tuple(orientation)
+        self.held_object = held_object
+        self.idx = idx
+        self.dropped_obj = 'none'
 
         assert self.orientation in Direction.ALL_DIRECTIONS
         if self.held_object is not None:
             assert isinstance(self.held_object, ObjectState)
             assert self.held_object.position == self.position
-        self._frozen = False
-
-    @property
-    def idx(self):
-        return self._idx
-
-    @property
-    def position(self):
-        return self._position
-    @position.setter
-    def position(self, new_pos):
-        assert not self._frozen, f'{self.__class__.__name__}: player {self.idx} is frozen, cannot set value'
-        self._position = tuple(new_pos)
-
-    @property
-    def orientation(self):
-        return self._orientation
-    @orientation.setter
-    def orientation(self, new_orientation):
-        assert not self._frozen, f'{self.__class__.__name__}: player {self.idx} is frozen, cannot set value'
-        self._orientation = tuple(new_orientation)
-
-    @property
-    def held_object(self):
-        return self._held_object
-    @held_object.setter
-    def held_object(self, new_obj):
-        assert not self._frozen, f'{self.__class__.__name__}: player {self.idx} is frozen, cannot set value'
-        self._held_object = new_obj
-
-    @property
-    def dropped_obj(self):
-        return self._dropped_obj
-    @dropped_obj.setter
-    def dropped_obj(self, new_dropped_obj):
-        assert not self._frozen, f'{self.__class__.__name__}: player {self.idx} is frozen, cannot set value'
-        assert isinstance(new_dropped_obj, ObjectState) or new_dropped_obj == 'none', 'invalid dropped object type: {}'.format(type(new_dropped_obj))
-        self._dropped_obj = new_dropped_obj
 
     @property
     def pos_and_or(self):
@@ -862,29 +733,21 @@ class PlayerState(object):
         return self.held_object
 
     def set_object(self, obj):
-        assert not self._frozen, f'{self.__class__.__name__}: player {self.idx} is frozen, cannot set value'
         assert not self.has_object()
-        # obj.player_interacts[self.idx] = True
-        obj.set_player_interact(self.idx, True)
+        obj.player_interacts[self.idx] = True
         obj.position = self.position
-        if self._frozen: obj.freeze()
-        else: obj.unfreeze()
         self.held_object = obj
 
     def remove_object(self):
-        assert not self._frozen, f'{self.__class__.__name__}: player {self.idx} is frozen, cannot set value'
         assert self.has_object()
         obj = self.held_object
         self.held_object = None
         return obj
 
     def update_pos_and_or(self, new_position, new_orientation):
-        assert not self._frozen, f'{self.__class__.__name__}: player {self.idx} is frozen, cannot set value'
         self.position = new_position
         self.orientation = new_orientation
         if self.has_object():
-            if self._frozen: self.get_object().freeze()
-            else: self.get_object().unfreeze()
             self.get_object().position = new_position
 
     def deepcopy(self):
@@ -928,17 +791,6 @@ class PlayerState(object):
             player_dict["held_object"] = SoupState.from_dict(held_obj)
         return PlayerState(**player_dict)
 
-    def freeze(self):
-        self._frozen = True
-        if self._held_object is not None:  self._held_object.freeze()
-        if self._dropped_obj != 'none': self._dropped_obj.freeze()
-        return self
-
-    def unfreeze(self):
-        self._frozen = False
-        if self._held_object is not None:  self.get_object().freeze()
-        if self._dropped_obj != 'none': self._dropped_obj.freeze()
-        return self
 
 
 class OvercookedState(object):
@@ -967,12 +819,11 @@ class OvercookedState(object):
         all_orders = [Recipe.from_dict(order) for order in all_orders]
         for pos, obj in objects.items():
             assert obj.position == pos
-        self._players = tuple(players)
-        self._objects = objects
+        self.players = tuple(players)
+        self.objects = objects
         self._bonus_orders = bonus_orders
         self._all_orders = all_orders
         self.timestep = timestep
-        self._frozen =False
 
         assert len(set(self.bonus_orders)) == len(
             self.bonus_orders
@@ -983,13 +834,6 @@ class OvercookedState(object):
         assert set(self.bonus_orders).issubset(
             set(self.all_orders)
         ), "Bonus orders must be a subset of all orders"
-
-    @property
-    def players(self):
-        return self._players
-    @property
-    def objects(self):
-        return self._objects
 
     @property
     def player_positions(self):
@@ -1066,10 +910,6 @@ class OvercookedState(object):
         return self.objects[pos]
 
     def add_object(self, obj, pos=None):
-        assert not self._frozen, f'{self.__class__.__name__}: player {self.idx} is frozen, cannot set value'
-        if self._frozen:  obj.freeze()
-        else:  obj.unfreeze()
-
         if pos is None:
             pos = obj.position
 
@@ -1078,7 +918,6 @@ class OvercookedState(object):
         self.objects[pos] = obj
 
     def remove_object(self, pos):
-        assert not self._frozen, f'{self.__class__.__name__}: player {self.idx} is frozen, cannot set value'
         assert self.has_object(pos)
         obj = self.objects[pos]
         del self.objects[pos]
@@ -1187,22 +1026,6 @@ class OvercookedState(object):
         object_list = [SoupState.from_dict(o) for o in state_dict["objects"]]
         state_dict["objects"] = {ob.position: ob for ob in object_list}
         return OvercookedState(**state_dict)
-
-    def freeze(self):
-        self._frozen = True
-        for player in self.players:
-            player.freeze()
-        for obj in self.objects.values():
-            obj.freeze()
-        return self
-
-    def unfreeze(self):
-        self._frozen = False
-        for player in self.players:
-            player.unfreeze()
-        for obj in self.objects.values():
-            obj.unfreeze()
-        return self
 
 
 BASE_REW_SHAPING_PARAMS = {
@@ -1862,27 +1685,11 @@ class OvercookedGridworld(object):
         return pos in self.terrain_pos_dict["W"]
 
     def check_can_slip(self,old_player_state,new_player_state):
-        """
-        You can slip if all are satisfied
-        1. moved into a state in water (waiting/rotating = no slip)
-        2. you have a held item
-        """
         # They end their turn in water
         if not self.is_water(new_player_state.position): return False
-
         # If they do not have a held item  ==> no slipping
         if not new_player_state.has_object(): return False
         # if not old_player_state.has_object(): return False
-
-
-        same_pos = np.all(old_player_state.position ==
-                                 new_player_state.position)
-        if same_pos:
-            picked_up_item = old_player_state.has_object() == False and \
-                             new_player_state.has_object() == True  # resolves picking up from counter
-            if not picked_up_item:
-                return False
-
         return True
 
         # can_slip = True
@@ -1926,8 +1733,7 @@ class OvercookedGridworld(object):
                     obj = new_player.remove_object() # remove item from players hand and the environment
                     dropped_reward_by_player[player_idx] = self.dropped_object_rewards[obj.name]
                     self.log_object_slip(events_infos, obj.name, player_idx) # add event flag for later animation update
-                    # new_player.dropped_obj = obj.name
-                    new_player.dropped_obj = obj
+                    new_player.dropped_obj = obj.name
                 else:
                     new_player.dropped_obj = 'none'
 
@@ -2810,14 +2616,6 @@ class OvercookedGridworld(object):
         :return: {joint_action, next_state, p_next_state}
         """
 
-        # true_state = state.deepcopy()
-        # state = state.deepcopy()  # make sure we don't modify the original state
-        outcomes = []
-        state = state.deepcopy().freeze() # make sure we don't modify the original state
-
-
-        if as_tensor: assert device is not None, 'If using tensor, device must be specified'
-
         def make_obs(_state):
             if encoded and as_tensor:
                 next_obs = self.get_lossless_encoding_vector_astensor(_state, device).unsqueeze(0)
@@ -2828,77 +2626,26 @@ class OvercookedGridworld(object):
                 next_obs = next_state.deepcopy()
             return next_obs
 
-        def add_interact_obj(_iplayer,_held_objs,_action):
-            if _held_objs[_iplayer] is not None:
-                next_state.players[_iplayer].set_object(_held_objs[_iplayer])
-            else:
-                print('uknown transition in one_step_lookahead()',)
-                print(state)
-            return next_state
+        if as_tensor: assert device is not None, 'If using tensor, device must be specified'
 
-        def psuedo_transition():
-            next_state = state.deepcopy().unfreeze()
-            events_infos = {event: [False] * self.num_players for event in EVENT_TYPES}
-            self.resolve_interacts(next_state.unfreeze(), joint_action, events_infos)
-            assert next_state.player_positions == state.player_positions
-            assert next_state.player_orientations == state.player_orientations
-            self.resolve_movement(next_state.unfreeze(), joint_action)  # Resolve player movements
-            self.step_environment_effects(next_state.unfreeze())  # Finally, environment effects
-            return next_state
+        outcomes = []
+        # state = state.deepcopy()
+        true_state = state.deepcopy()
 
-
-
-        # Perform the joint action ##############################
-        # next_state, mdp_infos = self.get_state_transition(state, joint_action)
-        # can_slip = [self.check_can_slip(state.players[i], next_state.players[i]) for i in range(2)]
-        next_state = psuedo_transition()
-        true_next_state = next_state.deepcopy().freeze()  # make sure we don't modify the original state
-
-
-        # get originally held objects ##################################
-        can_slip = []
+        # get originally held objects
         held_objs = []
-        for iplayer, player in enumerate(true_next_state.players):
-            # Check if can slip --------------------------------------------
-            can_slip.append(self.check_can_slip(state.players[iplayer], true_next_state.players[iplayer]))
+        for player in state.players:
+            held_objs.append(player.get_object().deepcopy() if player.has_object() else None)
 
-            # Get held objs-------------------------------------------------
-            if player.has_object():
-                held_objs.append(player.get_object().deepcopy())
+        # Perform the joint action
+        next_state, mdp_infos = self.get_state_transition(state, joint_action)
+        can_slip = [self.check_can_slip(state.players[i], next_state.players[i]) for i in range(2)]
 
-            # elif joint_action[iplayer] == 'interact':
-            #     pos, orientation = player.position, player.orientation
-            #     adj_pos = Action.move_in_direction(pos, orientation)
-            #     if state.has_object(adj_pos):
-            #         held_objs.append(state.get_object(adj_pos).deepcopy())
-            #     else:
-            #         held_objs.append(None)
-            else:
-                held_objs.append(None)
-        # for iplayer, player in enumerate(state.players):
-            # # Check if can slip --------------------------------------------
-            # can_slip.append(self.check_can_slip(state.players[iplayer], next_state.players[iplayer]))
-            #
-            # # Get held objs-------------------------------------------------
-            # if player.has_object():
-            #     held_objs.append(player.get_object().deepcopy())
-            #
-            # elif joint_action[iplayer] == 'interact':
-            #     pos, orientation = player.position, player.orientation
-            #     adj_pos = Action.move_in_direction(pos, orientation)
-            #     if state.has_object(adj_pos):
-            #         held_objs.append(state.get_object(adj_pos).deepcopy())
-            #     else:
-            #         held_objs.append(None)
-            # else:
-            #     held_objs.append(None)
-
-        held_objs = tuple(held_objs)
-        can_slip = tuple(can_slip)
-            # Sanity check ------------------------------------------------
-            # if self.p_slip == 0 and can_slip[iplayer]:
-            #     assert true_state.players[iplayer].has_object() == next_state.players[
-            #         iplayer].has_object(), f'P{iplayer + 1} unexpectedly lost object'
+        for iplayer in range(2):
+            # if self.p_slip == 0 and self.is_water(next_state.players[iplayer].position):
+            if self.p_slip == 0 and can_slip[iplayer]:
+                assert true_state.players[iplayer].has_object() == next_state.players[
+                    iplayer].has_object(), f'P{iplayer + 1} unexpectedly lost object'
 
         # true_next_state = next_state.deepcopy()
         # true_next_obs = make_obs(true_next_state)
@@ -2925,22 +2672,19 @@ class OvercookedGridworld(object):
             prob = 1 - self.p_slip
             if not next_state.players[iplayer].has_object():
                 # next_state.players[iplayer].set_object(held_objs[iplayer])
-                next_state = add_interact_obj(iplayer, held_objs, joint_action[iplayer])
 
-                # if held_objs[iplayer] is not None:
-                #     next_state.players[iplayer].set_object(held_objs[iplayer])
-                #
-                # else: # interacting with counter (pick up)
-                #     pos = true_state.players[iplayer].position
-                #     orientation = true_state.players[iplayer].orientation
-                #
-                #     # get object player is facing
-                #     adj_pos = Action.move_in_direction(pos, orientation)
-                #     for obj in true_state.objects.values():
-                #         if adj_pos == obj.position:
-                #             next_state.players[iplayer].set_object(obj)
-                #             break
+                if held_objs[iplayer] is not None:
+                    next_state.players[iplayer].set_object(held_objs[iplayer])
+                else: # interacting with counter (pick up)
+                    pos = next_state.players[iplayer].position
+                    orientation = next_state.players[iplayer].orientation
 
+                    # get object player is facing and pick up
+                    adj_pos = Action.move_in_direction(pos, orientation)
+                    for obj in state.objects.values():
+                        if adj_pos == obj.position:
+                            next_state.players[iplayer].set_object(obj)
+                            break
 
 
 
@@ -2963,11 +2707,7 @@ class OvercookedGridworld(object):
                 if next_state.players[iplayer].has_object():
                     next_state.players[iplayer].remove_object()
                 if not next_state.players[int(not iplayer)].has_object():
-                    # next_state.players[int(not iplayer)].set_object(held_objs[int(not iplayer)])
-                    next_state = add_interact_obj(not iplayer, held_objs,joint_action[iplayer])
-
-
-
+                    next_state.players[int(not iplayer)].set_object(held_objs[int(not iplayer)])
                 outcomes.append([joint_action, make_obs(next_state), prob])
                 # print(f'1L[{iplayer}]: {[player.has_object() for player in next_state.players]}')
 
@@ -2975,8 +2715,7 @@ class OvercookedGridworld(object):
             prob = (1 - self.p_slip) * (1 - self.p_slip)
             for iplayer in range(2):
                 if not next_state.players[iplayer].has_object():
-                    # next_state.players[iplayer].set_object(held_objs[iplayer])
-                    next_state = add_interact_obj(iplayer, held_objs,joint_action[iplayer])
+                    next_state.players[iplayer].set_object(held_objs[iplayer])
             outcomes.append([joint_action, make_obs(next_state), prob])
             # print(f'BL: {[player.has_object() for player in next_state.players]}')
 
@@ -3005,7 +2744,8 @@ class OvercookedGridworld(object):
 
     def get_lossless_encoding_vector_astensor(self, overcooked_state,device):
         feat_vec = self.get_lossless_encoding_vector(overcooked_state)
-        return torch.from_numpy(feat_vec).cuda(non_blocking=True).float()
+        return torch.from_numpy(feat_vec).to(device,non_blocking=True).float()
+        # return torch.from_numpy(feat_vec).cuda(non_blocking=True).float()
 
         # # feature_vector = self.get_lossless_encoding_vector(overcooked_state)
         # # feature_vector =  torch.tensor(feature_vector).to(device=device, non_blocking=True).unsqueeze(0)

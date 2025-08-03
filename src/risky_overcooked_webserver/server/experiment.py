@@ -18,7 +18,7 @@ from queue import Empty, Full, LifoQueue, Queue
 from data_logging import DummyData, DemographicData,SurveyData, InteractionData
 from utils import ThreadSafeDict, ThreadSafeSet
 from datetime import datetime
-from game import ToMAI,TutorialAI, Game, OvercookedGame
+from game import ToMAI,TutorialAI,StayAI, Game, OvercookedGame
 import game as GAME
 from risky_overcooked_py.mdp.actions import Action, Direction
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
@@ -38,6 +38,9 @@ if True:
 
     LOGFILE = CONFIG["logfile"] # Where errors will be logged
     LAYOUTS = CONFIG["layouts"] # Available layout names
+    AGENTS = CONFIG["AGENTS"]  # Path to where pre-trained agents will be stored on server
+    EXPERIMENT_CONFIG = CONFIG["EXPERIMENT_CONFIG"]  # Path to where pre-trained agents will be stored on server
+
     LAYOUT_GLOBALS = CONFIG["layout_globals"]     # Values that are standard across layouts
     MAX_GAME_LENGTH = CONFIG["MAX_GAME_LENGTH"]    # Maximum allowable game length (in seconds)
     AGENT_DIR = CONFIG["AGENT_DIR"]    # Path to where pre-trained agents will be stored on server
@@ -45,6 +48,8 @@ if True:
     MAX_FPS = CONFIG["MAX_FPS"] # Frames per second cap for serving to client
     PREDEFINED_CONFIG = json.dumps(CONFIG["predefined"])     # Default configuration for predefined experiment
     TUTORIAL_CONFIG = json.dumps(CONFIG["tutorial"])     # Default configuration for tutorial
+
+    EXPERIMENT_CONFIG = CONFIG["EXPERIMENT_CONFIG"]  # Default configuration for tutorial
 
 
     FREE_IDS = queue.Queue(maxsize=MAX_EXPERIMENTS) # Global queue of available IDs. This is how we synch game creation and keep track of how many games are in memory
@@ -105,7 +110,7 @@ def try_create_experiment(user_id,*args,**kwargs):
     try:
         curr_id = FREE_IDS.get(block=False)
         assert FREE_MAP[curr_id], "Current id is already in use"
-        print("Creating experiment with id {}".format(curr_id) if DEBUG else "")
+        # print("Creating experiment with id {}".format(curr_id) if DEBUG else "")
         experiment = Experiment(curr_id, **kwargs)
         EXPERIMENT_MAP[user_id] = curr_id
         # EXPERIMENTS[experiment.id] = experiment
@@ -165,8 +170,8 @@ def set_curr_room(user_id, room_id):
 # def get_curr_room(user_id):
 #     return USER_ROOMS.get(user_id, None)
 #
-# def leave_curr_room(user_id):
-#     del USER_ROOMS[user_id]
+def leave_curr_room(user_id):
+    del USER_ROOMS[user_id]
 
 
 #########################################################################################
@@ -178,11 +183,77 @@ def _create_user(user_id):
     USERS[user_id] = Lock()
     if DEBUG: print(f'Created User: {user_id}')
 
-def _leave_game(user_id):
-    raise NotImplementedError("Deprecated.")
+def _delete_user(user_id):
+    """
+    Removes `user_id` from it's current game, if it exists. Rebroadcast updated game state to all
+    other users in the relevant game.
+
+    Leaving an active game force-ends the game for all other users, if they exist
+
+    Leaving a waiting game causes the garbage collection of game memory, if no other users are in the
+    game after `user_id` is removed
+    """
+    # Get pointer to current game if it exists
+    experiment = get_curr_experiment(user_id)
+
+    if not experiment:
+        # Cannot leave a experiment if not currently in one
+        return False
+
+    # Acquire this experiment's lock to ensure all global state updates are atomic
+    with experiment.lock:
+        # Update socket state maintained by socketio
+        leave_room(experiment.id)
+        # Update user data maintained by this app
+        leave_curr_room(user_id)
+
+        # cleanup game if open
+        game = experiment.game
+        if game is not None:
+            if user_id in game.players:
+                game.remove_player(user_id)
+            else:
+                game.remove_spectator(user_id)
+            game.deactivate()
+            experiment.close_game()
+
+
+
+        # Whether the game was active before the user left
+        was_active = experiment.id in ACTIVE_EXPERIMENTS
+
+
+        # # Rebroadcast data and handle cleanup based on the transition caused by leaving
+        # if was_active and open_game:
+        #     # Active -> Empty
+        #     experiment.game.deactivate()
+        # elif open_game:
+        #     # Waiting -> Empty
+        #     cleanup_game(experiment.game)
+        cleanup_experiment(experiment)
+
+        # elif not was_active:
+        #     # Waiting -> Waiting
+        #     emit("waiting", {"in_game": True}, room=game.id)
+        # elif was_active and game.is_ready():
+        #     # Active -> Active
+        #     pass
+        # elif was_active and not game.is_empty():
+        #     # Active -> Waiting
+        #     game.deactivate()
+
+    return was_active
+
+
+def _leave_experiment(user_id):
+    _delete_user(user_id)
+    # raise NotImplementedError("Deprecated.")
 
 def _create_experiment(user_id, params={}):
     experiment, err = try_create_experiment(user_id, **params)
+
+
+
     if not experiment:
         raise IOError("Error creating experiment: _create_experiment()")
         emit("creation_failed", {"error": err.__repr__()})
@@ -191,6 +262,7 @@ def _create_experiment(user_id, params={}):
     with experiment.lock:
         join_room(experiment.id)
     set_curr_room(user_id, experiment.id)
+
 
 
 def _ensure_consistent_state():
@@ -226,6 +298,11 @@ def _ensure_consistent_state():
 def index():
     # TODO: pass all of necessary config
     return render_template("experiment.html",  tutorial_config=TUTORIAL_CONFIG)
+
+@app.route("/server_full")
+def server_full():
+    # TODO: pass all of necessary config
+    return render_template("server_full.html")
 
 
 @app.route("/debug")
@@ -318,15 +395,51 @@ def creation_params(params):
         params["dataCollection"] = False
     # raise NotImplementedError("Deprecated.")
 
+def print_server_info(header='',**kwargs):
+    print(header + f'current server capacity:{len(EXPERIMENTS)}/{MAX_EXPERIMENTS}',**kwargs)
+    print(header + f'free_ids={FREE_IDS.qsize()} ',**kwargs)
+    print(header + f'free_map={len(FREE_MAP)}',**kwargs)
+    print(header + f'active_experiments={len(ACTIVE_EXPERIMENTS)}',**kwargs)
+
 @socketio.on("connect")
 def on_connect():
     user_id = request.sid
+    if user_id in USERS: return
+    USERS[user_id] = Lock()
 
-    if user_id in USERS:
+    """ Check if server is Full"""
+    if DEBUG:
+        print(f'\nNew Connection: {user_id}', file=sys.stderr)
+        print_server_info(header='\t| ', file=sys.stderr)
+
+
+    if is_server_full():
+        print(f'\t| Server is full, redirecting user {user_id} to server_full page.', file=sys.stderr)
+        socketio.emit("redirect", {'url': '/server_full'}, room=user_id)
         return
 
-    USERS[user_id] = Lock()
-    print(user_id)
+    """ Try and create experiment """
+    # user_id = request.sid
+    _create_user(user_id)
+
+    # create experiment
+    with USERS[user_id]:
+        if get_curr_experiment(user_id):
+            raise IOError("User has in experiment")
+            return  # TODO: Check if user is in a experiment that was closed out of
+
+        # Create game if not previously in one
+        params = {}
+        # params = data.get("params", {})
+        # if DEBUG: print("\t| params", params)
+
+        # params = EXPERIMENT_CONFIG
+        creation_params(params)
+        _create_experiment(user_id, params)
+        return
+
+def is_server_full():
+    return len(EXPERIMENTS) >= MAX_EXPERIMENTS
 
 @socketio.on("join_experiment")
 def on_join_experiment(data):
@@ -355,7 +468,7 @@ def on_join_experiment(data):
 def on_create_game(data):
     """ Participants clicks [Begin Game] button"""
 
-    if DEBUG: print(f"create_game triggered: {data}")
+    # if DEBUG: print(f"create_game triggered: {data}" if DEBUG else "")
 
     user_id = request.sid
 
@@ -363,6 +476,11 @@ def on_create_game(data):
         curr_experiment = get_curr_experiment(user_id)
 
         if curr_experiment.game is None:
+            print(f"Creating game for user {user_id} with data: {data}" if DEBUG else "")
+            curr_experiment.open_game(**data)
+        else:
+            print(f"Found existing game for user {user_id}, Creating new game with data: {data}" if DEBUG else "")
+            curr_experiment.close_game()  # Close any existing game before opening a new one
             curr_experiment.open_game(**data)
 
         curr_game = curr_experiment.game
@@ -373,7 +491,7 @@ def on_create_game(data):
                 curr_game.activate()
                 emit(
                     "start_game",
-                    {"start_info": curr_game.to_json()},
+                    {"start_info": curr_game.to_json(), "is_priming": False},
                     room=curr_game.id,
                 )
                 socketio.start_background_task(play_game, curr_game, fps=6)
@@ -383,7 +501,7 @@ def on_create_game(data):
                 render_info = curr_game.render()
                 emit(
                     "start_game",
-                    {"start_info": render_info},
+                    {"start_info": render_info, "is_priming": True},
                     room=curr_game.id,
                 )
                 # with curr_game.lock:
@@ -397,23 +515,20 @@ def on_create_game(data):
 
 @socketio.on("survey_response")
 def on_survey_response(data):
-    """ Participants clicks [Join] button on landing page"""
+    """ Participants submits a survey response"""
     if DEBUG: print("survey_response triggered")
     user_id = request.sid
     with USERS[user_id]:
         curr_experiment = get_curr_experiment(user_id)
 
+        # Double check no open games before logging survey data
         if curr_experiment.game is not None:
             curr_experiment.close_game()
 
         for key,responses in data.items():
-
             with curr_experiment.lock:
                 curr_experiment.log_survey(key, responses)
-                curr_experiment.update_stage(key, True)
-
-
-
+                # curr_experiment.update_stage(key, True)
 
 @socketio.on("update_stage")
 def on_update_stage(data):
@@ -421,39 +536,35 @@ def on_update_stage(data):
 
     # Joining Experiment
     for key,val in data.items():
-        if key == 'skip':
-            return
         if key == 'join':
-            """ Participants clicks [Join] button on landing page"""
-            user_id = request.sid
-            _create_user(user_id)
+            # """ Participants clicks [Join] button on landing page"""
+            # user_id = request.sid
+            # _create_user(user_id)
+            #
+            # # create experiment
+            # with USERS[user_id]:
+            #     if get_curr_experiment(user_id):
+            #         raise IOError("User has in experiment")
+            #         return  # TODO: Check if user is in a experiment that was closed out of
+            #
+            #     # Create game if not previously in one
+            #     params = data.get("params", {})
+            #     if DEBUG: print("\t| params", params)
+            #
+            #     # params = EXPERIMENT_CONFIG
+            #
+            #     creation_params(params)
+            #     _create_experiment(user_id, params)
+            #     return
+            return
 
-            # create experiment
-            with USERS[user_id]:
-
-                if get_curr_experiment(user_id):
-                    raise IOError("User has in experiment")
-                    return  # TODO: Check if user is in a experiment that was closed out of
-
-                # Create game if not previously in one
-                params = data.get("params", {})
-                if DEBUG: print("\t| params", params)
-
-                creation_params(params)
-                _create_experiment(user_id, params)
-                return
         else:
             # All other updates
             user_id = request.sid
             with USERS[user_id]:
                 curr_experiment = get_curr_experiment(user_id)
-                if DEBUG: print(user_id,curr_experiment)
-
                 with curr_experiment.lock:
-
-                    for key,val in data.items():
-                        curr_experiment.update_stage(key,val)
-
+                    curr_experiment.update_stage(key,val)
 
 @socketio.on("action")
 def on_action(data):
@@ -475,12 +586,18 @@ def on_disconnect():
     print("disonnect triggered", file=sys.stderr)
     # Ensure game data is properly cleaned-up in case of unexpected disconnect
     user_id = request.sid
-    if user_id not in USERS:
-        return
-    with USERS[user_id]:
-        _leave_game(user_id)
+    # if user_id not in USERS:
+    #     return
+    # with USERS[user_id]:
+    #     _leave_experiment(user_id)
+    #
+    # del USERS[user_id]
+    if user_id  in USERS:
+        with USERS[user_id]:
+            _leave_experiment(user_id)
+        del USERS[user_id]
 
-    del USERS[user_id]
+    print_server_info(header='\t| ', file=sys.stderr)
 
 @socketio.on("leave")
 def on_leave(data):
@@ -488,21 +605,45 @@ def on_leave(data):
 
 @socketio.on("close_game")
 def on_close_game(data):
-    if DEBUG: print(f'Closing game...')
+    if DEBUG: print(f'Closing game...', end='')
     user_id = request.sid
-
     with USERS[user_id]:
         curr_experiment = get_curr_experiment(user_id)
         with curr_experiment.lock:
             # _close_hanging_games(curr_experiment)
             curr_experiment.close_game()
+            curr_experiment.update_stage(curr_experiment.current_stage, True)
+    # if DEBUG: print(f'game={curr_experiment.game}')
     # raise NotImplementedError("Deprecated.")
 
-@socketio.on("client_ready")
-def on_client_ready(data):
-    # user_id = request.sid
-    # print(f"[{user_id}] client joined", file=sys.stderr)
-    raise NotImplementedError("Deprecated.")
+@socketio.on("complete_experiment")
+def on_complete_experiment(data):
+    user_id = request.sid
+    with USERS[user_id]:
+        curr_experiment = get_curr_experiment(user_id)
+        if DEBUG: print(user_id, 'Closing experiment')
+
+        with curr_experiment.lock:
+            curr_experiment.close_experiment()
+
+
+@socketio.on("request_stages")
+def on_request_stages(data):
+    user_id = request.sid
+    # raise NotImplementedError("Deprecated.")
+    STAGE_NAMES = []
+    for key in EXPERIMENT_CONFIG['stages'].keys():
+        if 'game_loop' in key:
+            n = int(key[-1])
+            for i in range(n * len(LAYOUTS), (n + 1) *  len(LAYOUTS)):
+                STAGE_NAMES.append(f'priming{i}')
+                STAGE_NAMES.append(f'game{i}' )
+                STAGE_NAMES.append(f'trust_survey{i}' )
+        else:
+            STAGE_NAMES.append(key)
+
+    # STAGE_NAMES = [key for key in EXPERIMENT_CONFIG['stages'].keys()]
+    socketio.emit('stage_data', {'stages':STAGE_NAMES,'debug':  EXPERIMENT_CONFIG['debug']}, room=user_id)
 
 # Exit handler for server
 def on_exit():
@@ -532,22 +673,29 @@ class RiskyOvercookedGame(OvercookedGame):
     def __init__(self,
                  layout,
                  partner_name,
+                 p_slip,
                  **kwargs
                  ):
 
         self.layout = layout
-        self.curr_layout = layout
+        self.p_slip = p_slip
         kwargs['layouts'] = [layout]
-        super(RiskyOvercookedGame, self).__init__(playerOne=partner_name, max_game_time = 200,**kwargs)
+
+        super(RiskyOvercookedGame, self).__init__(playerOne=partner_name,
+                                                  max_game_time = EXPERIMENT_CONFIG.get('game_length',60),
+                                                  gameTime = EXPERIMENT_CONFIG.get('game_length',60),
+                                                  **kwargs)
         self.mdp_params = kwargs.get("mdp_params", {'neglect_boarders':True})
-        self.layout = layout
-        self.curr_layout = layout
         self.id = kwargs.get("id", id(self))
 
         # Add human as player 0
-        self.ihuman = 0
-        human_id = 'human' + "_0"
-        self.add_player(human_id, idx=0, is_human=True)
+        # self.ihuman = 0
+        # human_id = 'human' + "_0"
+        # self.add_player(human_id, idx=0, is_human=True)
+        self.inpc = AGENTS['npc_player']
+        self.ihuman = AGENTS['human_player']
+        human_id = 'human' + f"_{self.ihuman}"
+        self.add_player(human_id, idx=self.ihuman, is_human=True)
 
         self.write_data = False
         self.is_tutorial = 'tutorial' in layout.lower()
@@ -597,6 +745,10 @@ class RiskyOvercookedGame(OvercookedGame):
         curr_reward = sum(info["sparse_reward_by_agent"]) if not self.is_tutorial else info["sparse_reward_by_agent"][self.ihuman]
         self.score += curr_reward
 
+        for key, val in self.npc_policies.items():
+            belief = str(self.npc_policies[key].belief) if isinstance(val, ToMAI) else str([1])
+
+
         transition = {
             "state": json.dumps(prev_state.to_dict()),
             "joint_action": json.dumps(joint_action),
@@ -612,9 +764,11 @@ class RiskyOvercookedGame(OvercookedGame):
             "player_1_id": self.players[1],
             "player_0_is_human": self.players[0] in self.human_players,
             "player_1_is_human": self.players[1] in self.human_players,
+            "belief": belief,
         }
 
         self.trajectory.append(transition)
+
 
         # Return about the current transition
         return prev_state, joint_action, info
@@ -622,8 +776,9 @@ class RiskyOvercookedGame(OvercookedGame):
     def get_policy(self,npc_id, idx=0):
         if npc_id.lower() == "rs-tom":
             try:
+                # agent = StayAI()
                 agent = ToMAI(['averse', 'neutral', 'seeking'])
-                # agent.activate(self.mdp)
+                # # agent.activate(self.mdp)
                 return agent
             except Exception as e:
                 raise IOError("Error loading Agent\n{}".format(e.__repr__()))
@@ -673,17 +828,21 @@ class RiskyOvercookedGame(OvercookedGame):
 
         # Sanity check at start of each game
         if not self.npc_players.union(self.human_players) == set(self.players):
-            raise ValueError("Inconsistent State")
+            raise ValueError(f"Inconsistent State {self.npc_players} {self.human_players}\\neq {self.players}")
 
-        self.curr_layout = self.layouts.pop()
+        # self.curr_layout = self.layouts.pop()
+        # self.mdp = OvercookedGridworld.from_layout_name(
+        #     self.curr_layout, **self.mdp_params
+        # )
+        self.mdp_params["p_slip"] = self.p_slip
         self.mdp = OvercookedGridworld.from_layout_name(
-            self.curr_layout, **self.mdp_params
+            self.layout, **self.mdp_params
         )
 
         if self.debug:
-            print(f'\n\nActivating OvercookedGame...')
-            print("\tLayout: {}".format(self.curr_layout))
-            print("\tp_slip: {}".format(self.mdp.p_slip))
+            print(f'Activating OvercookedGame...\t',end='')
+            print("\tLayout: {}".format(self.layout),end='')
+            print("\tp_slip: {}".format(self.mdp.p_slip),end='')
             print("\tWrite data: {}".format(self.write_data))
 
         for key, val in self.npc_policies.items():
@@ -715,23 +874,91 @@ class RiskyOvercookedGame(OvercookedGame):
             except Empty:
                 pass
 
-            return joint_action
+        return joint_action
 
     def tick(self):
         for key, val in self.npc_policies.items():
+
             if isinstance(val, ToMAI):
                 human_action,ai_action = self.view_action()
-                self.npc_policies[key].observe(self.state,human_action,ai_action)
+                # self.npc_policies[key].observe(self.state,human_action,ai_action)
+                # ai_action,human_action = self.view_action()
+                self.npc_policies[key].observe(self.state, human_action, ai_action)
 
         return super(RiskyOvercookedGame, self).tick()
-class Experiment:
-    #TODO: Switch to predefined config
 
-    TRIALS = [
-        # {'layout': 'risky_coordination_ring','p_slip': 0.4},
-        {'layout': 'risky_multipath', 'p_slip': 0.4},
-        {'layout': 'risky_multipath', 'p_slip': 0.4}
-    ]
+    def activate(self):
+        # super(OvercookedGame, self).activate()
+        self._is_active = True
+
+        # Sanity check at start of each game
+        if not self.npc_players.union(self.human_players) == set(self.players):
+            raise ValueError("Inconsistent State")
+
+        self.curr_layout = self.layouts.pop()
+        if self.p_slip != 'default' and self.p_slip != 'def':
+            self.mdp_params['p_slip'] = self.p_slip
+        self.mdp = OvercookedGridworld.from_layout_name(
+            self.curr_layout, **self.mdp_params
+        )
+        for key, val in self.npc_policies.items():
+            if isinstance(val, ToMAI):
+                # If the policy is a DQN vector feature policy, we need to activate it
+                self.npc_policies[key].activate(self.mdp)
+
+        if self.debug:
+            print(f'\n\nActivating OvercookedGame...')
+            print("\tLayout: {}".format(self.curr_layout))
+            print("\tp_slip: {}".format(self.mdp.p_slip))
+            print("\tWrite data: {}".format(self.write_data))
+
+        for key, val in self.npc_policies.items():
+            if isinstance(val, ToMAI):
+                self.npc_policies[key].activate(self.mdp)
+
+                if self.debug:
+                    print("\tCanidates...")
+                    for can_fname in self.npc_policies[key].candidate_fnames:
+                        print("\t\t{}".format(can_fname))
+
+        # if self.show_potential:
+        #     self.mp = MotionPlanner.from_pickle_or_compute(
+        #         self.mdp, counter_goals=NO_COUNTERS_PARAMS
+        #     )
+        self.state = self.mdp.get_standard_start_state()
+        if self.show_potential:
+            self.phi = self.mdp.potential_function(
+                self.state, self.mp, gamma=0.99
+            )
+        self.start_time = time()
+        self.curr_tick = 0
+        self.score = 0
+        self.threads = []
+        if not self.is_frozen:
+
+            for npc_policy in self.npc_policies:
+                self.npc_policies[npc_policy].reset()
+                self.npc_state_queues[npc_policy].put(self.state)
+                t = Thread(target=self.npc_policy_consumer, args=(npc_policy,))
+                self.threads.append(t)
+                t.start()
+
+    def to_json(self):
+        obj_dict = {}
+        obj_dict["terrain"] = self.mdp.terrain_mtx if self._is_active else None
+        obj_dict["state"] = self.get_state() if self._is_active else None
+        obj_dict["layout"] = self.layout if self._is_active else None
+        return obj_dict
+
+
+class Experiment:
+
+    TRIALS = []
+    for layout_str in LAYOUTS:
+        p_slip = float('0.'+layout_str.split('pslip')[-1][1:])
+        layout = layout_str.split('_')[:-1]
+        layout = '_'.join(layout)
+        TRIALS.append({'layout': layout, 'p_slip': p_slip})
 
     CONDITIONS = {
         0: ['rs-tom', 'rational'],  # infers risk-sensitivity vs assumes they are rational
@@ -742,28 +969,38 @@ class Experiment:
     #### INITIALIZATION #####################################################################
 
     def __init__(self, uid, **kwargs):
-        if DEBUG:
-            print(f"Creating Experiment:")
-            print(f"\t| ID: {uid}")
-            for key, val in kwargs.items():
-                print(f"\t| {key}: {val}")
+
         self.id = uid # used for internal client id
-        self.prolific_id = kwargs.get('prolific_id','None' ) # the id used by prolific
-        self.timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # timestamp of experiment start
+        self.prolific_id = kwargs.get('prolific_id','NoProlificID' ) # the id used by prolific
+        self.timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") # timestamp of experiment start
 
         self.layouts, self.p_slips, self.partners = self.sample_condition()
         self.trial_params =list(zip(self.layouts, self.p_slips, self.partners))
+
         self.n_trials = len(self.layouts) # number of trials in the experiment
 
-
         self.stages = self.init_stage_data() # initialize data logging
+        self.stage_names = list(self.stages.keys())
+        self.current_stage = self.stage_names[0]
+        self.stage_idx = -1
+
+        self.icond = None
         self.condition = None # assigned when sampling condition
         self.robot = None # loaded on trial begin
         self.game = None # loads when game is created
         self.lock = Lock()
 
         # TODO: Implement these attributes
-        self.data_collection = kwargs.get("dataCollection", True)  # whether to collect data
+        self.data_collection = True #kwargs.get("dataCollection", True)  # whether to collect data
+
+        if DEBUG:
+            print(f"\nInstantiating Experiment:")
+            print(f"\t| ID: {uid}")
+            for key, val in kwargs.items():
+                print(f"\t| {key}: {val}")
+            print('\t| Trials:')
+            for trial in self.trial_params:
+                print(f"\t| \t|{trial}")
 
     def sample_condition(self,all_games=True):
         """ Randomly sample a trial from the TRIALS list. """
@@ -773,8 +1010,8 @@ class Experiment:
 
         if all_games:
             """ Each partner will play all layouts."""
-            icond = np.random.randint(0,2) # 0 or 1
-            self.condition = self.CONDITIONS[icond]
+            self.icond = np.random.randint(0,2) # 0 or 1
+            self.condition = self.CONDITIONS[self.icond]
             for partner in self.condition:
                 trials = copy.deepcopy(self.TRIALS)
                 np.random.shuffle(trials)
@@ -787,64 +1024,120 @@ class Experiment:
         return layouts,p_slips,partner_types
 
     def init_stage_data(self):
-        STAGES ={}
-        tutorial_p_slip = 0.0
-        partner = 'Tutorial'
-        # Pretrial --------------
-        STAGES['consent'] = DummyData()
-        STAGES['participant_information'] = DemographicData()
-        # STAGES['demographic'] = DemographicData()
-        STAGES['demographic'] = SurveyData('demographic')
-        STAGES['risk_propensity'] = SurveyData('risk_propensity')
-        STAGES['instructions'] = DummyData()
-        STAGES['risky_tutorial_0'] = InteractionData('tutorial0',tutorial_p_slip,partner)
-        STAGES['risky_tutorial_1'] = InteractionData('tutorial1',tutorial_p_slip,partner)
-        STAGES['risky_tutorial_2'] = InteractionData('tutorial2',tutorial_p_slip,partner)
-        STAGES['risky_tutorial_3'] = InteractionData('tutorial3',tutorial_p_slip,partner)
+        STAGES = {}
 
-        # Trials --------------
-        for i in range(int(self.n_trials/2)):
-            STAGES[f'priming{i}'] = SurveyData(f'priming{i}')
-            STAGES[f'game{i}'] = InteractionData(self.layouts[i],self.p_slips[i],self.partners[i])
-            STAGES[f'trust_survey{i}'] =  SurveyData(f'trust_survey{i}')
 
-        STAGES[f'washout'] = DummyData()
+        for stage_name, data_type in EXPERIMENT_CONFIG["stages"].items():
 
-        for i in range(int(self.n_trials/2),self.n_trials):
-            STAGES[f'priming{i}'] = SurveyData(f'priming{i}')
-            STAGES[f'game{i}'] = InteractionData(self.layouts[i], self.p_slips[i], self.partners[i])
-            STAGES[f'trust_survey{i}'] = SurveyData(f'trust_survey{i}')
+            if 'DummyData'.lower() in str(data_type).lower():
+                STAGES[stage_name] = DummyData()
 
-        # Posttrial --------------
-        STAGES['relative_trust_survey'] =  SurveyData(f'relative_trust_survey')
-        STAGES['debriefing'] = DummyData()
-        STAGES['redirected'] = DummyData()
+            elif 'SurveyData' in data_type:
+                STAGES[stage_name] = SurveyData(stage_name)
 
+            elif 'participant_information' in stage_name.lower():
+                STAGES[stage_name] = DemographicData()
+
+            elif 'risky_tutorial' in stage_name.lower():
+                STAGES[stage_name] = eval(data_type)(stage_name, 0.0, 'Tutorial')
+
+            elif 'game_loop' in stage_name.lower():
+                n = int(stage_name[-1])
+                for i in range(n*int(self.n_trials / 2), (n+1)*int(self.n_trials / 2)):
+                    STAGES[f'priming{i}'] = SurveyData(f'priming{i}')
+                    STAGES[f'game{i}'] = InteractionData(self.layouts[i], self.p_slips[i], self.partners[i])
+                    STAGES[f'trust_survey{i}'] = SurveyData(f'trust_survey{i}')
+            else:
+                print(f"Unknown stage type {data_type} for stage {stage_name}")
+
+
+        # print('Emitting stages...')
+        # socketio.emit('stage_data', {'stages':[key for key in STAGES.keys()]}, room=self.id)
+        if DEBUG:
+            print(f"Experiment {self.id} initialized with stages:")
+            for key, val in STAGES.items():
+                print(f"\t| {key}: {val.__class__.__name__}")
         return STAGES
+
+        # STAGES ={}
+        # tutorial_p_slip = 0.0
+        # partner = 'Tutorial'
+        # # Pretrial --------------
+        # STAGES['consent'] = DummyData()
+        # STAGES['participant_information'] = DemographicData()
+        # STAGES['demographic'] = SurveyData('demographic')
+        # STAGES['risk_propensity'] = SurveyData('risk_propensity')
+        # STAGES['instructions'] = DummyData()
+        # STAGES['risky_tutorial_0'] = InteractionData('tutorial0',tutorial_p_slip,partner)
+        # STAGES['risky_tutorial_1'] = InteractionData('tutorial1',tutorial_p_slip,partner)
+        # STAGES['risky_tutorial_2'] = InteractionData('tutorial2',tutorial_p_slip,partner)
+        # STAGES['risky_tutorial_3'] = InteractionData('tutorial3',tutorial_p_slip,partner)
+        #
+        # # Trials --------------
+        # for i in range(int(self.n_trials/2)):
+        #     STAGES[f'priming{i}'] = SurveyData(f'priming{i}')
+        #     STAGES[f'game{i}'] = InteractionData(self.layouts[i],self.p_slips[i],self.partners[i])
+        #     STAGES[f'trust_survey{i}'] = SurveyData(f'trust_survey{i}')
+        #
+        # STAGES[f'washout'] = DummyData()
+        #
+        # for i in range(int(self.n_trials/2),self.n_trials):
+        #     STAGES[f'priming{i}'] = SurveyData(f'priming{i}')
+        #     STAGES[f'game{i}'] = InteractionData(self.layouts[i], self.p_slips[i], self.partners[i])
+        #     STAGES[f'trust_survey{i}'] = SurveyData(f'trust_survey{i}')
+        #
+        # # Posttrial --------------
+        # STAGES['relative_trust_survey'] =  SurveyData(f'relative_trust_survey')
+        # STAGES['debriefing'] = DummyData()
+        # STAGES['redirected'] = DummyData()
+        #
+        # return STAGES
 
 
     #### INTERFACE ##########################################################################
-    def log_transition(self):
-        pass
+    def log_trajectory(self, trajectory):
+        assert self.game is not None, 'Experiment has no game to log trajectory for'
+        assert isinstance(self.stages[self.current_stage],InteractionData), \
+            f"Invalid Trajectory Logging Stage[{self.current_stage}] = {self.stages[self.current_stage]}"
+
+        if self.data_collection:
+            for transition in trajectory:
+                t = transition['cur_gameloop']
+                s = transition['state']
+                Ja = eval(transition['joint_action'])
+                aH = Ja[self.game.ihuman] #transition['joint_action'][self.game.ihuman]
+                aR = Ja[self.game.inpc] #transition['joint_action'][self.game.inpc]
+                info = {'belief': transition['belief']}
+                self.stages[self.current_stage].log_transition(t, s, aH, aR, info)
+                # if DEBUG:
+                #     print(f"Logging game data:")
+                #     print(f'\t t {t}')
+                #     print(f'\t s to big..')
+                #     print(f'\t aH {aH}')
+                #     print(f'\t aR {aR}')
+                #     print(f'\t info{json.dumps(info)}')
 
     def log_survey(self,name, response_dict):
-        assert name in self.stages.keys(), f"Survey Stage {name} not found in stages."
-        self.stages[name].set_responses(response_dict)
-        self.update_stage(name, True)
-        if DEBUG:
-            print(f"Logging {name} data:")
-            for key, val in response_dict.items():
-                print(f"\t| {key}: {val}")
-        # if name == 'demographic':
-        #     self.data.pretrial.set_demographic(**response_dict)
-        # elif name == 'risk_propensity':
-        #     self.data.pretrial.set_risk_propensity(response_dict)
+        if self.data_collection:
+            assert name in self.stages.keys(), f"Survey Stage {name} not found in stages."
+            self.stages[name].set_responses(response_dict)
+            self.update_stage(name, True)
+            if DEBUG: print(f"Logging {name} SURVEY data: {self.stages[name]}")
 
-
-    def update_stage(self,stage,val):
+    def update_stage(self,stage,completed):
         """ Update the current stage of the experiment. """
-        if stage in self.stages.keys(): self.stages[stage].complete = val
-        else:  raise ValueError(f"Stage {stage} not found in stages.")
+        assert stage in self.stages.keys(), f"Stage {stage} not found in stages."
+        assert stage == self.current_stage, \
+            f"Attemptingg to update stage {stage} when currently on {self.current_stage}"
+            # print(f"Updating stage {stage} to {self.current_stage} "
+            #       f"but current stage is {self.current_stage}. This may cause issues with data logging.",file=sys.stderr)
+
+
+        self.stages[stage].complete = completed
+        self.stage_idx = self.stage_names.index(stage) + (1 if completed else -1)
+        self.current_stage = self.stage_names[self.stage_idx]# if self.stage_idx < len(self.stage_names) else None
+        if DEBUG: print(f"\n\nUPDATING STAGE: [{stage} -> {self.current_stage}]")
+
 
     def verify(self):
         """ Verify that all stages are complete. """
@@ -857,21 +1150,25 @@ class Experiment:
     #### GAMESTATE MANAGEMENT ###############################################################
     def open_game(self,**kwargs):
         assert self.game is None, 'Experiment already exists'
-        if DEBUG: print("Opening game with params: ", kwargs)
+        # if DEBUG: print("Opening game with params: ", kwargs)
         # try:
         name = kwargs.get('name', 'Was not defined...')
 
         if 'tutorial' in name:
-            self.game = RiskyOvercookedGame(name,'TutorialAI',**kwargs)
+            self.is_priming = False
+            self.game = RiskyOvercookedGame(name,'TutorialAI',p_slip='default',**kwargs)
             # self.game = self.load_tutorial()
         elif 'game' in name:
+            self.is_priming = False
             trial_idx = int(kwargs['name'].split('game')[1])
             layout, p_slip, partner_type = self.trial_params[trial_idx]
-            self.game = RiskyOvercookedGame(layout,partner_type,**kwargs)
+            if DEBUG: print(f'Opening game {name} with layout={layout}, p_slip={p_slip}, partner_type={partner_type}')
+            self.game = RiskyOvercookedGame(layout,partner_type,p_slip,**kwargs)
         elif 'priming' in name:
+            self.is_priming =True
             trial_idx = int(kwargs['name'].split('priming')[1])
             layout, p_slip, partner_type = self.trial_params[trial_idx]
-            self.game = RiskyOvercookedGame(layout, partner_type, **kwargs)
+            self.game = RiskyOvercookedGame(layout, partner_type, p_slip, **kwargs)
             self.game.is_frozen = True
 
 
@@ -880,29 +1177,31 @@ class Experiment:
 
     def close_game(self):
         assert self.game is not None, 'Attempting to close a nonexistant game'
-        with self.game.lock:
-            data = self.game.get_data()
-            socketio.emit(
-                "end_game", {"status": 'closing', "data": data}, room=self.game.id
-            )
 
-            # if status != Game.Status.INACTIVE:
-            #     game.deactivate()
+
+        with self.game.lock:
+            if "priming" not in self.current_stage.lower():
+                self.log_trajectory(self.game.trajectory)
             self.game.deactivate()
             cleanup_game(self.game.id)
-
             del self.game
             self.game = None
-        # with self.lock:
-        #     socketio.emit(
-        #         "end_game", {"status": 'close', "data": {}}, room=self.game.id
-        #     )
-        #     self.game.deactivate()
-        #     del self.game
-        #     self.game = None
 
+        self.save_data()
 
     def close_experiment(self):
+        self.save_data()
+        leave_curr_room(self.id)
+
+        # Socketio tracking
+        socketio.close_room(self.id)
+        # Game tracking
+        FREE_MAP[self.id] = True
+        FREE_IDS.put(self.id)
+        del EXPERIMENTS[self.id]
+
+        if self.id in ACTIVE_EXPERIMENTS:
+            ACTIVE_EXPERIMENTS.remove(self.id)
 
         # if FREE_MAP[game.id]:
         #     raise ValueError("Double free on a game")
@@ -922,24 +1221,41 @@ class Experiment:
         #     ACTIVE_GAMES.remove(game.id)
         pass
     #### SAVE/LOAD ##########################################################################
-    def load_model(self,layout,p_slip,partner_type):
-        """ Load the model for the given layout, p_slip, and partner_type. """
-        # This is a placeholder function. You need to implement the actual loading logic.
-        pass
+    # def load_model(self,layout,p_slip,partner_type):
+    #     """ Load the model for the given layout, p_slip, and partner_type. """
+    #     # This is a placeholder function. You need to implement the actual loading logic.
+    #     pass
 
     def save_data(self):
         """ Save the experiment data to a file. """
-        # This is a placeholder function. You need to implement the actual saving logic.
-        pass
+        data_path = self.create_dirs()
+        fname = f'{self.timestamp}__{self.prolific_id}__cond{self.icond}.pkl'
+        with open(os.path.join(data_path, fname), "wb") as f:
+            pickle.dump(self.stages, f)
+
+        if DEBUG:
+            # print(f"Saving data to {os.path.join(data_path, fname)}")
+            print_link(os.path.join(data_path, fname))
+
+    def create_dirs(self, DOCKER_VOLUME = "\\app\\data"):
+        participant_folder = f'cond_{self.icond}'
+        path = os.path.join(
+            DOCKER_VOLUME,
+            participant_folder
+        )
+        if not os.path.exists(path):
+            os.makedirs(path)
+        return path
+
 
 
     #### PROPERTIES AND SUCH ################################################################
 
-    @property
-    def current_stage(self):
-        for key,val in self.stages.items():
-            if not val.complete:
-                return key
+    # @property
+    # def current_stage(self):
+    #     for key,val in self.stages.items():
+    #         if not val.complete:
+    #             return key
     @property
     def current_game(self):
         raise NotImplementedError("Not implemented yet.")
@@ -953,64 +1269,54 @@ def play_game(game: RiskyOvercookedGame, fps=6):
                             room id for all clients connected to this game
     fps (int):              Number of game ticks that should happen every second
     """
-    # if DEBUG: print('Starting Play')
-    # # status = Game.Status.ACTIVE
-    # # while not game.is_finished:
-    # while not game.is_finished():
-    #     # Advance Game
-    #     with game.lock:
-    #         status = game.tick()
-    #
-    #     # if DEBUG: print(f'\t |Playing game {status}')
-    #     socketio.emit(
-    #         "state_pong", {"state": game.get_state()},
-    #         room=game.id
-    #     )
-    #     socketio.sleep(1 / fps)
-    #
-    # if DEBUG: print('\t | Game finished...')
-    # with game.lock:
-    #     data = game.get_data()
-    #     socketio.emit(
-    #         "end_game", {"status": status, "data": data},
-    #         room=game.id
-    #     )
-    #
-    #     if status != Game.Status.INACTIVE:
-    #         game.deactivate()
-    #     # cleanup_game(game)
 
 ########################
     status = Game.Status.ACTIVE
     if DEBUG: print('Starting Play')
+    i = 0
     while status != Game.Status.DONE and status != Game.Status.INACTIVE:
-
+        # print(i)
+        # i+= 1
         # if DEBUG: print(f'\t |Playing game {status}')
+        # print(f'Time left: {max(game.max_time - (time() - game.start_time), 0)}')
         with game.lock:
             status = game.tick()
-
         socketio.emit(
             "state_pong", {"state": game.get_state()}, room=game.id
         )
         socketio.sleep(1 / fps)
 
-    # if DEBUG: print('\t | Game finished...')
     with game.lock:
-        data = game.get_data()
-        socketio.emit(
-            "end_game", {"status": status, "data": data}, room=game.id
-        )
+        data = game.get_data(clear_trajectory=False)
+        # print(F'Traj Len = {len(game.trajectory)}')
+
+
+        socketio.emit("end_game", {"status": status, "data": data}, room=game.id)
 
         # if status != Game.Status.INACTIVE:
         #     game.deactivate()
         game.deactivate()
         cleanup_game(game.id)
+import inspect
 
+def print_link(file=None, line=None):
+    """ Print a link in PyCharm to a line in file.
+        Defaults to line where this function was called. """
+    if file is None:
+        file = inspect.stack()[1].filename
+    if line is None:
+        line = inspect.stack()[1].lineno
+    string = f'File "{file}", line {max(line, 1)}'.replace("\\", "/")
+    print(string)
+    return string
 
 if __name__ == "__main__":
     # Dynamically parse host and port from environment variables (set by docker build)
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", 80))
+
+    print_link("http://localhost?PROLIFIC_PID={{%PROLIFIC_PID%}}&STUDY_ID={{%STUDY_ID%}}&SESSION_ID={{%SESSION_ID%}}/")
+
 
     # Attach exit handler to ensure graceful shutdown
     atexit.register(on_exit)

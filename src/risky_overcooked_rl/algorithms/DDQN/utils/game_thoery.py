@@ -13,7 +13,7 @@ class QuantalResponse_torch:
         self.num_agents = 2
         self.ego,self.partner= 0, 1
         self.joint_action_space = joint_action_space
-        self.device = torch.cuda.current_device() #if torch.cuda.is_available() else torch.device('cpu')
+        self.device = "cuda" if torch.cuda.is_available() else torch.device('cpu')
 
         self.rationality = rationality       # rationality/temperature parameter in softmax
         self.sophistication = sophistication # number of recursive steps in QRE computation

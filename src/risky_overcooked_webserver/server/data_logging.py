@@ -1,6 +1,8 @@
 import warnings
 from dataclasses import dataclass, field, fields,is_dataclass
-
+import os
+import pickle
+1*63
 ######################################################################
 ############ BASE CLASSES ############################################
 ######################################################################
@@ -135,6 +137,15 @@ class SurveyData(PseudoFrozenClass):
         for key, value in data_dict.items():
             self.responses[key] = value
 
+    def __repr__(self):
+        disp = ''
+        disp += f'SurveyData(name={self.name}, player_id={self.player_id})\n'
+        if self.responses is None:
+            disp += '\t|No responses recorded\n'
+        else:
+            for key, value in self.responses.items():
+                disp += f'\t|{key}: {value}\n'
+        return disp
 
 @dataclass#(frozen=True)
 class InteractionData(PseudoFrozenClass):
@@ -146,19 +157,26 @@ class InteractionData(PseudoFrozenClass):
     player_id: str = None
     complete = False
 
-    def log_transition(self, t, s, aH, aR, sp, info):
+    def log_transition(self, t, s, aH, aR, info):
         """
         Logs a state transition and stores it in memory
         :param t: game timestep t
         :param s: state at time t
         :param aH: action of human
         :param aR: action of robot
-        :param sp: next state (after stochastic trnasition)
         :return: None
         """
-        transition = (t, s, aH, aR, sp, info)
+        transition = (t, s, aH, aR,  info)
         self.transition_history.append(transition)
 
+    def __repr__(self):
+        disp = ''
+        disp += f'InteractionData(layout={self.layout}, p_slip={self.p_slip})\n'
+        disp += f'\t | Layout: {self.layout}\n'
+        disp += f'\t | p_slip: {self.p_slip}\n'
+        disp += f'\t | Partner Type: {self.partner_type}\n'
+        disp += f'\t | Len of interaction {len(self.transition_history)}\n'
+        return disp
 ######################################################################
 ############ CUMULATIVE CLASSES ######################################
 ######################################################################
@@ -248,28 +266,62 @@ class ExperimentData(Base):
         self.posttrial_survey = SurveyData(self.player_id, 'posttrial_survey')
 
 
+def read_pickle_file(file_path):
+    """Read a pickle file and return the deserialized object."""
+    with open(file_path, 'rb') as file:
+        data = pickle.load(file)
+    return data
+    # try:
+    #     with open(file_path, 'rb') as file:
+    #         data = pickle.load(file)
+    #     return data
+    # except Exception as e:
+    #     raise RuntimeError(f"Failed to read pickle file {file_path}: {e}")
 
 def main():
-    experiment_config = {
-        'player_id':'p1',
-        'layouts': ['layout1','layout2'],
-        'p_slips': [0.5,0.3],
-        'partner_types': ['rational','irrational']
-    }
-    experiment = ExperimentData(**experiment_config)
+    DOCKER_VOLUME = '\\app\\data'
+    # fname = '2025-07-14_13-12-30__NoProlificID.pkl'
+
+    fname = 'cond_None\\2025-07-16_10-16-40__NoProlificID__condNone.pkl'
+    fname = "2025-08-01_11-17-08__NoProlificID__condNone.pkl"
+    file_path = os.path.join(DOCKER_VOLUME,fname)  # Replace with your actual file path
+
+    try:
+        data = read_pickle_file(file_path)
+        # print(f"{data['priming0']}")
+        for key, value in data.items():
+                # print(f'\n{key}')
+                print(value)
 
 
-    transition = {
-        't': 0,
-        's': 'state',
-        'aH': 'human_action',
-        'aR': 'robot_action',
-        'sp': 'next_state',
-        'info': {}
-    }
-    experiment.trials[0].log_transition(**transition)
-    experiment.verify()
 
+    except RuntimeError as e:
+        print(e)
 
 if __name__ == "__main__":
     main()
+
+# def main():
+#     experiment_config = {
+#         'player_id':'p1',
+#         'layouts': ['layout1','layout2'],
+#         'p_slips': [0.5,0.3],
+#         'partner_types': ['rational','irrational']
+#     }
+#     experiment = ExperimentData(**experiment_config)
+#
+#
+#     transition = {
+#         't': 0,
+#         's': 'state',
+#         'aH': 'human_action',
+#         'aR': 'robot_action',
+#         'sp': 'next_state',
+#         'info': {}
+#     }
+#     experiment.trials[0].log_transition(**transition)
+#     experiment.verify()
+#
+#
+# if __name__ == "__main__":
+#     main()

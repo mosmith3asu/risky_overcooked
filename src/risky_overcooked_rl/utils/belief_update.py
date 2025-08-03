@@ -6,8 +6,8 @@ from src.risky_overcooked_py.mdp.actions import Action
 
 class BayesianBeliefUpdate():
     def __init__(self, partner_agents,response_agents,
-                 capacity=10, alpha = 0.9,
-                 names=None,title=''):
+                 capacity=10, alpha = 0.99,
+                 names=None,title='',iego=0,ipartner=1):
         """
         Runs a Bayesian belief update on the partner's policy given a sequence of observations and actions
         :param partner_agents: possible policies for the (human) partner
@@ -17,7 +17,7 @@ class BayesianBeliefUpdate():
         :param names: names of policies (for plotting)
         :param title: title of plot
         """
-        self.iego,self.ipartner = 0,1
+        self.iego,self.ipartner = iego,ipartner
         self.candidate_partners = partner_agents
         self.candidate_responses = response_agents
         assert len(partner_agents) == len(response_agents), 'Must have same number of partner and response agents'
@@ -36,7 +36,7 @@ class BayesianBeliefUpdate():
     def reset_prior(self):
         self.belief = np.ones(self.n_candidates) / self.n_candidates
 
-    def update_belief(self, obs, action, agent=1):
+    def update_belief(self, obs, action):
         """https://towardsdatascience.com/how-to-use-bayesian-inference-for-predictions-in-python-4de5d0bc84f3"""
 
         prior = self.belief
@@ -60,6 +60,8 @@ class BayesianBeliefUpdate():
         pE = np.sum([cum_likelihood[i] * prior[i] for i in range(len(self.candidate_partners))])
         posterior = prior * cum_likelihood / pE
         posterior = posterior / np.sum(posterior)
+        posterior = np.clip(posterior, 0.05, 1.0)  # Avoid NaN in belief
+        posterior = posterior / np.sum(posterior)
         self.belief = posterior
         self.belief_history.append(self.belief)
         # pE = np.sum([likelihood[i] * prior[i] for i in range(len(self.candidate_partners))])
@@ -67,15 +69,53 @@ class BayesianBeliefUpdate():
         # posterior = posterior/np.sum(posterior)
         # self.belief = posterior
         # self.belief_history.append(self.belief)
-    def get_prob_partner_action(self,agent,obs,joint_action_idx):
+
+    def update_belief(self, obs, action, is_only_partner_action=False):
+        """https://towardsdatascience.com/how-to-use-bayesian-inference-for-predictions-in-python-4de5d0bc84f3"""
+
+        prior = self.belief
+
+        likelihood = np.array([self.get_prob_partner_action(partner, obs, action,is_only_partner_action=is_only_partner_action)
+                               for partner in self.candidate_partners])
+        # likelihood += 1e-32
+        likelihood = likelihood / np.sum(likelihood)
+        for i, l in enumerate(likelihood):
+            self.candidate_likelihood_mem[i].append(l)
+
+        n_samples = len(self.candidate_likelihood_mem[0])
+        decay_vec = np.array([self.alpha**(n_samples-i-1) for i in range(n_samples)])
+
+        cum_likelihood = np.zeros(self.belief.size)
+        for i, likelihoods in enumerate(self.candidate_likelihood_mem):
+            cum_likelihood[i] = np.sum(np.array(likelihoods) * decay_vec)
+        cum_likelihood = cum_likelihood / np.sum(cum_likelihood)
+        assert not np.any(np.isnan(cum_likelihood)), 'NaN in cum_likelihood'
+
+
+        pE = np.sum([cum_likelihood[i] * prior[i] for i in range(len(self.candidate_partners))])
+        posterior = prior * cum_likelihood / pE
+        posterior = posterior / np.sum(posterior)
+        posterior = np.clip(posterior, 0.05, 1.0)  # Avoid NaN in belief
+        posterior = posterior / np.sum(posterior)
+        self.belief = posterior
+        self.belief_history.append(self.belief)
+        # pE = np.sum([likelihood[i] * prior[i] for i in range(len(self.candidate_partners))])
+        # posterior = prior * likelihood/pE
+        # posterior = posterior/np.sum(posterior)
+        # self.belief = posterior
+        # self.belief_history.append(self.belief)
+    def get_prob_partner_action(self,agent,obs,action,is_only_partner_action=False):
         """
         Gets probability that the partner took action given the observation
         - CPT partner assumes ego follows same policy
         """
-        # partner_action_index = joint_action_idx % 6
-        partner_action_index = Action.INDEX_TO_ACTION_INDEX_PAIRS[joint_action_idx][1]
+
+        if not is_only_partner_action:
+            # partner_action_index = joint_action_idx % 6
+            action = Action.INDEX_TO_ACTION_INDEX_PAIRS[action][self.ipartner]
+
         _, _, action_probs = agent.choose_joint_action(obs, epsilon=0)
-        return float(action_probs[0, self.ipartner, partner_action_index])
+        return float(action_probs[0, self.ipartner, action])
 
     @property
     def most_likely_partner(self):
@@ -92,6 +132,14 @@ class BayesianBeliefUpdate():
         ax.set_title(self.title)
         plt.show()
 
+    def __repr__(self):
+        print_dict = {}
+        for i in range(self.n_candidates):
+            agent_name = self.names[i] if self.names else f'Agent {i}'
+            val =self.belief[i]
+            print_dict[agent_name] = round(val,2)
+
+        return str(print_dict)
 class SimulatedAgent():
     dists = [
         np.array([[[0, 0, 0, 0, 0, 0], [0.5, 0.1, 0.1, 0.1, 0.1, 0.1]]]),

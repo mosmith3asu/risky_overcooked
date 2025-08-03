@@ -19,7 +19,6 @@ from risky_overcooked_py.planning.planners import (
 )
 from risky_overcooked_rl.utils.belief_update import BayesianBeliefUpdate
 from risky_overcooked_rl.algorithms.DDQN.utils.agents import DQN_vector_feature
-from risky_overcooked_rl.algorithms.DDQN.utils.game_thoery import QuantalResponse_torch
 # Relative path to where all static pre-trained agents are stored on server
 AGENT_DIR = None
 
@@ -172,7 +171,6 @@ class Game(ABC):
         """
         Restarts the game while keeping all active players by resetting game stats and temporarily disabling `tick`
         """
-
         if not self.is_active:
             raise ValueError("Inactive Games cannot be reset")
         if self.is_finished():
@@ -416,7 +414,7 @@ class OvercookedGame(Game):
         layouts=["cramped_room"],
         mdp_params={},
         num_players=2,
-        gameTime=60,
+        gameTime=30,
         playerZero="human",
         playerOne="human",
         showPotential=False,
@@ -429,21 +427,16 @@ class OvercookedGame(Game):
         self.mdp_params = mdp_params
         self.layouts = layouts
         self.max_players = int(num_players)
-        self.mdp = None
+        # self.mdp = None
 
-        self.debug = True
-        self.is_frozen = False
-
-        # self.mdp_params["p_slip"] = kwargs.get("p_slips", [0.0])[0]
-        # self.mdp = OvercookedGridworld.from_layout_name(
-        #     layouts[0], **self.mdp_params
-        # )
-
-
+        self.mdp_params["p_slip"] = kwargs.get("p_slips", [0.0])[0]
+        self.mdp = OvercookedGridworld.from_layout_name(
+            layouts[0], **self.mdp_params
+        )
         self.mp = None
         self.score = 0
         self.phi = 0
-        self.max_time = min(int(gameTime), kwargs.get("max_game_time", MAX_GAME_TIME))
+        self.max_time = min(int(gameTime), MAX_GAME_TIME)
         self.npc_policies = {}
         self.npc_state_queues = {}
         self.action_to_overcooked_action = {
@@ -458,8 +451,6 @@ class OvercookedGame(Game):
         self.curr_tick = 0
         self.human_players = set()
         self.npc_players = set()
-
-        self.client_ready = True
 
         if randomized:
             random.shuffle(self.layouts)
@@ -486,11 +477,11 @@ class OvercookedGame(Game):
         # if ray.is_initialized():
         #     ray.shutdown()
 
-        # if kwargs["dataCollection"]:
-        #     self.write_data = True
-        #     self.write_config = kwargs["collection_config"]
-        # else:
-        #     self.write_data = False
+        if kwargs["dataCollection"]:
+            self.write_data = True
+            self.write_config = kwargs["collection_config"]
+        else:
+            self.write_data = False
 
         self.trajectory = []
 
@@ -498,7 +489,6 @@ class OvercookedGame(Game):
         return time() - self.start_time >= self.max_time
 
     def needs_reset(self):
-        # return False
         return self._curr_game_over() and not self.is_finished()
 
     def add_player(self, player_id, idx=None, buff_size=-1, is_human=True):
@@ -549,8 +539,6 @@ class OvercookedGame(Game):
         """
         Game is ready to be activated if there are a sufficient number of players and at least one human (spectator or player)
         """
-        # server_ready = super(OvercookedGame, self).is_ready() and not self.is_empty()
-        # return  server_ready and self.client_ready
         return super(OvercookedGame, self).is_ready() and not self.is_empty()
 
     def apply_action(self, player_id, action):
@@ -612,7 +600,6 @@ class OvercookedGame(Game):
 
         self.trajectory.append(transition)
 
-
         # Return about the current transition
         return prev_state, joint_action, info
 
@@ -640,32 +627,9 @@ class OvercookedGame(Game):
             raise ValueError("Inconsistent State")
 
         self.curr_layout = self.layouts.pop()
-        self.mdp_params['p_slip'] = self.p_slip
         self.mdp = OvercookedGridworld.from_layout_name(
             self.curr_layout, **self.mdp_params
         )
-        for key, val in self.npc_policies.items():
-            if isinstance(val, ToMAI):
-                # If the policy is a DQN vector feature policy, we need to activate it
-                self.npc_policies[key].activate(self.mdp)
-
-        if self.debug:
-            print(f'\n\nActivating OvercookedGame...')
-            print("\tLayout: {}".format(self.curr_layout))
-            print("\tp_slip: {}".format(self.mdp.p_slip))
-            print("\tWrite data: {}".format(self.write_data))
-
-        for key,val in self.npc_policies.items():
-            if isinstance(val, ToMAI):
-                self.npc_policies[key].activate(self.mdp)
-
-                if self.debug:
-                    print("\tCanidates...")
-                    for can_fname in self.npc_policies[key].candidate_fnames:
-                        print("\t\t{}".format(can_fname))
-
-
-
         if self.show_potential:
             self.mp = MotionPlanner.from_pickle_or_compute(
                 self.mdp, counter_goals=NO_COUNTERS_PARAMS
@@ -679,14 +643,12 @@ class OvercookedGame(Game):
         self.curr_tick = 0
         self.score = 0
         self.threads = []
-        if not self.is_frozen:
-
-            for npc_policy in self.npc_policies:
-                self.npc_policies[npc_policy].reset()
-                self.npc_state_queues[npc_policy].put(self.state)
-                t = Thread(target=self.npc_policy_consumer, args=(npc_policy,))
-                self.threads.append(t)
-                t.start()
+        for npc_policy in self.npc_policies:
+            self.npc_policies[npc_policy].reset()
+            self.npc_state_queues[npc_policy].put(self.state)
+            t = Thread(target=self.npc_policy_consumer, args=(npc_policy,))
+            self.threads.append(t)
+            t.start()
 
     def deactivate(self):
         super(OvercookedGame, self).deactivate()
@@ -700,7 +662,6 @@ class OvercookedGame(Game):
 
         # Clear all action queues
         self.clear_pending_actions()
-        # self.client_ready = False
 
     def get_state(self):
         state_dict = {}
@@ -721,34 +682,27 @@ class OvercookedGame(Game):
     def get_policy(self, npc_id, idx=0):
         # print("Loading agent {}".format(npc_id))
         if npc_id.lower() == "rs-tom":
-            # print("Loading agent {}".format(npc_id))
+            print("Loading agent {}".format(npc_id))
             # Load the RS-TOM agent
             try:
-                agent = ToMAI(['averse', 'neutral', 'seeking'])
-                agent.activate(self.mdp)
+                agent = ToMAI(self.mdp,['averse','neutral','seeking'])
                 return agent
             except Exception as e:
                 raise IOError("Error loading Rllib Agent\n{}".format(e.__repr__()))
         elif npc_id.lower() == "rational":
+            agent = ToMAI(self.mdp, ['neutral'])
+            return agent
+        elif npc_id.lower().startswith("rllib"):
             try:
-                agent = ToMAI(['neutral'])
-                agent.activate(self.mdp)
+                # Loading rllib agents requires additional helpers
+                fpath = os.path.join(AGENT_DIR, npc_id, "agent")
+                fix_bc_path(fpath)
+                agent = load_agent(fpath, agent_index=idx)
                 return agent
-
             except Exception as e:
-                raise IOError("Error loading Rllib Agent\n{}".format(e.__repr__()))
-
-        # elif npc_id.lower().startswith("rllib"):
-        #     try:
-        #         # Loading rllib agents requires additional helpers
-        #         fpath = os.path.join(AGENT_DIR, npc_id, "agent")
-        #         fix_bc_path(fpath)
-        #         agent = load_agent(fpath, agent_index=idx)
-        #         return agent
-        #     except Exception as e:
-        #         raise IOError(
-        #             "Error loading Rllib Agent\n{}".format(e.__repr__())
-        #         )
+                raise IOError(
+                    "Error loading Rllib Agent\n{}".format(e.__repr__())
+                )
         else:
             try:
                 fpath = os.path.join(AGENT_DIR, npc_id, "agent.pickle")
@@ -757,7 +711,7 @@ class OvercookedGame(Game):
             except Exception as e:
                 raise IOError("Error loading agent\n{}".format(e.__repr__()))
 
-    def get_data(self,clear_trajectory=True):
+    def get_data(self):
         """
         Returns and then clears the accumulated trajectory
         """
@@ -765,14 +719,13 @@ class OvercookedGame(Game):
             "uid": str(time()),
             "trajectory": self.trajectory,
         }
-        if clear_trajectory: self.trajectory = []
+        self.trajectory = []
         # if we want to store the data and there is data to store
         if self.write_data and len(data["trajectory"]) > 0:
             configs = self.write_config
             # create necessary dirs
             data_path = create_dirs(configs, self.curr_layout)
             # the 3-layer-directory structure should be able to uniquely define any experiment
-            print("Writing data to {}".format(data_path))
             with open(os.path.join(data_path, "result.pkl"), "wb") as f:
                 pickle.dump(data, f)
         return data
@@ -993,9 +946,6 @@ class TutorialAI:
 
 
         elif tutorial_phase == 3:
-            self.curr_route = [Action.STAY for _ in range(3)] + self.start2pass[1:]
-
-
             self.route_sequence = []
             self.route_sequence.append([Action.STAY for _ in range(3)])
             self.route_sequence.append(self.start2pass)
@@ -1032,8 +982,7 @@ class TutorialAI:
         """ Returns the number of onions in the AI's pot """
         all_soups = state.unowned_objects_by_type['soup']
         if len(all_soups) == 0:
-            # raise ValueError("IWas expecting soup")
-            return None
+            raise ValueError("IWas expecting soup")
         elif len(all_soups) == 1:
             AI_soup = all_soups[0]
             return AI_soup
@@ -1135,187 +1084,90 @@ class TutorialAI:
         return loop
 
     def policy_3(self, state):
-        if len(self.curr_route)>0:
-            action = self.curr_route.pop(0)
+        route = self.route_sequence[self.route_idx]
+        AI = state.players[1]  # get AI player
 
-            if action == 'wait4soup':
-                soup = self.get_AI_soup(state)
-                if soup.is_ready:
-                    return Action.INTERACT
-                else:
-                    self.curr_route.append('wait4soup')
-                    return Action.STAY
-
-            elif action == 'wait4service':
-                for key, objs in state.all_objects_by_type.items():
-                    if key == 'soup' and len(objs)>0:
-                        self.curr_route.append('wait4service')
-                    return Action.STAY
-
+        if self.dumping_route is not None:
+            # print('dumping route')
+            action = self.dumping_route[self.route_tick]
+            if self.route_tick >= len(self.dumping_route) - 1:  # slipped_rout complete
+                self.dumping_route = None
+                self.checkpoint_tick = self.curr_tick
             return action
-
-        else:
-            AI = state.players[1]  # get AI player
-            pass_pos = (AI.position[0] + Direction.SOUTH[0], AI.position[1] + Direction.SOUTH[1])
-            soup = self.get_AI_soup(state)
-            print()
-            if soup is None or len(soup.ingredients) <3 : desired_obj = 'onion'
-            elif soup.is_cooking or soup.is_ready : desired_obj = 'dish'
-            else:  raise ValueError("Unknown pot state")
-
+        elif 'stay' in route:
             if AI.has_object():
                 if AI.get_object().name == 'soup':
-                    self.curr_route = self.pot2pass + [Action.STAY,Action.STAY, Action.INTERACT ,'wait4service']
-                elif AI.get_object().name == desired_obj and AI.get_object().name == 'onion':
-                    self.curr_route = self.pass2pot + [Action.STAY,Action.INTERACT] + self.pot2pass
-                elif AI.get_object().name == desired_obj and AI.get_object().name == 'dish':
-                    self.curr_route = self.pass2pot + [Action.STAY,'wait4soup']
-                else:
-                    self.curr_route = self.pass2dump[2:]
-                    # raise ValueError(f"Unknown object {AI.get_object().name} in AI's possession")
-
-
-            elif state.has_object(pass_pos):
+                    return Action.INTERACT
+            return Action.STAY
+        elif 'wait4onion' in route:
+            # print('wait4onion route')
+            pass_pos = (AI.position[0] + Direction.SOUTH[0], AI.position[1] + Direction.SOUTH[1])
+            # print(pass_pos,state.has_object(pass_pos))
+            if state.has_object(pass_pos):
                 counter_obj = state.get_object(pass_pos)
-                if counter_obj.name == 'soup':
-                    self.curr_route = [Action.STAY]
-                else:
-                    self.curr_route =  [Action.STAY,Action.STAY, Action.INTERACT]
-            else:
-                self.curr_route = [Action.STAY]
+                if counter_obj.name == 'onion':
+                    self.route_idx += 1
+                    self.route_idx %= len(self.route_sequence)
+                    self.checkpoint_tick = self.curr_tick
+                    route = self.route_sequence[self.route_idx]
+                    action = route[self.route_tick]
+                    return action
+                elif counter_obj.name == 'dish':
+                    print('dumping dish')
+                    self.dumping_route =  self.pass2dump
+                    self.checkpoint_tick = self.curr_tick
+                    return Action.STAY
+            else: return Action.STAY
 
-            return self.curr_route.pop(0)
+        elif 'wait4dish' in route:
+            # print('wait4dish route')
+            pass_pos = (AI.position[0] + Direction.SOUTH[0], AI.position[1] + Direction.SOUTH[1])
+            if state.has_object(pass_pos):
+                counter_obj = state.get_object(pass_pos)
 
+                if counter_obj.name == 'dish':
+                    self.route_idx += 1
+                    self.route_idx %= len(self.route_sequence)
+                    self.checkpoint_tick = self.curr_tick
+                    route = self.route_sequence[self.route_idx]
+                    action = route[self.route_tick]
+                    return action
+                elif counter_obj.name == 'onion':
+                    self.dumping_route = self.pass2dump
+                    self.checkpoint_tick = self.curr_tick
+                    return Action.STAY
+            else: return Action.STAY
+        elif 'wait4soup' in route:
+            # print('wait4soup route')
+            if AI.has_object():
+                if AI.get_object().name == 'dish':
+                    soup = self.get_AI_soup(state)
+                    if soup.is_ready:
+                        self.route_idx += 1
+                        self.route_idx %= len(self.route_sequence)
+                        self.checkpoint_tick = self.curr_tick
 
-        # route = self.route_sequence[self.route_idx]
-        # AI = state.players[1]  # get AI player
-        #
-        # if self.dumping_route is not None:
-        #     # print('dumping route')
-        #     action = self.dumping_route[self.route_tick]
-        #     if self.route_tick >= len(self.dumping_route) - 1:  # slipped_rout complete
-        #         self.dumping_route = None
-        #         self.checkpoint_tick = self.curr_tick
-        #     return action
-        # elif 'stay' in route:
-        #     if AI.has_object():
-        #         if AI.get_object().name == 'soup':
-        #             return Action.INTERACT
-        #
-        #     soup_exists = False
-        #     for players in state.players:
-        #         if players.has_object():
-        #             if players.get_object().name == 'soup':
-        #                 soup_exists = True
-        #     if not soup_exists:
-        #         # print('Soup does not exist')
-        #         self.route_idx = 0
-        #     return Action.STAY
-        # elif 'wait4onion' in route:
-        #     # print('wait4onion route')
-        #     pass_pos = (AI.position[0] + Direction.SOUTH[0], AI.position[1] + Direction.SOUTH[1])
-        #     # print(pass_pos,state.has_object(pass_pos))
-        #     # if state.has_object(pass_pos):
-        #     #     counter_obj = state.get_object(pass_pos)
-        #     #     if counter_obj.name == 'onion':
-        #     #         self.route_idx += 1
-        #     #         self.route_idx %= len(self.route_sequence)
-        #     #         self.checkpoint_tick = self.curr_tick
-        #     #         route = self.route_sequence[self.route_idx]
-        #     #         action = route[self.route_tick]
-        #     #         return action
-        #     #     elif counter_obj.name == 'dish':
-        #     #         print('dumping dish')
-        #     #         self.dumping_route =  self.pass2dump
-        #     #         self.checkpoint_tick = self.curr_tick
-        #     #         return Action.STAY
-        #     # else: return Action.STAY
-        #     if state.has_object(pass_pos):
-        #         if not AI.has_object():
-        #             return Action.INTERACT
-        #     elif AI.has_object():
-        #         _obj = AI.get_object()
-        #         if _obj.name == 'onion':
-        #             self.route_idx += 1
-        #             self.route_idx %= len(self.route_sequence)
-        #             self.checkpoint_tick = self.curr_tick
-        #             route = self.route_sequence[self.route_idx][3:]
-        #             action = route[self.route_tick]
-        #             return action
-        #         elif _obj.name == 'dish':
-        #             print('dumping dish')
-        #             self.dumping_route =  self.pass2dump[1:]
-        #             self.checkpoint_tick = self.curr_tick
-        #             return Action.STAY
-        #         else: return Action.STAY
-        #     else: return Action.STAY
-        #
-        # elif 'wait4dish' in route:
-        #     # print('wait4dish route')
-        #     pass_pos = (AI.position[0] + Direction.SOUTH[0], AI.position[1] + Direction.SOUTH[1])
-        #     if state.has_object(pass_pos):
-        #         counter_obj = state.get_object(pass_pos)
-        #         if not AI.has_object():
-        #             return Action.INTERACT
-        #
-        #     elif AI.has_object():
-        #         _obj = AI.get_object()
-        #         if _obj.name == 'dish':
-        #             self.route_idx += 1
-        #             self.route_idx %= len(self.route_sequence)
-        #             self.checkpoint_tick = self.curr_tick
-        #             route = self.route_sequence[self.route_idx][3:]
-        #             action = route[self.route_tick]
-        #             return action
-        #         elif _obj.name == 'onion':
-        #             self.dumping_route = self.pass2dump[1:]
-        #             self.checkpoint_tick = self.curr_tick
-        #             return Action.STAY
-        #         else:
-        #             return Action.STAY
-        #     else: return Action.STAY
-        # elif 'wait4soup' in route:
-        #     # print('wait4soup route')
-        #     if AI.has_object():
-        #         if AI.get_object().name == 'dish':
-        #             soup = self.get_AI_soup(state)
-        #             if soup.is_ready:
-        #                 self.route_idx += 1
-        #                 self.route_idx %= len(self.route_sequence)
-        #                 self.checkpoint_tick = self.curr_tick
-        #
-        #                 print(self.route_sequence[self.route_idx],self.route_tick)
-        #                 return Action.INTERACT
-        #             else:
-        #                 return Action.STAY
-        #     else:
-        #         raise ValueError("Expecting dish in hand")
-        # else:
-        #     # print('standard route')
-        #     # Advance Route
-        #     if self.route_tick >= len(route):
-        #         self.route_idx += 1
-        #         self.route_idx %= len(self.route_sequence)  # loops routes
-        #         self.checkpoint_tick = self.curr_tick
-        #         # route = self.route_sequence[self.route_idx]
-        #         return Action.STAY
-        #     action = route[self.route_tick]
-        #
-        #     # soup_exists = False
-        #     # for players in state.players:
-        #     #     if players.has_object():
-        #     #         if players.get_object().name == 'soup':
-        #     #             soup_exists = True
-        #     # if not soup_exists:
-        #     #     # print('Soup does not exist')
-        #     #     self.route_idx = 0
-        #     return action
+                        print(self.route_sequence[self.route_idx],self.route_tick)
+                        return Action.INTERACT
+                    else:
+                        return Action.STAY
+            else: raise ValueError("Expecting dish in hand")
+        else:
+            # print('standard route')
+            # Advance Route
+            if self.route_tick >= len(route):
+                self.route_idx += 1
+                self.route_idx %= len(self.route_sequence)  # loops routes
+                self.checkpoint_tick = self.curr_tick
+                # route = self.route_sequence[self.route_idx]
+                return Action.STAY
+
+            action = route[self.route_tick]
+            return action
 
     def reset(self):
         self.curr_tick = -1
         self.curr_phase += 1
-
-
 
 class ToMAI:
     """
@@ -1323,79 +1175,66 @@ class ToMAI:
     It is used to test the ToM agent and its ability to predict the actions of the AI.
     """
 
-    def __init__(self, candidates, device = 'cpu' ):
+    def __init__(self, mdp, candidates, device = 'cpu' ):
+        print(f"initializing 0")
+
+
         """
         :param layout: layout for which to load model
         :param candidates: used as fname extension while loading eg: RS-ToM=['averse','neutral','rational']
         """
         # Parse args
-        self.mdp = None
-        self.layout = None
-        self.p_slip = None
-        self.device = device
-
-        # Load Policies
-        self.candidates = candidates
-        self.candidate_fnames = None
-        self.policies = None
-        self.n_candidates = None
-
-        # Instantiate Belief Updater
-        self.belief = None
-
-
-
-
-    def activate(self,mdp):
-        """ Activates when the game is activated. This is used to load the policies and instantiate the belief updater."""
         self.mdp = mdp
         self.layout = mdp.layout_name
         self.p_slip = mdp.p_slip
+        self.device = device
 
         # Load Policies
-        self.candidate_fnames = [f'{self.layout}_pslip{str(self.p_slip).replace(".", "")}__{candidate}.pt' for candidate
-                                 in self.candidates]
+        self.candidate_fnames = [f'{self.layout}_pslip{str(self.p_slip).replace(".","")}__{candidate}.pt' for candidate in candidates]
         self.policies = self.load_policies(self.candidate_fnames)
         self.n_candidates = len(self.policies)
 
         # Instantiate Belief Updater
-        self.belief = BayesianBeliefUpdate(self.policies, self.policies, names=self.candidates,iego=1,ipartner=0)
+        self.belief = BayesianBeliefUpdate(self.policies, self.policies, names=candidates)
         self.belief.reset_prior()
-
 
     def load_policies(self, candidate_fnames):
         """
         Loads the policies for the AI. This is used to test the ToM agent and its ability to predict the actions of the AI.
         """
-        # print(f"All fnames {candidate_fnames}")
+        print(f"All fnames {candidate_fnames}")
         policies = []
         for fname in candidate_fnames:
-            PATH = AGENT_DIR + f'/RiskSensitiveAI/{fname}'
+            PATH = AGENT_DIR+ f'/RiskSensitiveAI/{fname}'
             if not os.path.exists(PATH):
                 raise ValueError(f"Policy file {PATH} does not exist")
             try:
                 policies.append(TorchPolicy(PATH,self.device))
             except Exception as e:
                 raise print(f"Error loading policy from {PATH}\n{e}")
+        print(f'loading success')
         return policies
 
 
-    def observe(self,state,human_action,ai_action):
+    def observe(self,state,partner_action,ego_action):
         """
         :param obs: encoded state vector compliant with the ToM agent's models
         :param joint_action:
         :return:
         """
-        is_trivial = human_action == "Stay" or human_action == (0,0)
-        if self.n_candidates >1 and not is_trivial:
-            obs = self.mdp.get_lossless_encoding_vector_astensor(state, device=self.device).unsqueeze(0)
-            human_iA = Action.ACTION_TO_INDEX[human_action]
-            self.belief.update_belief(obs, human_iA, is_only_partner_action=True)
+        if self.n_candidates >1:
+            obs = self.env.mdp.get_lossless_encoding_vector_astensor(state, device=self.device).unsqueeze(0)
 
+            # Calc Joint Action
+            partner_iA = Action.ACTION_TO_INDEX[partner_action]
+            ego_iA = Action.ACTION_TO_INDEX[ego_action]
+            action_idxs = (ego_iA, partner_iA)
+            joint_action_idx = Action.INDEX_TO_ACTION_INDEX_PAIRS.index(action_idxs)
+            self.belief.update_belief(obs, joint_action_idx)
 
     def action(self, state):
-        ego_policy = self.belief.best_response if self.n_candidates > 1 else self.policies[0]
         obs = self.mdp.get_lossless_encoding_vector_astensor(state, device=self.device).unsqueeze(0)
+        ego_policy = self.belief.best_response  if self.n_candidates >1 else self.policies[0]
         action = ego_policy.action(obs)
         return action, None
 
@@ -1407,28 +1246,25 @@ class TorchPolicy:
     Is lightweight version of SelfPlay_QRE_OSA agent
     """
     def __init__(self,PATH, device, action_selection='softmax',ego_idx = 1,
-                 sophistication=8,belief_trick=True
+                 num_hidden_layers=5,  size_hidden_layers=128
                  ):
-        # torch.cuda.set_device(device)
-        # print(f"TorchPolicy: Loading policy from {PATH}")
+        print(f"TorchPolicy: Loading policy from {PATH}")
         self.PATH = PATH
         self.device = device
         assert action_selection in ['greedy', 'softmax'], "Action selection must be either greedy or softmax"
         self.action_selection = action_selection
         self.ego_idx = ego_idx
-        # self.num_hidden_layers = num_hidden_layers
-        # self.size_hidden_layers = size_hidden_layers
+        self.num_hidden_layers = num_hidden_layers
+        self.size_hidden_layers = size_hidden_layers
 
 
         self.player_action_dim = len(Action.ALL_ACTIONS)
         self.joint_action_dim = len(Action.ALL_JOINT_ACTIONS)
         self.joint_action_space = Action.ALL_JOINT_ACTIONS
         self.num_agents = 2
-        self.rationality = 20
+        self.rationality = 10
         self.model = self.load_model(PATH)
-
-        self.QRE = QuantalResponse_torch(rationality=self.rationality,belief_trick=belief_trick,
-                                         sophistication=sophistication,joint_action_space=self.joint_action_space)
+        self.eq_sol = "QRE"
 
 
 
@@ -1436,25 +1272,21 @@ class TorchPolicy:
     def load_model(self, PATH):
         loaded_model = torch.load(PATH, weights_only=True, map_location=self.device)
         # print(f'Geting model data')
-        # obs_shape = (loaded_model['layer1.weight'].size()[1],)
-        # size_hidden_layers = loaded_model['layer1.weight'].shape[0]
-        obs_shape = (loaded_model['layers.0.weight'].size()[1],)
-        size_hidden_layers = loaded_model['layers.0.weight'].shape[0]
-        num_hidden_layers = int(len(loaded_model.keys()) / 2)
+        obs_shape = (loaded_model['layer1.weight'].size()[1],)
         # size_hidden_layers = loaded_model['layer1.weight'].size()[0]
         # for key,val in loaded_model.items():
         #     print(key, "\t", val.size())
 
         n_actions = self.joint_action_dim
-        # model = DQN_vector_feature(obs_shape, n_actions, self.num_hidden_layers, self.size_hidden_layers).to(self.device)
-        model = DQN_vector_feature(obs_shape, n_actions, num_hidden_layers, size_hidden_layers).to(self.device)
+        model = DQN_vector_feature(obs_shape, n_actions, self.num_hidden_layers, self.size_hidden_layers).to(self.device)
         model.load_state_dict(loaded_model)
         return model
 
     def action(self, obs):
         with torch.no_grad():
-            _,_,joint_pA = self.choose_joint_action(obs)
-            ego_pA = joint_pA[0,self.ego_idx]
+            NF_Game = self.get_normal_form_game(obs)
+            joint_pA = self.compute_EQ(NF_Game)
+            ego_pA = joint_pA[0,self.ego_idx].detach().cpu().numpy()
             if self.action_selection == 'greedy':
                 ego_action = Action.INDEX_TO_ACTION[np.argmax(ego_pA)]
             elif self.action_selection == 'softmax':
@@ -1462,16 +1294,86 @@ class TorchPolicy:
                 ego_action = Action.INDEX_TO_ACTION[ia]
         return ego_action
 
-    def choose_joint_action(self, obs,epsilon=0):
-        with torch.no_grad():
-            NF_Game = self.get_normal_form_game(obs)
-            joint_action, joint_action_idx, action_probs = self.QRE.choose_actions(NF_Game)
+    def choose_joint_action(self, obs, epsilon=0.0, feasible_JAs= None, debug=False):
+        sample = random.random()
+
+        # Explore -------------------------------------
+        if sample < epsilon:
+            action_probs = np.ones(self.joint_action_dim) / self.joint_action_dim
+            if feasible_JAs is not None:
+                action_probs = feasible_JAs*action_probs
+                action_probs = action_probs/np.sum(action_probs)
+            joint_action_idx = np.random.choice(np.arange(self.joint_action_dim), p=action_probs)
+            joint_action = self.joint_action_space[joint_action_idx]
+
+        # Exploit -------------------------------------
+        else:
+            with torch.no_grad():
+                NF_Game = self.get_normal_form_game(obs)
+                joint_action_idx, dists, ne_vs = self.compute_EQ(NF_Game)
+                joint_action_idx = joint_action_idx[0]
+                joint_action = self.joint_action_space[joint_action_idx]
+                action_probs = dists
+
         return joint_action, joint_action_idx, action_probs
 
     def compute_EQ(self, NF_Games):
         NF_Games = NF_Games.reshape(-1, self.num_agents, self.player_action_dim, self.player_action_dim)
-        all_dists = self.QRE.level_k_qunatal(NF_Games)
+        # Compute equilibrium for each game
+        if self.eq_sol == 'QRE': all_dists = self.level_k_qunatal(NF_Games)
+        # elif self.eq_sol == 'Pareto': all_dists,all_ne_values = self.pareto(NF_Games)
+        # elif self.eq_sol == 'Nash': raise NotImplementedError # not feasible for gen. sum. game
+        else: raise ValueError(f"Invalid EQ solution:{self.eq_sol}")
         return all_dists
+
+    def level_k_qunatal(self,nf_games, sophistication=4, belief_trick=True):
+        """Implementes a k-bounded QRE computation
+        https://en.wikipedia.org/wiki/Quantal_response_equilibrium
+        as reationality -> infty, QRE -> Nash Equilibrium
+        """
+        rationality = self.rationality
+        batch_sz = nf_games.shape[0]
+        player_action_dim = nf_games.shape[2]
+        uniform_dist = (torch.ones(batch_sz, player_action_dim,device=self.device)) / player_action_dim
+        ego, partner = 0, 1
+
+        def invert_game(g):
+            "inverts perspective of the game"
+            return torch.cat([torch.transpose(g[:, partner, :, :], -1, -2).unsqueeze(1),
+                              torch.transpose(g[:, ego, :, :], -1, -2).unsqueeze(1)], dim=1)
+
+        def softmax(x):
+            return torch.softmax(x,dim=1)
+
+        def step_QRE(game, k):
+            if k == 0:  partner_dist = uniform_dist
+            else:  partner_dist = step_QRE(invert_game(game), k - 1)
+
+            Exp_qAi = torch.bmm(game[:, ego, :, :], partner_dist.unsqueeze(-1)).squeeze(-1)
+            return softmax(rationality * Exp_qAi)
+
+        dist1 = step_QRE(nf_games, sophistication)
+        if belief_trick:
+            # uses dist1 as partner belief prior for +1 sophistication
+            Exp_qAi = torch.bmm(invert_game(nf_games)[:, ego, :, :],dist1.unsqueeze(-1)).squeeze(-1)
+            dist2 = softmax(rationality * Exp_qAi)
+        else: # recomputes dist2 from scratch
+            dist2 = step_QRE(invert_game(nf_games), sophistication)
+        dist = torch.cat([dist1.unsqueeze(1), dist2.unsqueeze(1)], dim=1)
+        # joint_dist_mat = torch.bmm(dist1.unsqueeze(-1), torch.transpose(dist2.unsqueeze(-1), -1, -2))
+
+        # value = self.get_expected_equilibrium_value(nf_games, dist)
+        # if self.optimistic_value_expectation:
+        #     value = torch.zeros(batch_sz, 2, device=self.device)
+        #     pareto_vals = nf_games[:, partner, :] + nf_games[:, ego, :]
+        #     for ib, pval in enumerate(pareto_vals):
+        #         idx = (pval == torch.max(pval)).nonzero().flatten()
+        #         value[ib, ego] += nf_games[ib, ego, idx[0], idx[1]]
+        #         value[ib, partner] += nf_games[ib, partner, idx[0], idx[1]]
+        # else: value = self.get_expected_equilibrium_value(nf_games, dist)
+        #     # value = torch.cat([torch.sum(nf_games[:, ego, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1),
+        #     #          torch.sum(nf_games[:, partner, :] * joint_dist_mat, dim=(-1, -2)).unsqueeze(-1)],dim=1)
+        return dist
 
 
     def get_normal_form_game(self, obs):

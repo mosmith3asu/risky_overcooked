@@ -12,5 +12,5 @@
         { "ingredients" : ["onion", "onion", "onion"]}
     ],
     "rew_shaping_params": None,
-    "p_slip": 0.7
+    "p_slip": 0.65
 }

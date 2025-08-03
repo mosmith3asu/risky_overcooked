@@ -16,6 +16,9 @@ Delete all build records
 docker buildx history rm --all
 docker buildx prune --all
 ```
-
+data stored in:
+```
+C:\app\data\*.pkl
+```
 # Notes
 - may have to remove `graphics.js` from `static/js/` when using docker. this was added manually

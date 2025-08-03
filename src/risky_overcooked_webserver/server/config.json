@@ -1,13 +1,59 @@
 {
     "logfile" : "app.log",
-    "layouts" : ["cramped_room","counter_circuit_o_1order", "cramped_room_tomato", "asymmetric_advantages", "coordination_ring", "forced_coordination", "counter_circuit", "cramped_corridor", "marshmallow_experiment", "long_cook_time", "forced_coordination_tomato", "asymmetric_advantages_tomato", "marshmallow_experiment_coordination", "pipeline", "you_shall_not_pass", "tutorial_3"],
+    "layouts" : [
+        "risky_multipath6_pslip025",
+        "risky_mixed_coordination_pslip05",
+        "risky_spiral8_pslip02"
+    ],
     "MAX_EXPERIMENTS" : 10,
-    "MAX_GAME_LENGTH" : 120,
+    "MAX_GAME_LENGTH" : 360,
     "AGENT_DIR" : "./static/assets/agents",
     "MAX_FPS" : 30,
+    "DATA_COLLECTION" :  "on",
+
+    "AGENTS": {
+        "game_length": 60,
+        "rationality": 10,
+        "sophistication": 8,
+        "belief_trick": true,
+        "human_player": 0,
+        "npc_player": 1,
+        "inference": {
+            "buffer": 10,
+            "alpha": 0.99
+        }
+    },
+    "EXPERIMENT_CONFIG": {
+        "data_collection": true,
+        "debug": false,
+        "stages": {
+            "risky_tutorial_3": "InteractionData",
+
+            "experiment_begin": "DummyData",
+
+            "game_loop0": "multiple",
+            "washout": "DummyData",
+            "game_loop1": "multiple",
+
+            "relative_trust_survey": "SurveyData",
+            "debriefing": "DummyData",
+            "redirected": "DummyData"
+        },
+        "temp": {
+            "consent": "DummyData",
+            "participant_information": "DemographicData",
+            "demographic": "SurveyData",
+            "risk_propensity": "SurveyData",
+
+            "instructions": "DummyData",
+            "risky_tutorial_0": "InteractionData",
+            "risky_tutorial_1": "InteractionData",
+            "risky_tutorial_2": "InteractionData"
+        }
+    },
     "predefined" : {
         "experimentParams" : {
-            "layouts" : ["counter_circuit", "cramped_room"],
+            "layouts" : ["risky_multipath6_pslip025",  "risky_multipath6_pslip025"],
             "gameTime" : 5,
             "playerZero" : "human",
             "playerOne" : "human",
@@ -35,3 +81,4 @@
         "max_num_ingredients" : 3
     }
 }
+

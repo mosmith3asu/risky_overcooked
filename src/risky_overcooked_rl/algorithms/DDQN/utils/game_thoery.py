@@ -8,13 +8,17 @@ import numba
 # from numba import float32, int32
 
 class QuantalResponse_torch:
-    def __init__(self,rationality,sophistication,joint_action_space, belief_trick=True,**kwargs):
+    def __init__(self,rationality,sophistication,joint_action_space, belief_trick=True,
+                 device=None,
+                 **kwargs):
         self.player_action_dim = len(Action.ALL_ACTIONS)
         self.num_agents = 2
         self.ego,self.partner= 0, 1
         self.joint_action_space = joint_action_space
-        self.device = "cuda" if torch.cuda.is_available() else torch.device('cpu')
-
+        if device is None:
+            self.device = "cuda" if torch.cuda.is_available() else torch.device('cpu')
+        else:
+            self.device = device
         self.rationality = rationality       # rationality/temperature parameter in softmax
         self.sophistication = sophistication # number of recursive steps in QRE computation
         self.belief_trick=True               # reduces computation by using the first distribution as a prior for the second

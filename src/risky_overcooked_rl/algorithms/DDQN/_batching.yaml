@@ -1,5 +1,5 @@
 ---
-workers: 5
+workers: 6
 istart:  0 # used for starting at predefined index of batch list if previously incomplete
 cpt:
 #  averse: {'b': 'time_cost', 'lam': 2.25, 'eta_p': 0.88, 'eta_n': 1.0, 'delta_p': 0.61, 'delta_n': 0.69}
@@ -94,24 +94,29 @@ jobs:
 ##        full_task: 999 # pick_up_onion1 = full_task
 
 #
-  risky_shortcuts2:
-    agents: ['seeking']
+  risky_shortcuts4:
+    agents: ['neutral','seeking']
     p_slips: [0.2,0.25,0.3]
 
     set:
-      note: 'new Curr sample'
+      note: ''
       sampling: 'uniform'
 
       gamma: 0.99
       HORIZON: 360
-      time_cost: -0.3
+      time_cost: -0.4
       rshape_sched:
         start: 1.0        # starting value
         end: 1.0          # ending value
         duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
         decay: 1.0      # higher values = faster decay
+
       epsilon_sched:
         start: 1.0        # starting value
         end: 0.05        # ending value
         duration: 0.5 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
-        decay: 1.0      # higher values = faster decay
+        decay: 1.0      # higher values = faster decay#      epsilon_sched:
+#        start: 1.0        # starting value
+#        end: 0.05        # ending value
+#        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+#        decay: 1.0      # higher values = faster decay

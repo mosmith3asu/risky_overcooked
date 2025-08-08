@@ -55,8 +55,6 @@ function parse_prolific_data() {
 document.addEventListener("DOMContentLoaded", function () {
     // const prolific_data = parse_prolific_data();
 
-
-
     // const viewport = document.getElementById("viewport");
     tutorial_config = JSON.parse($('#tutorial_config').text());
 
@@ -142,6 +140,8 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
     pages[0].show();
+
+    socket.emit('user_data',{'prolific_data': prolific_data})
 
 
 });

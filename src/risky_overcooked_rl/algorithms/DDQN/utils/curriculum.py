@@ -37,9 +37,12 @@ class CurriculumTrainer(Trainer):
             ##########################################################
             # Training Step ##########################################
             self.iteration = it # for logging callbacks
-            self.epsilon = self.epsilon_sched[cit] if cit < len(self.epsilon_sched) else self.epsilon_sched[-1] # for logging callbacks
-            self.rshape_scale = self.rshape_sched[cit] if cit < len(self.rshape_sched) else self.rshape_sched[-1] # for logging callbacks
-            self.random_start = self.random_start_sched[cit] if cit < len(self.random_start_sched) else self.random_start_sched[-1] # for logging callbacks
+            # self.epsilon = self.epsilon_sched[cit] if cit < len(self.epsilon_sched) else self.epsilon_sched[-1] # for logging callbacks
+            # self.rshape_scale = self.rshape_sched[cit] if cit < len(self.rshape_sched) else self.rshape_sched[-1] # for logging callbacks
+            # self.random_start = self.random_start_sched[cit] if cit < len(self.random_start_sched) else self.random_start_sched[-1] # for logging callbacks
+            self.epsilon = self.epsilon_sched[min(cit,len(self.epsilon_sched)-1)]  # for logging callbacks
+            self.rshape_scale = self.rshape_sched[min(cit,len(self.rshape_sched)-1)]
+            self.random_start = self.random_start_sched[min(cit,len(self.rshape_sched)-1)]
 
 
             cum_reward, cum_shaped_rewards, rollout_info = \
@@ -198,7 +201,7 @@ class CurriculumTrainer(Trainer):
         for t in range(self.env.horizon+1):#itertools.count():
             if t%5==0: self.logger.spin()
 
-            old_state = self.env.state.deepcopy().freeze()
+            old_state = self.env.state.deepcopy()#.freeze()
             # obs = self.mdp.get_lossless_encoding_vector_astensor(self.env.state, device=self.device).unsqueeze(0)
             obs = self.mdp.get_lossless_encoding_vector_astensor(old_state, device=self.device).unsqueeze(0)
 

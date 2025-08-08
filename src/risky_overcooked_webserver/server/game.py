@@ -1428,7 +1428,8 @@ class TorchPolicy:
         self.model = self.load_model(PATH)
 
         self.QRE = QuantalResponse_torch(rationality=self.rationality,belief_trick=belief_trick,
-                                         sophistication=sophistication,joint_action_space=self.joint_action_space)
+                                         sophistication=sophistication,joint_action_space=self.joint_action_space,
+                                         device=self.device)
 
 
 

@@ -709,12 +709,12 @@ class PlayerState(object):
                  None if there is no such object.
     """
 
-    def __init__(self, position, orientation,idx,held_object=None):
+    def __init__(self, position, orientation,idx,held_object=None,dropped_obj='none'):
         self.position = tuple(position)
         self.orientation = tuple(orientation)
         self.held_object = held_object
         self.idx = idx
-        self.dropped_obj = 'none'
+        self.dropped_obj = dropped_obj
 
         assert self.orientation in Direction.ALL_DIRECTIONS
         if self.held_object is not None:
@@ -778,6 +778,7 @@ class PlayerState(object):
             "position": self.position,
             "orientation": self.orientation,
             "dropped_obj": self.dropped_obj,
+            "idx": self.idx,
             "held_object": self.held_object.to_dict()
             if self.held_object is not None
             else None,
@@ -789,6 +790,7 @@ class PlayerState(object):
         held_obj = player_dict.get("held_object", None)
         if held_obj is not None:
             player_dict["held_object"] = SoupState.from_dict(held_obj)
+
         return PlayerState(**player_dict)
 
 

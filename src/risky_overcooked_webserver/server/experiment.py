@@ -401,6 +401,29 @@ def print_server_info(header='',**kwargs):
     print(header + f'free_map={len(FREE_MAP)}',**kwargs)
     print(header + f'active_experiments={len(ACTIVE_EXPERIMENTS)}',**kwargs)
 
+@socketio.on("user_data")
+def on_user_data(data):
+    user_id = request.sid
+    with USERS[user_id]:
+        data = data['prolific_data']
+
+        curr_experiment = get_curr_experiment(user_id)
+        with curr_experiment.lock:
+            curr_experiment.prolific_id = data.get("prolific_id", None)
+            curr_experiment.study_id = data.get("study_id", None)
+            curr_experiment.session_id = data.get("session_id", None)
+    if DEBUG:
+        print(f'\t| User {user_id} provided data: {data}', file=sys.stderr)
+        print(curr_experiment.prolific_id, file=sys.stderr)
+        print(curr_experiment.icond, file=sys.stderr)
+        # print_server_info(header='\t| ', file=sys.stderr)
+
+
+
+
+
+
+
 @socketio.on("connect")
 def on_connect():
     user_id = request.sid
@@ -972,6 +995,11 @@ class Experiment:
 
         self.id = uid # used for internal client id
         self.prolific_id = kwargs.get('prolific_id','NoProlificID' ) # the id used by prolific
+        self.study_id = kwargs.get('study_id', 'NoStudyID') # the id used by the study
+        self.session_id = kwargs.get('session_id', 'NoSessionID') # the id used by the session
+        self.icond = None
+        self.condition = None  # assigned when sampling condition
+
         self.timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") # timestamp of experiment start
 
         self.layouts, self.p_slips, self.partners = self.sample_condition()
@@ -984,8 +1012,7 @@ class Experiment:
         self.current_stage = self.stage_names[0]
         self.stage_idx = -1
 
-        self.icond = None
-        self.condition = None # assigned when sampling condition
+
         self.robot = None # loaded on trial begin
         self.game = None # loads when game is created
         self.lock = Lock()
@@ -1058,40 +1085,6 @@ class Experiment:
             for key, val in STAGES.items():
                 print(f"\t| {key}: {val.__class__.__name__}")
         return STAGES
-
-        # STAGES ={}
-        # tutorial_p_slip = 0.0
-        # partner = 'Tutorial'
-        # # Pretrial --------------
-        # STAGES['consent'] = DummyData()
-        # STAGES['participant_information'] = DemographicData()
-        # STAGES['demographic'] = SurveyData('demographic')
-        # STAGES['risk_propensity'] = SurveyData('risk_propensity')
-        # STAGES['instructions'] = DummyData()
-        # STAGES['risky_tutorial_0'] = InteractionData('tutorial0',tutorial_p_slip,partner)
-        # STAGES['risky_tutorial_1'] = InteractionData('tutorial1',tutorial_p_slip,partner)
-        # STAGES['risky_tutorial_2'] = InteractionData('tutorial2',tutorial_p_slip,partner)
-        # STAGES['risky_tutorial_3'] = InteractionData('tutorial3',tutorial_p_slip,partner)
-        #
-        # # Trials --------------
-        # for i in range(int(self.n_trials/2)):
-        #     STAGES[f'priming{i}'] = SurveyData(f'priming{i}')
-        #     STAGES[f'game{i}'] = InteractionData(self.layouts[i],self.p_slips[i],self.partners[i])
-        #     STAGES[f'trust_survey{i}'] = SurveyData(f'trust_survey{i}')
-        #
-        # STAGES[f'washout'] = DummyData()
-        #
-        # for i in range(int(self.n_trials/2),self.n_trials):
-        #     STAGES[f'priming{i}'] = SurveyData(f'priming{i}')
-        #     STAGES[f'game{i}'] = InteractionData(self.layouts[i], self.p_slips[i], self.partners[i])
-        #     STAGES[f'trust_survey{i}'] = SurveyData(f'trust_survey{i}')
-        #
-        # # Posttrial --------------
-        # STAGES['relative_trust_survey'] =  SurveyData(f'relative_trust_survey')
-        # STAGES['debriefing'] = DummyData()
-        # STAGES['redirected'] = DummyData()
-        #
-        # return STAGES
 
 
     #### INTERFACE ##########################################################################
@@ -1229,7 +1222,7 @@ class Experiment:
     def save_data(self):
         """ Save the experiment data to a file. """
         data_path = self.create_dirs()
-        fname = f'{self.timestamp}__{self.prolific_id}__cond{self.icond}.pkl'
+        fname = f'{self.timestamp}__PID{self.prolific_id}__cond{self.icond}.pkl'
         with open(os.path.join(data_path, fname), "wb") as f:
             pickle.dump(self.stages, f)
 

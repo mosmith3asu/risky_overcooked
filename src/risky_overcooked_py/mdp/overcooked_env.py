@@ -6,6 +6,7 @@ import gym
 import gymnasium
 import numpy as np
 import pygame
+import torch
 import tqdm
 from functools import partial
 from risky_overcooked_py.mdp.actions import Action
@@ -25,6 +26,7 @@ from risky_overcooked_py.planning.planners import (
 )
 from risky_overcooked_py.utils import append_dictionaries, mean_and_std_err
 from risky_overcooked_py.visualization.state_visualizer import StateVisualizer
+from risky_overcooked_rl.utils.state_utils import invert_obs
 
 DEFAULT_ENV_PARAMS = {"horizon": 400}
 
@@ -682,7 +684,6 @@ class OvercookedEnv(object):
                     stuck_matrix[traj_idx].append(False)
         return stuck_matrix
 
-
 from pettingzoo.utils.env import ParallelEnv
 
 from risky_overcooked_py.agents.agent import AgentPair
@@ -947,3 +948,193 @@ class Overcooked(gym.Env):
         image = np.flip(np.rot90(image, 3), 1)
         image = cv2.resize(image, (2 * 528, 2 * 464))
         return image
+
+
+class RiskyOvercooked(gym.Env):
+    """
+    Wrapper for the Env class above that is SOMEWHAT compatible with the standard gym API.
+    Why only somewhat? Because we need to flatten a multi-agent env to be a single-agent env (as gym requires).
+
+    NOTE: Observations returned are in a dictionary format with various information that is
+     necessary to be able to handle the multi-agent nature of the environment. There are probably
+     better ways to handle this, but we found this to work with minor modifications to OpenAI Baselines.
+
+    NOTE: The index of the main agent (as gym envs are 'single-agent') in the mdp is randomized at each reset
+     of the environment, and is kept track of by the self.agent_idx attribute. This means that it is necessary
+     to pass on this information in the output to know for which agent index featurizations should be made for
+     other agents.
+
+    For example, say one is training A0 paired with A1, and A1 takes a custom state featurization.
+    Then in the runner.py loop in OpenAI Baselines, we will get the lossless encodings of the state,
+    and the true Overcooked state. When we encode the true state to feed to A1, we also need to know
+    what agent index it has in the environment (as encodings will be index dependent).
+    """
+
+    env_name = "RiskyOvercooked-v0"
+
+    # gym checks for the action space and obs space while initializing the env and throws an error if none exists
+    # custom_init after __init__ no longer works
+    # might as well move all the initilization into the actual __init__
+    def __init__(self, base_env, baselines_reproducible=False):
+        """
+        base_env: OvercookedEnv
+        featurize_fn(mdp, state): fn used to featurize states returned in the 'both_agent_obs' field
+
+        Example creating a gym env:
+
+        mdp = OvercookedGridworld.from_layout_name("asymmetric_advantages")
+        base_env = OvercookedEnv.from_mdp(mdp, horizon=500)
+        env = gym.make("Overcooked-v0",base_env = base_env, featurize_fn =base_env.featurize_state_mdp)
+        """
+        if baselines_reproducible:
+            # NOTE:
+            # This will cause all agent indices to be chosen in sync across simulation
+            # envs (for each update, all envs will have index 0 or index 1).
+            # This is to prevent the randomness of choosing agent indexes
+            # from leaking when using subprocess-vec-env in baselines (which
+            # seeding does not reach) i.e. having different results for different
+            # runs with the same seed.
+            # The effect of this should be negligible, as all other randomness is
+            # controlled by the actual run seeds
+            np.random.seed(0)
+        self.base_env = base_env
+        # self.featurize_fn = self.base_env.mdp.get_lossless_encoding_vector
+        self.observation_space = self._setup_observation_space()
+        self.action_space = gym.spaces.Discrete(len(Action.ALL_ACTIONS))
+        self.reset()
+        self.visualizer = StateVisualizer()
+
+    def _setup_observation_space(self):
+        dummy_mdp = self.base_env.mdp
+        dummy_state = dummy_mdp.get_standard_start_state()
+        obs_shape = self.featurize_fn(dummy_state)[0].shape
+
+        high,low = dummy_mdp.get_lossless_encoding_vector_shape(space_dim=True)
+
+        # high = np.ones(obs_shape) * float("inf")
+        # low = np.zeros(obs_shape)
+        return gym.spaces.Box(low, high, dtype=np.float32)
+
+    def step(self, action,shaped_rewards=False):
+        """
+        action:
+            (agent with index self.agent_idx action, other agent action)
+            is a tuple with the joint action of the primary and secondary agents in index format
+
+        returns:
+            observation: formatted to be standard input for self.agent_idx's policy
+        """
+
+        # if isinstance(action[0],int):
+        #     action = tuple([Action.INDEX_TO_ACTION[a] for a in action])
+
+        assert all(
+            self.action_space.contains(a) for a in action
+        ), "%r (%s) invalid" % (
+            action,
+            type(action),
+        )
+        agent_action, other_agent_action = [
+            Action.INDEX_TO_ACTION[a] for a in action
+        ]
+
+        if self.agent_idx == 0:
+            joint_action = (agent_action, other_agent_action)
+        else:
+            joint_action = (other_agent_action, agent_action)
+
+        next_state, reward, done, env_info = self.base_env.step(joint_action)
+        ob_p0, ob_p1 = self.featurize_fn(next_state)
+        if self.agent_idx == 0:
+            both_agents_ob = (ob_p0, ob_p1)
+        else:
+            both_agents_ob = (ob_p1, ob_p0)
+
+        env_info["policy_agent_idx"] = self.agent_idx
+
+        if "episode" in env_info.keys():
+            env_info["episode"]["policy_agent_idx"] = self.agent_idx
+
+        # obs = {
+        #     "both_agent_obs": both_agents_ob,
+        #     "overcooked_state": next_state,
+        #     "other_agent_env_idx": 1 - self.agent_idx,
+        # }
+        obs = both_agents_ob
+        if shaped_rewards:
+            reward +=  np.array(env_info["shaped_r_by_agent"])
+        return obs, reward, done, env_info
+
+    def featurize_fn(self,state):
+        obsi = self.base_env.mdp.get_lossless_encoding_vector(state)
+        obsj = invert_obs(obsi)
+        return obsi, obsj
+
+    def state_reset_fn(self, *args, **kwargs):
+        """
+        Returns the state reset function that can be used to reset the environment
+        """
+        return self.base_env.state
+
+    @property
+    def state(self):
+        return self.base_env.state
+
+    @state.setter
+    def state(self, value):
+        """
+        Sets the state of the base environment
+        """
+        self.base_env.state = value
+
+    def reset(self):
+        """
+        When training on individual maps, we want to randomize which agent is assigned to which
+        starting location, in order to make sure that the agents are trained to be able to
+        complete the task starting at either of the hardcoded positions.
+
+        NOTE: a nicer way to do this would be to just randomize starting positions, and not
+        have to deal with randomizing indices.
+        """
+        self.base_env.reset()
+        self.base_env.state = self.state_reset_fn()
+        self.mdp = self.base_env.mdp
+        self.agent_idx = np.random.choice([0, 1])
+        ob_p0, ob_p1 = self.featurize_fn(self.base_env.state)
+
+        if self.agent_idx == 0:
+            both_agents_ob = (ob_p0, ob_p1)
+        else:
+            both_agents_ob = (ob_p1, ob_p0)
+        return both_agents_ob
+        # #{
+        #     "both_agent_obs": both_agents_ob,
+        #     "overcooked_state": self.base_env.state,
+        #     "other_agent_env_idx": 1 - self.agent_idx,
+        # }
+
+    def render(self, state=None):
+        state = state if state is not None else self.base_env.state
+        rewards_dict = {}  # dictionary of details you want rendered in the UI
+        for key, value in self.base_env.game_stats.items():
+            if key in [
+                "cumulative_shaped_rewards_by_agent",
+                "cumulative_sparse_rewards_by_agent",
+            ]:
+                rewards_dict[key] = value
+
+        image = self.visualizer.render_state(
+            state=state,
+            grid=self.base_env.mdp.terrain_mtx,
+            hud_data=StateVisualizer.default_hud_data(
+                state, **rewards_dict
+            ),
+        )
+
+        buffer = pygame.surfarray.array3d(image)
+        image = copy.deepcopy(buffer)
+        image = np.flip(np.rot90(image, 3), 1)
+        image = cv2.resize(image, (2 * 528, 2 * 464))
+        return image
+
+

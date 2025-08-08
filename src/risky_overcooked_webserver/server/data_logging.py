@@ -2,7 +2,13 @@ import warnings
 from dataclasses import dataclass, field, fields,is_dataclass
 import os
 import pickle
-1*63
+
+import matplotlib.pyplot as plt
+import imageio
+from risky_overcooked_py.mdp.overcooked_env import RiskyOvercooked, OvercookedEnv
+from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld, OvercookedState
+import json
+from risky_overcooked_rl.utils.visualization import TrajectoryVisualizer
 ######################################################################
 ############ BASE CLASSES ############################################
 ######################################################################
@@ -266,62 +272,119 @@ class ExperimentData(Base):
         self.posttrial_survey = SurveyData(self.player_id, 'posttrial_survey')
 
 
-def read_pickle_file(file_path):
-    """Read a pickle file and return the deserialized object."""
-    with open(file_path, 'rb') as file:
-        data = pickle.load(file)
-    return data
-    # try:
-    #     with open(file_path, 'rb') as file:
-    #         data = pickle.load(file)
-    #     return data
-    # except Exception as e:
-    #     raise RuntimeError(f"Failed to read pickle file {file_path}: {e}")
+class DataViewer:
+    DOCKER_VOLUME = '\\app\\data'
+
+    def __init__(self, fname):
+
+        file_path = os.path.join(self.DOCKER_VOLUME, fname)  # Replace with your actual file path
+
+        self.fname = fname
+        self.path = file_path
+        self.data = self.read_pickle_file(file_path)
+        self.icond = fname.split('cond')[-1][0]  # Extract the condition from the file name
+        self.prolific_id = fname.split('PID')[-1].split('__')[0]  # Extract the Prolific ID from the file name
+
+        if 'participant_information' in self.data.keys():
+            self.age = self.data['participant_information'].age
+            self.sex = self.data['participant_information'].sex
+
+    def view(self,stage_name):
+        if 'tutorial' in stage_name or 'game' in stage_name:
+            self.render_game(stage_name)
+        elif (
+                 'survey' in stage_name
+              or 'priming' in stage_name
+              or 'washout' in stage_name
+              or 'participant_information' in stage_name
+        ):
+            self.print_survey(stage_name)
+        else:
+            raise ValueError(f'Unknown stage name: {stage_name}. Cannot render or print data.')
+
+    def print_survey(self,stage_name):
+        surveydata = self.data[stage_name]
+        print(surveydata)
+
+
+    def get_game_visualizer(self,stage_name):
+        gamedata = self.data[stage_name]
+        layout = gamedata.layout
+        p_slip = gamedata.p_slip
+        partner_type = gamedata.partner_type
+        player_id = gamedata.player_id
+        transition_history = gamedata.transition_history
+
+        horizon = 360
+        time_cost = 0
+        MDP_PARAMS = {
+            'p_slip': p_slip,
+            'neglect_borders': True,
+        }
+
+        mdp = OvercookedGridworld.from_layout_name(layout, **MDP_PARAMS)
+        base_env = OvercookedEnv.from_mdp(mdp, horizon=horizon, time_cost=time_cost)
+        traj_vis = TrajectoryVisualizer(base_env)
+
+        state_history = []
+        for transition in transition_history:
+            t, s, aH, aR, info = transition
+            state_dict = json.loads(s)
+            state_dict['players'][0]['idx'] = 0
+            state_dict['players'][1]['idx'] = 1
+            state = OvercookedState.from_dict(state_dict)
+            state_history.append(state)
+        traj_vis.que_trajectory(state_history)
+
+        return traj_vis, state_history
+    def render_game(self,stage_name):
+        traj_vis,state_history = self.get_game_visualizer(stage_name)
+        traj_vis.preview_trajectory(state_history)
+        plt.show()
+
+    def make_gif(self,stage_name,loop=0, fps=5):
+        traj_vis, state_history = self.get_game_visualizer(stage_name)
+        imgs = traj_vis.get_images(state_history)
+        fname = stage_name
+        # fname = self.fname.split('.')[0]  # Remove file extension
+        # fname = self.fname.split('\\')[-1].split('/')[-1] # remove directory
+        # fname += f'_{stage_name}'
+        # print(fname)
+        imageio.mimsave(f'./{fname}.gif', imgs,loop=loop, fps=fps)
+
+    def read_pickle_file(self,file_path):
+        """Read a pickle file and return the deserialized object."""
+        with open(file_path, 'rb') as file:
+            data = pickle.load(file)
+        return data
+        # try:
+        #     with open(file_path, 'rb') as file:
+        #         data = pickle.load(file)
+        #     return data
+        # except Exception as e:
+        #     raise RuntimeError(f"Failed to read pickle file {file_path}: {e}")
+
+    def analyze(self):
+        raise NotImplementedError
+
+
 
 def main():
-    DOCKER_VOLUME = '\\app\\data'
-    # fname = '2025-07-14_13-12-30__NoProlificID.pkl'
+    # fname = "cond_0\\2025-08-02_20-48-36__{{%PID1234%}}__cond0.pkl"
+    # fname = "cond_None\\2025-08-02_19-44-45__NoProlificID__condNone.pkl"
+    # fname = "cond_1/2025-08-04_17-37-41__PID__cond1.pkl"
+    fname = "cond_1/2025-08-07_12-28-04__PID__cond1.pkl"
+    viewer = DataViewer(fname)
+    # viewer.print_survey('priming0')
+    # viewer.render_game('risky_tutorial_3')
 
-    fname = 'cond_None\\2025-07-16_10-16-40__NoProlificID__condNone.pkl'
-    fname = "2025-08-01_11-17-08__NoProlificID__condNone.pkl"
-    file_path = os.path.join(DOCKER_VOLUME,fname)  # Replace with your actual file path
+    # viewer.make_gif('risky_tutorial_0', fps = 10)
+    # viewer.make_gif('risky_tutorial_1', fps = 10)
+    # viewer.make_gif('risky_tutorial_2', fps = 10)
+    # viewer.make_gif('risky_tutorial_3', fps = 10)
+    # viewer.print_survey('trust_survey0')
+    viewer.make_gif('game0', fps=10)
 
-    try:
-        data = read_pickle_file(file_path)
-        # print(f"{data['priming0']}")
-        for key, value in data.items():
-                # print(f'\n{key}')
-                print(value)
-
-
-
-    except RuntimeError as e:
-        print(e)
 
 if __name__ == "__main__":
     main()
-
-# def main():
-#     experiment_config = {
-#         'player_id':'p1',
-#         'layouts': ['layout1','layout2'],
-#         'p_slips': [0.5,0.3],
-#         'partner_types': ['rational','irrational']
-#     }
-#     experiment = ExperimentData(**experiment_config)
-#
-#
-#     transition = {
-#         't': 0,
-#         's': 'state',
-#         'aH': 'human_action',
-#         'aR': 'robot_action',
-#         'sp': 'next_state',
-#         'info': {}
-#     }
-#     experiment.trials[0].log_transition(**transition)
-#     experiment.verify()
-#
-#
-# if __name__ == "__main__":
-#     main()

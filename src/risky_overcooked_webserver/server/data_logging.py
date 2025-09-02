@@ -59,6 +59,10 @@ class Base:
                     [f'{h} {s}' for s in invalid_fields])
                 return err_str
 
+    @property
+    def summary(self):
+        return self.__repr__()
+
 @dataclass(frozen=True)
 class FrozenBase:
     def verify(self,header_lvl=0,raise_error=True):
@@ -129,6 +133,9 @@ class DemographicData(PseudoFrozenClass):
     def set(self,age,sex):
         self.age = age
         self.sex = sex
+    @property
+    def summary(self):
+        return f'DemographicData(age={self.age}, sex={self.sex})'
 
 
 @dataclass#(frozen=True)
@@ -152,6 +159,11 @@ class SurveyData(PseudoFrozenClass):
             for key, value in self.responses.items():
                 disp += f'\t|{key}: {value}\n'
         return disp
+
+    @property
+    def summary(self):
+        return f'SurveyData(n_responses={len(self.responses)})'
+
 
 @dataclass#(frozen=True)
 class InteractionData(PseudoFrozenClass):
@@ -183,6 +195,11 @@ class InteractionData(PseudoFrozenClass):
         disp += f'\t | Partner Type: {self.partner_type}\n'
         disp += f'\t | Len of interaction {len(self.transition_history)}\n'
         return disp
+
+    @property
+    def summary(self):
+        return f'InteractionData(layout={self.layout}, p_slip={self.p_slip}, n_transitions={len(self.transition_history)})'
+
 ######################################################################
 ############ CUMULATIVE CLASSES ######################################
 ######################################################################
@@ -289,6 +306,18 @@ class DataViewer:
             self.age = self.data['participant_information'].age
             self.sex = self.data['participant_information'].sex
 
+    ################################################################################
+    def summary(self):
+        print(f'File: {self.fname}')
+        for key, value in self.data.items():
+            if not 'DummyData' in type(value).__name__:
+                if 'priming' in key:
+                    print(f'\t | ')
+                if value.complete:
+                    print(f'\t | {key}: {value.summary}')
+                else:
+                    print(f'\t | {key}: Incomplete Data')
+
     def view(self,stage_name):
         if 'tutorial' in stage_name or 'game' in stage_name:
             self.render_game(stage_name)
@@ -305,7 +334,6 @@ class DataViewer:
     def print_survey(self,stage_name):
         surveydata = self.data[stage_name]
         print(surveydata)
-
 
     def get_game_visualizer(self,stage_name):
         gamedata = self.data[stage_name]
@@ -373,7 +401,8 @@ def main():
     # fname = "cond_0\\2025-08-02_20-48-36__{{%PID1234%}}__cond0.pkl"
     # fname = "cond_None\\2025-08-02_19-44-45__NoProlificID__condNone.pkl"
     # fname = "cond_1/2025-08-04_17-37-41__PID__cond1.pkl"
-    fname = "cond_1/2025-08-07_12-28-04__PID__cond1.pkl"
+    # fname = "cond_1/2025-08-07_12-28-04__PID__cond1.pkl"
+    fname = "cond_0/2025-09-02_16-12-04__PID123__cond0.pkl"
     viewer = DataViewer(fname)
     # viewer.print_survey('priming0')
     # viewer.render_game('risky_tutorial_3')
@@ -383,7 +412,11 @@ def main():
     # viewer.make_gif('risky_tutorial_2', fps = 10)
     # viewer.make_gif('risky_tutorial_3', fps = 10)
     # viewer.print_survey('trust_survey0')
-    viewer.make_gif('game0', fps=10)
+    # viewer.make_gif('game0', fps=10)
+    viewer.summary()
+
+    viewer.print_survey('priming0')
+    viewer.print_survey('trust_survey0')
 
 
 if __name__ == "__main__":

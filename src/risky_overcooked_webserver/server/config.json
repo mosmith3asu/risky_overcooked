@@ -27,9 +27,9 @@
     },
     "EXPERIMENT_CONFIG": {
         "data_collection": true,
-        "debug": true,
+        "debug": false,
         "stages": {
-                 "consent": "DummyData",
+            "consent": "DummyData",
             "participant_information": "DemographicData",
             "demographic": "SurveyData",
             "risk_propensity": "SurveyData",

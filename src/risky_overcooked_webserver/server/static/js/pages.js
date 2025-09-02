@@ -45,10 +45,17 @@ function parse_prolific_data() {
     // get url parameters
     //  <mainURL>?PROLIFIC_PID={{%PROLIFIC_PID%}}&STUDY_ID={{%STUDY_ID%}}&SESSION_ID={{%SESSION_ID%}}
     var urlParams = new URLSearchParams(window.location.search);
+
+    var session_id = urlParams.get('SESSION_ID');
+    // remove '/' from session_id if exists
+    if (session_id && session_id.includes('/')) {
+        session_id = session_id.replace(/\//g, '');
+    }
+
     return {
         'prolific_id': urlParams.get('PROLIFIC_PID'),
         'study_id': urlParams.get('STUDY_ID'),
-        'session_id': urlParams.get('SESSION_ID')
+        'session_id': session_id//urlParams.get('SESSION_ID')
     }
 }
 
@@ -1662,6 +1669,12 @@ class Page_GameInstructions extends GamePlayTemplate {
                 "Take the longer detour that avoids all puddles"];
         }
         else if (this.layout.includes("risky_tree")) {
+            options = [
+                "Take the most direct route by going through both puddles",
+                "Take the route through one puddle",
+                "Take the longer detour that avoids all puddles"];
+        }
+        else if (this.layout.includes("risky_shortcuts")) {
             options = [
                 "Take the most direct route by going through both puddles",
                 "Take the route through one puddle",

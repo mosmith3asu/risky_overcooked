@@ -48,9 +48,9 @@ class CurriculumTrainer(Trainer):
             cum_reward, cum_shaped_rewards, rollout_info = \
                 self.curriculum_rollout(cit,
                                         rationality=self.rationality,
-                                        epsilon=self.epsilon_sched[cit],
-                                        rshape_scale=self.rshape_sched[cit],
-                                        p_rand_start=self.random_start_sched[cit])
+                                        epsilon=self.epsilon,
+                                        rshape_scale=self.rshape_scale,
+                                        p_rand_start=self.random_start)
 
             train_rewards.append(cum_reward + cum_shaped_rewards)
             train_losses.append(rollout_info['mean_loss'])

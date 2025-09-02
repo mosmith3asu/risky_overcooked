@@ -93,10 +93,9 @@ jobs:
 ##        deliver_onion1: 1.6   # agents starts with onion and must deliver to pot
 ##        full_task: 999 # pick_up_onion1 = full_task
 
-#
-  risky_shortcuts4:
-    agents: ['neutral','seeking']
-    p_slips: [0.2,0.25,0.3]
+  risky_handoff2:
+    agents: ['neutral','averse']
+    p_slips: [0.3,0.4]
 
     set:
       note: ''
@@ -116,6 +115,29 @@ jobs:
         end: 0.05        # ending value
         duration: 0.5 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
         decay: 1.0      # higher values = faster decay#      epsilon_sched:
+#
+#  risky_shortcuts4:
+#    agents: ['neutral','seeking']
+#    p_slips: [0.2,0.25,0.3]
+#
+#    set:
+#      note: ''
+#      sampling: 'uniform'
+#
+#      gamma: 0.99
+#      HORIZON: 360
+#      time_cost: -0.4
+#      rshape_sched:
+#        start: 1.0        # starting value
+#        end: 1.0          # ending value
+#        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+#        decay: 1.0      # higher values = faster decay
+#
+#      epsilon_sched:
+#        start: 1.0        # starting value
+#        end: 0.05        # ending value
+#        duration: 0.75 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS
+#        decay: 1.0      # higher values = faster decay#      epsilon_sched:
 #        start: 1.0        # starting value
 #        end: 0.05        # ending value
 #        duration: 0.15 # how long decay till end lasts (after which = end) (can be # iter or % of total ITERATIONS

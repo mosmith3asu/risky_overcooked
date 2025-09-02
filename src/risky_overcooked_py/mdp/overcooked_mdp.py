@@ -2705,19 +2705,48 @@ class OvercookedGridworld(object):
 
             # Only one (ego) player lost object (x2) ------------------
             prob = (1 - self.p_slip) * self.p_slip
-            for iplayer in range(2):
+            for _iplayer in range(2):
+                # if next_state.players[iplayer].has_object():
+                #     next_state.players[iplayer].remove_object()
+                # elif next_state.players[int(not iplayer)].has_object():
+                #     next_state.players[int(not iplayer)].set_object(held_objs[int(not iplayer)])
+                # outcomes.append([joint_action, make_obs(next_state), prob])
+                # # print(f'1L[{iplayer}]: {[player.has_object() for player in next_state.players]}')
+                iplayer = _iplayer
                 if next_state.players[iplayer].has_object():
                     next_state.players[iplayer].remove_object()
-                if not next_state.players[int(not iplayer)].has_object():
-                    next_state.players[int(not iplayer)].set_object(held_objs[int(not iplayer)])
+
+                iplayer = not _iplayer
+                if held_objs[iplayer] is not None:
+                    next_state.players[iplayer].set_object(held_objs[iplayer])
+                else: # interacting with counter (pick up)
+                    pos = next_state.players[iplayer].position
+                    orientation = next_state.players[iplayer].orientation
+                    # get object player is facing and pick up
+                    adj_pos = Action.move_in_direction(pos, orientation)
+                    for obj in state.objects.values():
+                        if adj_pos == obj.position:
+                            next_state.players[iplayer].set_object(obj)
+                            break
                 outcomes.append([joint_action, make_obs(next_state), prob])
-                # print(f'1L[{iplayer}]: {[player.has_object() for player in next_state.players]}')
+
 
             # Both held object ---------------------------------
             prob = (1 - self.p_slip) * (1 - self.p_slip)
             for iplayer in range(2):
                 if not next_state.players[iplayer].has_object():
                     next_state.players[iplayer].set_object(held_objs[iplayer])
+                # if held_objs[iplayer] is not None:
+                #     next_state.players[iplayer].set_object(held_objs[iplayer])
+                else:  # interacting with counter (pick up)
+                    pos = next_state.players[iplayer].position
+                    orientation = next_state.players[iplayer].orientation
+                    # get object player is facing and pick up
+                    adj_pos = Action.move_in_direction(pos, orientation)
+                    for obj in state.objects.values():
+                        if adj_pos == obj.position:
+                            next_state.players[iplayer].set_object(obj)
+                            break
             outcomes.append([joint_action, make_obs(next_state), prob])
             # print(f'BL: {[player.has_object() for player in next_state.players]}')
 

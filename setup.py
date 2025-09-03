@@ -28,6 +28,7 @@ setup(
     install_requires=[
         "dill",
         "numpy==1.26.3",
+        "matplotlib==3.8.3",
         "scipy==1.14.0",
         "tqdm==4.66.4",
         "gymnasium==0.28.1",

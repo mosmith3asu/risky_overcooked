@@ -26,8 +26,8 @@ RUN echo "import os; DATA_DIR=os.path.abspath('.')" >> /risky_overcooked/src/ris
 #RUN pip install -e '/overcooked_ai[harl]'
 RUN pip install -e '/risky_overcooked[harl]'
 
-# RUN apt-get -y update #TODO: Update was down, need to uncomment
-#RUN apt-get install -y libgl1-mesa-dev  #TODO: Update was down, need to uncomment
+RUN apt-get -y update
+RUN apt-get install -y libgl1-mesa-dev
 
 # Copy over remaining files
 COPY ./static ./static

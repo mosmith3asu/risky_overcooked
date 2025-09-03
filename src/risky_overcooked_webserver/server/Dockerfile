@@ -24,7 +24,7 @@ RUN echo "import os; DATA_DIR=os.path.abspath('.')" >> /risky_overcooked/src/ris
 
 # Install chai dependencies
 #RUN pip install -e '/overcooked_ai[harl]'
-#RUN pip install -e '/risky_overcooked[harl]'
+RUN pip install -e '/risky_overcooked[harl]'
 
 #RUN apt-get -y update
 #RUN apt-get install -y libgl1-mesa-dev

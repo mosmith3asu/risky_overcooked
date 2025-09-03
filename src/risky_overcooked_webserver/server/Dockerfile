@@ -18,10 +18,6 @@ RUN if [ "$BUILD_ENV" = "production" ] ; then pip install eventlet ; fi
 
 # Clone chai code
 RUN git clone --recursive https://github.com/mosmith3asu/risky_overcooked.git --branch $OVERCOOKED_BRANCH --single-branch /risky_overcooked
-# Copy local repo instead of git repo
-#COPY /risky_overcooked_rl /risky_overcooked_rl
-#COPY /risky_overcooked_webserver /risky_overcooked_webserver
-
 
 # Dummy data_dir so things don't break
 RUN echo "import os; DATA_DIR=os.path.abspath('.')" >> /risky_overcooked/src/risky_overcooked_rl/data_dir.py
@@ -30,8 +26,8 @@ RUN echo "import os; DATA_DIR=os.path.abspath('.')" >> /risky_overcooked/src/ris
 #RUN pip install -e '/overcooked_ai[harl]'
 RUN pip install -e '/risky_overcooked[harl]'
 
-RUN apt-get -y update
-RUN apt-get install -y libgl1-mesa-dev
+# RUN apt-get -y update #TODO: Update was down, need to uncomment
+#RUN apt-get install -y libgl1-mesa-dev  #TODO: Update was down, need to uncomment
 
 # Copy over remaining files
 COPY ./static ./static

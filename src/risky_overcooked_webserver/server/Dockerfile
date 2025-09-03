@@ -19,7 +19,7 @@ RUN if [ "$BUILD_ENV" = "production" ] ; then pip install eventlet ; fi
 # Clone chai code
 RUN git clone --recursive https://github.com/mosmith3asu/risky_overcooked.git --branch $OVERCOOKED_BRANCH --single-branch /risky_overcooked
 # Copy local repo instead of git repo
-#COPY ./src/risky_overcooked_rl /risky_overcooked_rl
+#COPY /risky_overcooked_rl /risky_overcooked_rl
 #COPY /risky_overcooked_webserver /risky_overcooked_webserver
 
 

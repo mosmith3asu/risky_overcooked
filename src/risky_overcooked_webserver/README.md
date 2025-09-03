@@ -22,3 +22,4 @@ C:\app\data\*.pkl
 ```
 # Notes
 - may have to remove `graphics.js` from `static/js/` when using docker. this was added manually
+- Binded local repo in docker-compose.yml

@@ -41,20 +41,20 @@ setup(
         "numba=0.61.2"
     ],
     # removed overlapping dependencies
-    extras_require={
-        "harl": [
-            "wandb",
-            "GitPython",
-            "memory_profiler",
-            "sacred",
-            "pymongo",
-            "matplotlib=3.8.3",
-            "requests",
-            # "seaborn==0.9.0",
-            # "ray[rllib]>=2.5.0",
-            "protobuf",
-            "torch==2.3.1+cu118"
-            # "tensorflow>=2.14.0",
-        ]
-    },
+    # extras_require={
+    #     "harl": [
+    #         "wandb",
+    #         "GitPython",
+    #         "memory_profiler",
+    #         "sacred",
+    #         "pymongo",
+    #         "matplotlib=3.8.3",
+    #         "requests",
+    #         # "seaborn==0.9.0",
+    #         # "ray[rllib]>=2.5.0",
+    #         "protobuf",
+    #         "torch==2.3.1+cu118"
+    #         # "tensorflow>=2.14.0",
+    #     ]
+    # },
  )

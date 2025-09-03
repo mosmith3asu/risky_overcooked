@@ -17,12 +17,10 @@ RUN pip install -r requirements.txt
 RUN if [ "$BUILD_ENV" = "production" ] ; then pip install eventlet ; fi
 
 # Clone chai code
-#RUN git clone --recursive https://github.com/HumanCompatibleAI/overcooked_ai.git --branch $OVERCOOKED_BRANCH --single-branch /overcooked_ai
 RUN git clone --recursive https://github.com/mosmith3asu/risky_overcooked.git --branch $OVERCOOKED_BRANCH --single-branch /risky_overcooked
 # Copy local repo instead of git repo
-#COPY ./../../../../risky_overcooked /risky_overcooked
-#COPY ./../../../../risky_overcooked ./risky_overcooked
-#COPY /risky_overcooked /risky_overcooked
+#COPY ./src/risky_overcooked_rl /risky_overcooked_rl
+#COPY /risky_overcooked_webserver /risky_overcooked_webserver
 
 
 # Dummy data_dir so things don't break

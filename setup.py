@@ -27,17 +27,17 @@ setup(
     },
     install_requires=[
         "dill",
-        "numpy",
-        "scipy",
-        "tqdm",
-        "gymnasium",
-        "ipython",
-        "pygame",
-        "ipywidgets",
-        "opencv-python",
-        "flask",
-        "flask-socketio",
-        "numba"
+        "numpy==1.26.3",
+        "scipy==1.14.0",
+        "tqdm==4.66.4",
+        "gymnasium==0.28.1",
+        "ipython==7.34.0",
+        "pygame==2.5.2",
+        "ipywidgets==8.1.2",
+        "opencv-python==4.9.0.80",
+        "flask==2.1.3",
+        "flask-socketi==4.3.1",
+        "numba==0.61.2"
     ],
     # install_requires=[
     #     "dill",

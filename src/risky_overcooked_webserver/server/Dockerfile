@@ -24,10 +24,10 @@ RUN echo "import os; DATA_DIR=os.path.abspath('.')" >> /risky_overcooked/src/ris
 
 # Install chai dependencies
 #RUN pip install -e '/overcooked_ai[harl]'
-RUN pip install -e '/risky_overcooked[harl]'
+#RUN pip install -e '/risky_overcooked[harl]'
 
-RUN apt-get -y update
-RUN apt-get install -y libgl1-mesa-dev
+#RUN apt-get -y update
+#RUN apt-get install -y libgl1-mesa-dev
 
 # Copy over remaining files
 COPY ./static ./static
@@ -38,9 +38,9 @@ COPY ./config.json ./config.json
 
 
 # Set environment variables that will be used by app.py
-ENV HOST 0.0.0.0
-ENV PORT 5000
-ENV CONF_PATH config.json
+ENV HOST=0.0.0.0
+ENV PORT=5000
+ENV CONF_PATH=config.json
 
 # Do the thing
 EXPOSE 5000

@@ -5,6 +5,7 @@ ARG BUILD_ENV
 ARG OVERCOOKED_BRANCH
 ARG GRAPHICS
 ARG SRC_PATH
+
 WORKDIR /app
 # Install non-chai dependencies
 RUN apt-get -y update

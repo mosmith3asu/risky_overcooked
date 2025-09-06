@@ -22,7 +22,7 @@ COPY ./requirements.txt ./requirements.txt
 RUN pip install -r requirements.txt
 
 # Install eventlet production server if production build
-RUN if [ "$BUILD_ENV" = "production" ] ; then pip install eventlet ; fi
+#RUN if [ "$BUILD_ENV" = "production" ] ; then pip install eventlet ; fi
 
 # Dummy data_dir so things don't break
 RUN echo "import os; DATA_DIR=os.path.abspath('.')" >> /risky_overcooked/src/risky_overcooked_rl/data_dir.py

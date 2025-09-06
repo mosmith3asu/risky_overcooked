@@ -20,6 +20,10 @@ data stored in:
 ```
 C:\app\data\*.pkl
 ```
+
+# AWS
+if up.sh not running `sudo chmod u+r+x up.sh`
+
 # Notes
 - may have to remove `graphics.js` from `static/js/` when using docker. this was added manually
 - Binded local repo in docker-compose.yml

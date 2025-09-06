@@ -1,8 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from src.risky_overcooked_rl.utils.state_utils import invert_obs
 from collections import deque
-from src.risky_overcooked_py.mdp.actions import Action
+from risky_overcooked_py.mdp.actions import Action
 
 class BayesianBeliefUpdate():
     def __init__(self, partner_agents,response_agents,

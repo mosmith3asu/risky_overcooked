@@ -305,7 +305,7 @@ class Page_ParticipantInformation {
                     <li>Your participation is expected to not exceed 45 minutes</li>
                     <li>You will be playing a game with a virtual agent using a keyboard</li>
                     <li>Please ensure you are in a distraction free environment before you begin</li>
-                    <li><b>Your compensation will depend on your performance during these games<b></li>
+                    <li><b>Your compensation will depend on your performance during these games</b></li>
                 </ul>
 
                 Before the experiment begins:
@@ -1603,7 +1603,7 @@ class Page_GamePlay extends GamePlayTemplate {
         this.ID = `perform_${num}`;
         this.layout = LAYOUTS[num];
         this.p_slip = PSLIPS[num];
-        this.header = `Game ${num}/${total_games}`
+        this.header = `Game ${num+1}/${total_games+1}`
         this.player0_name = 'human'; // human agent
         // this.player1_name = 'StayAI'; // AI agent
         this.player1_name = AI_agents[num]; // AI agent
@@ -1631,7 +1631,7 @@ class Page_GameInstructions extends GamePlayTemplate {
         this.ID = `game_instructions_${num}`;
         this.layout = LAYOUTS[num];
         this.p_slip =  PSLIPS[num];
-        this.header = `Game ${num}/${total_games} Instructions`
+        this.header = `Game ${num+1}/${total_games+1} Instructions`
         this.player0_name = 'StayAI'; // human agent
         this.player1_name = 'StayAI'; // AI agent
         this.overcooked_id = `${this.ID}_gameplay`; // ID of overcooked div
@@ -1679,6 +1679,13 @@ class Page_GameInstructions extends GamePlayTemplate {
                 "Take the most direct route by going through both puddles",
                 "Take the route through one puddle",
                 "Take the longer detour that avoids all puddles"];
+        }
+         else if (this.layout.includes("risky_handoff")) {
+            options = [
+                "Enter one puddle to handoff items to my partner",
+                "Take the longer detour that avoids all puddles",
+                "A mix of handing off items and avoiding puddles"
+            ];
         }
         this.priming_options = options.sort(() => Math.random() - 0.5); // shuffle priming options
     }
@@ -2140,6 +2147,14 @@ socket.on('end_game', function(data) {
 /* * * * * * * * * * * * * *
  * Game Key Event Listener *
  * * * * * * * * * * * * * */
+document.addEventListener("keydown", function (event) {
+    if (event.altKey && event.key.toLowerCase() === "s") {
+        event.preventDefault(); // Prevent browser default (like focusing on address bar in some browsers)
+        socket.emit("save");
+        console.log("Alt+S pressed -> emitted 'save'");
+    }
+});
+
 
 function enable_key_listener() {
     $(document).on('keydown', function(e) {

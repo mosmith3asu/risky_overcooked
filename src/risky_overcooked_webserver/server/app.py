@@ -417,6 +417,16 @@ def on_user_data(data):
         print(f'\t| prolific_id: {curr_experiment.prolific_id}', file=sys.stderr)
         print(f'\t| icond: {curr_experiment.icond}', file=sys.stderr)
 
+@socketio.on("save")
+def on_save(data):
+    if DEBUG: print("on_save triggered", data)
+
+    user_id = request.sid
+    with USERS[user_id]:
+        curr_experiment = get_curr_experiment(user_id)
+        with curr_experiment.lock:
+            curr_experiment.save_data()
+
 
 @socketio.on("connect")
 def on_connect():
@@ -1156,7 +1166,6 @@ class Experiment:
     def close_game(self):
         assert self.game is not None, 'Attempting to close a nonexistant game'
 
-
         with self.game.lock:
             if "priming" not in self.current_stage.lower():
                 self.log_trajectory(self.game.trajectory)
@@ -1165,7 +1174,6 @@ class Experiment:
             del self.game
             self.game = None
 
-        self.save_data()
 
     def close_experiment(self):
         self.save_data()

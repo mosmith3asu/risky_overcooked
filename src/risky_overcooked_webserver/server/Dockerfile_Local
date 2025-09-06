@@ -1,0 +1,61 @@
+#FROM python:3.7-buster
+#FROM python:3.11-buster
+FROM python:3.11-slim
+ARG BUILD_ENV
+ARG OVERCOOKED_BRANCH
+ARG GRAPHICS
+ARG SRC_PATH
+WORKDIR /app
+# Install non-chai dependencies
+RUN apt-get -y update
+RUN apt-get install -y libgl1-mesa-dev
+RUN pip install opencv-python-headless
+RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+
+
+COPY ./$SRC_PATH/risky_overcooked_webserver/server/requirements.txt ./requirements.txt
+RUN pip install -r requirements.txt
+#ADD ./../../../risky_overcooked /risky_overcooked
+# Install eventlet production server if production build
+RUN if [ "$BUILD_ENV" = "production" ] ; then pip install eventlet ; fi
+
+# Clone chai code
+#RUN git clone --recursive https://github.com/mosmith3asu/risky_overcooked.git --branch $OVERCOOKED_BRANCH --single-branch /risky_overcooked
+
+#COPY ./$SRC_PATH/risky_overcooked_rl /risky_overcooked/src/risky_overcooked_rl # of want all models
+COPY ./$SRC_PATH/risky_overcooked_rl/utils /risky_overcooked/src/risky_overcooked_rl/utils
+COPY ./$SRC_PATH/risky_overcooked_rl/algorithms/DDQN/utils /risky_overcooked/src/risky_overcooked_rl/algorithms/DDQN/utils
+COPY ./$SRC_PATH/risky_overcooked_rl/algorithms/DDQN/eval /risky_overcooked/src/risky_overcooked_rl/algorithms/DDQN/eval
+COPY ./$SRC_PATH/risky_overcooked_rl/algorithms/DDQN/*.py /risky_overcooked/src/risky_overcooked_rl/algorithms/DDQN/
+COPY ./$SRC_PATH/risky_overcooked_rl/algorithms/DDQN/*.yaml /risky_overcooked/src/risky_overcooked_rl/algorithms/DDQN/
+
+COPY ./$SRC_PATH/risky_overcooked_webserver /risky_overcooked/src/risky_overcooked_webserver
+COPY ./$SRC_PATH/risky_overcooked_py /risky_overcooked/src/risky_overcooked_py
+ENV PYTHONPATH="${PYTHONPATH}:/risky_overcooked/src"
+RUN python -c "import risky_overcooked_py" # check if modules are found
+
+
+
+
+##COPY ./$SRC_PATH/risky_overcooked_rl/algorithms/DDQN/models /risky_overcooked/src/risky_overcooked_rl/algorithms/DDQN/models
+# Dummy data_dir so things don't break
+RUN echo "import os; DATA_DIR=os.path.abspath('.')" >> /risky_overcooked/src/risky_overcooked_rl/data_dir.py
+
+# Copy over remaining files
+#WORKDIR /app/risky_overcooked/src/risky_overcooked_webserver/server
+COPY ./$SRC_PATH/risky_overcooked_webserver/server/static ./static
+COPY ./$SRC_PATH/risky_overcooked_webserver/server/*.py ./
+COPY ./$SRC_PATH/risky_overcooked_webserver/server/graphics/$GRAPHICS ./static/js/graphics.js
+COPY ./$SRC_PATH/risky_overcooked_webserver/server/config.json ./config.json
+
+
+
+
+# Set environment variables that will be used by app.py
+ENV HOST 0.0.0.0
+ENV PORT 5000
+ENV CONF_PATH config.json
+# Do the thing
+EXPOSE 5000
+CMD ["python", "-u", "app.py"]

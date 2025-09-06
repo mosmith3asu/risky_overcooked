@@ -1,14 +1,16 @@
+# LOCAL DOCKER VERSION #################
 version : '3.11'
-#version : '3.7'
 
 services:
     app:
         build:
-            context: ./server
+            context: ../../.. #risky_overcooked
+            dockerfile: ./risky_overcooked/src/risky_overcooked_webserver/server/Dockerfile_Local
             args:
                 BUILD_ENV: "${BUILD_ENV:-production}"
                 OVERCOOKED_BRANCH: "${OVERCOOKED_BRANCH:-master}"
                 GRAPHICS: "${GRAPHICS:-overcooked_graphics_v2.2.js}"
+                SRC_PATH: "${SRC_PATH:-risky_overcooked/src}"
             shm_size: "5gb"
         shm_size: "5gb"
         environment:
@@ -17,7 +19,5 @@ services:
             - "80:5000"
         volumes:
             - data:/app/data
-
-
 volumes:
   data:

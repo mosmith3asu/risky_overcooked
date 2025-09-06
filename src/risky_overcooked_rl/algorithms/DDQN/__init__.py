@@ -49,10 +49,12 @@ def get_default_config(path = '\\risky_overcooked_rl\\algorithms\\DDQN\\_config.
     import yaml
     import os
 
-    dirs = os.getcwd().split('\\')
-    src_idx = dirs.index('src')  # find index of src directory
-    src_dir = '\\'.join(dirs[:src_idx+1])
-    with open(f'{src_dir}{path}') as f:
+    # dirs = os.getcwd().split('\\')
+    # src_idx = dirs.index('src')  # find index of src directory
+    # src_dir = '\\'.join(dirs[:src_idx+1])
+    src_dir = get_src_dir()
+    fpath = f'{src_dir}{path}'.replace('\\', '/')
+    with open(fpath) as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
     return config
 
@@ -68,15 +70,26 @@ def get_default_batching(path = '\\risky_overcooked_rl\\algorithms\\DDQN\\_batch
     return config
 
 def get_absolute_save_dir(path = '\\risky_overcooked_rl\\algorithms\\DDQN\\models\\'):
-    dirs = os.getcwd().split('\\')
-    src_idx = dirs.index('src') # find index of src directory
-    return '\\'.join(dirs[:src_idx+1]) + path
+    # dirs = os.getcwd().split('\\')
+    # try:
+    #     dirs = os.path.abspath(__file__)
+    #     dirs = dirs.replace('/', '\\').split('\\')
+    #     src_idx = dirs.index('src') # find index of src directory
+    # except ValueError:
+    #     raise Exception(f"The 'src' directory was not found in {os.path.abspath(__file__)}.")
+    # return '\\'.join(dirs[:src_idx+1]) + path
+    return (get_src_dir() + path).replace('\\', '/')
+
+def get_src_dir():
+    try:
+        dirs = os.path.abspath(__file__)
+        dirs = dirs.replace('/', '\\').split('\\')
+        src_idx = dirs.index('src')  # find index of src directory
+    except ValueError:
+        raise Exception(f"The 'src' directory was not found in {os.path.abspath(__file__)}.")
+    return '\\'.join(dirs[:src_idx + 1])
 
 
-# def get_absolute_save_dir(path = '\\risky_overcooked_rl\\algorithms\\DDQN\\models\\study_1_models\\'):
-#     dirs = os.getcwd().split('\\')
-#     src_idx = dirs.index('src') # find index of src directory
-#     return '\\'.join(dirs[:src_idx+1]) + path
 
 def get_save_dir():
     # TODO: implement this is save confing to generalize to other algs
@@ -86,4 +99,3 @@ def get_save_dir():
 
 SAVE_DIR = get_absolute_save_dir()
 CONFIG = get_default_config()
-

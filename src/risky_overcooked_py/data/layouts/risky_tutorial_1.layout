@@ -1,9 +1,9 @@
 {
-    "grid":  """XXXXXXXPX
+    "grid":  """XXXXXXPXX
                 O 2 W   S
                 XDXXXXXXX
                 XXXXXXXXX
-                XXXXXXXPX
+                XXXXXXPXX
                 O 1 W   S
                 XDXXXXXXX""",
 
@@ -12,5 +12,5 @@
         { "ingredients" : ["onion", "onion", "onion"]}
     ],
     "rew_shaping_params": None,
-    "p_slip": 0.65
+    "p_slip": 0.5
 }

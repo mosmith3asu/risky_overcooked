@@ -944,8 +944,10 @@ class TutorialAI:
 
         # Routing Commands
         self.start2onion = [Direction.WEST for _ in range(1)]  # start to onion
-        self.obj2pot = [Direction.EAST for _ in range(6)] + [Direction.NORTH]  # both onion and dish
-        self.pot2onion = [Direction.WEST for _ in range(6)]
+        # self.obj2pot = [Direction.EAST for _ in range(6)] + [Direction.NORTH]  # both onion and dish
+        self.obj2pot = [Direction.EAST for _ in range(5)] + [Direction.NORTH]  # both onion and dish
+
+        self.pot2onion = [Direction.WEST for _ in range(5)]
         self.onion2dish = [Direction.SOUTH for _ in range(1)]
         self.pot2service = [Direction.EAST for _ in range(1)]
         self.service2start = [Direction.WEST for _ in range(5)]
@@ -956,6 +958,8 @@ class TutorialAI:
         self.obj2pot_detour = [Direction.EAST for _ in range(2)] + \
                               [Direction.SOUTH,Direction.EAST,Direction.EAST,Direction.NORTH ]+ \
                               [Direction.EAST for _ in range(2)] + [Direction.NORTH]  # both onion and dish
+
+
         # self.pot2onion_detour = self.obj2pot_detour = [Direction.WEST for _ in range(2)] + \
         #                       [Direction.SOUTH,Direction.WEST,Direction.WEST,Direction.NORTH ]+ \
         #                       [Direction.WEST for _ in range(2)] + [Direction.NORTH]  # both onion and dish
@@ -1101,7 +1105,7 @@ class TutorialAI:
             loop += [Action.INTERACT]
             loop += self.obj2pot_detour
             loop += [Action.INTERACT]
-            loop += self.pot2onion
+            loop += self.pot2onion + [self.pot2onion[-2]]
         loop += self.onion2dish
         loop += [Action.INTERACT]
         loop += self.obj2pot_detour
@@ -1126,7 +1130,7 @@ class TutorialAI:
         loop += self.onion2dish
         loop += [Action.INTERACT]
         loop += self.obj2pot
-        loop += [Action.STAY for _ in range(5)] # plates soup
+        loop += [Action.STAY for _ in range(7)] # plates soup
         loop += [Action.INTERACT] # plates soup
         loop += self.pot2service
         loop += [Action.INTERACT] # deliver soup

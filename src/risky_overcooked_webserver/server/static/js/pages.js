@@ -60,6 +60,9 @@ function parse_prolific_data() {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
+    // const canvas = document.getElementById('canvas');
+    // const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
     // const prolific_data = parse_prolific_data();
 
     // const viewport = document.getElementById("viewport");
@@ -287,7 +290,6 @@ class Page_Consent {
         this.container.style.display = "none";
     }
 }
-
 class Page_ParticipantInformation {
     constructor(parent_container) {
         // Create Page Container
@@ -2150,7 +2152,7 @@ socket.on('end_game', function(data) {
 document.addEventListener("keydown", function (event) {
     if (event.altKey && event.key.toLowerCase() === "s") {
         event.preventDefault(); // Prevent browser default (like focusing on address bar in some browsers)
-        socket.emit("save");
+        socket.emit("save",{});
         console.log("Alt+S pressed -> emitted 'save'");
     }
 });

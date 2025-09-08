@@ -9,7 +9,7 @@ services:
             args:
                 BUILD_ENV: "${BUILD_ENV:-production}"
                 OVERCOOKED_BRANCH: "${OVERCOOKED_BRANCH:-master}"
-                GRAPHICS: "${GRAPHICS:-overcooked_graphics_v2.2.js}"
+                GRAPHICS: "${GRAPHICS:-risky_overcooked_graphics_v1.js}"
                 SRC_PATH: "${SRC_PATH:-risky_overcooked/src}"
             shm_size: "5gb"
         shm_size: "5gb"

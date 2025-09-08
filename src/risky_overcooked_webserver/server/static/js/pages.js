@@ -74,7 +74,25 @@ document.addEventListener("DOMContentLoaded", function () {
     // Get the root container
     const rootContainer = document.getElementById("root-container");
     rootContainer.style.width = "100%";
-    rootContainer.style.height = "100%";
+    rootContainer.style.height = "90%";
+    rootContainer.style.minWidth = "860px";
+    rootContainer.style.overflow = "auto";
+    // rootContainer.style.minheight = "1000px";
+
+
+    // Make Footer
+    // const footer = document.createElement("footer");
+    // footer.id = "footer";
+    // rootContainer.appendChild(footer);
+    // footer.innerHTML = "<hr>\n      <p>If you experience any issues, please contact our research team at <b>mosmith3@asu.edu</b></p>"
+    // footer.style.position = "fixed";
+    // footer.style.bottom = "0";
+    // footer.style.width = "100%";
+    // footer.style.height = "10%";
+    // footer.style.textAlign = "center";
+    // footer.style.padding = "15px";
+
+
 
     // Create game window div
     // const gameWindow = document.createElement("div");
@@ -85,6 +103,7 @@ document.addEventListener("DOMContentLoaded", function () {
     gameWindow.style.display = "flex";
     gameWindow.style.alignItems = "center";
     gameWindow.style.justifyContent = "center";
+    gameWindow.style.overflowY = "auto";
     // gameWindow.style.backgroundColor = "#ccc";
     gameWindow.style.padding = "10px"
     if (debug_mode) {
@@ -201,9 +220,14 @@ class Page_Join {
         this.text = [
             `
                  <h3 class="text-center">Welcome to the study!</h3>
-                  <p>
+                  <p style="text-align: center">
+                  <br>
                     To begin, press the "Join" button below to join the study.
+                   <br>
+                   <br>
+                    <p><b>*Please zoom out until this page does not require scrolling</b></p>
                    </p>
+                   
             `
         ];
         this.container.innerHTML = this.text;
@@ -274,6 +298,11 @@ class Page_Consent {
             `
         ];
         this.container.innerHTML = this.text;
+        this.container.style.fontSize = "15px";
+
+        // handle overflowing text
+        this.container.style.overflowY = "auto";
+
     }
 
     show() {
@@ -538,7 +567,9 @@ class Page_Debrief {
     }
 
     submit() {
-        alert('ERROR: ADD REDIRECT TO PROLIFIC HERE');
+        socket.emit('trigger_prolific_redirect', {});
+
+        // alert('ERROR: ADD REDIRECT TO PROLIFIC HERE');
     }
 
     show() {
@@ -595,12 +626,14 @@ class Page_BackgroundSurvey {
 
         // Description
         const description = document.createElement("p");
-        description.innerHTML = "<strong>To the best of your ability, provide the following information about yourself:</strong>";
+        description.innerHTML = "To the best of your ability, provide the following information about yourself:";
         form.appendChild(description);
 
         // Age Field
         const ageLabel = document.createElement("label");
         ageLabel.textContent = "Age: ";
+        // ageLabel.paddingRight = "10px";
+        ageLabel.marginRight = "10px";
         const ageInput = document.createElement("input");
         ageInput.type = "text";
         ageInput.name = "age";
@@ -623,6 +656,7 @@ class Page_BackgroundSurvey {
 
         const sexLabel = document.createElement("label");
         sexLabel.textContent = "Sex: ";
+        sexLabel.paddingRight = "10px";
         sexContainer.appendChild(sexLabel);
 
         const sexOptions = ["Male", "Female"];
@@ -633,8 +667,10 @@ class Page_BackgroundSurvey {
             const radio = document.createElement("input");
             radio.type = "radio";
             radio.name = "sex";  // All radios share the same name, ensuring only one selection
+            radio.marginRight = "5px";
             radio.classList.add("sexOption");
             radio.value = option;
+            radio.fontWeight = "normal";
 
             label.appendChild(radio);
             label.appendChild(document.createTextNode(option));
@@ -1879,7 +1915,7 @@ class Page_Tutorials extends GamePlayTemplate {
         this.layout = tutorial_config['tutorialParams']['layouts'][num]
         this.p_slip = [0.0,0.3,0.9,0.9][num]
         this.header = [
-            'Tutorial 1/4: Controls and Objective',
+            'Tutorial 1/4: Controls',
             'Tutorial 2/4: Puddles',
             'Tutorial 3/4: Taking a Detour',
             'Tutorial 3/4: Passing Objects'
@@ -1904,21 +1940,23 @@ class Page_Tutorials extends GamePlayTemplate {
         `
         <p>Your goal here is to cook and deliver onion soup in order to earn reward.</p>
         <p>Use the <b>arrow keys</b> to move and <b>spacebar</b> to interact with objects</p>
-        <p>See if you can copy his actions in order to cook and deliver the appropriate soup</p>
-        <p>You need to <b>Place 3 onions in pot >> Wait for soup to cook >> Bring a Dish to the pot >> Deliver to service window</b></p>
+        <p>See if you can Green Chef's actions and cook a soup.</p>
          <p>You will advance when you have delivered a soup</p>
         `,
         `
-        <p>Oh no! Someone spilled water on the floor and created a slippery puddle!</p>
-        <p>If you enter a paddle while holding an object, you may slip and fall.</p>
-        <p>When you slip, you will <b>lose your held object</b>.</p>
-        <p>Each game will have a <b>different chance of slipping</b>. Here, it is a 50% chance.</p>
-        <p>Try and cook a soup by navigating through the puddle.</p>
+        <p>Oh no! Someone spilled water on the floor!</p>
+        <ul>
+            <li>If you enter a paddle while holding an object, you MAY slip and fall.</li>
+            <li>Slipping will cause you to <b>lose your held object</b>.</li>
+            <li>Each game will have a <b>different chance of slipping</b></li>
+        
+        </ul>
+        <p>Try and cook a soup with a 50% chance of slipping.</p>
          <p>You will advance when you have delivered a soup</p>
         `,
         `
         <p>One option you have is to simply go around the puddles.</p>
-        <p>You must decide which is better:</p>
+        <p>Here, you must decide which is better:</p>
          <ul>
                     <li>Taking a longer path to avoid the puddle</li>
                     <li>Walking through the puddle and risking a slip</li>
@@ -1976,6 +2014,69 @@ class Page_Tutorials extends GamePlayTemplate {
     }
 }
 
+
+class Page_BasicInstruction {
+    constructor(parent_container) {
+        // Create Page Container
+        this.next_msg = {'basic_instruction' : true};
+        this.prev_msg = {'basic_instruction': false};
+        this.container = document.createElement("div");
+        this.container.style.display = "none";
+        parent_container.appendChild(this.container);
+        this.text = [
+            `
+              <h3 class="text-center">Overcooked Objective</h3>
+              <p>
+                Objective:
+                <ul>
+                    <li>You and your partner are cooks in a kitchen</li>
+                    <li>You will both cook as many onion soups as possible</li>
+                    <li>You will have a limited amount of time to cook soups</li>
+                    <li><b>Your compensation will depend on number of soups cooked</b></li>
+                </ul>
+
+                To cook a soup you must:
+                <ul>
+                    <li>Place 3 Onions in a Pot</li>
+                    <li>Wait for the Soup to cook</li>
+                    <li>Bring a Dish to a Pot</li>
+                    <li>Deliver the Soup to a Service Window</li>
+                </ul>
+                
+              </p>             
+            `
+        ];
+        this.container.innerHTML = this.text;
+
+        const img = document.createElement("img");
+
+        // Point to Flask's static folder path
+        img.src = "/static/images/risky-annotated-instructions.png";
+
+        // Optional: add alt text and styling
+        img.alt = "Example Image";
+        img.style.width = "500px";
+        // center image horizontally
+        img.style.display = "block";
+        img.style.margin = "0 auto";
+
+
+        // Insert into a container
+        this.container.appendChild(img);
+    }
+
+    show() {
+        this.container.style.display = "block";
+        nextBtn.innerText = "Next";
+        nextBtn.style.display = "block";
+        prevBtn.style.display = "none";
+    }
+
+    hide() {
+        this.container.style.display = "none";
+    }
+}
+
 // #################################################################
 // Page Event Handlers #############################################
 // #################################################################
@@ -2027,6 +2128,7 @@ socket.on('stage_data', function(data) {
         else if (stage_name === 'risk_propensity'){ pages.push(new Page_RiskPropensityScale(gameWindow)); }
         else if (stage_name === 'instructions'){ pages.push(new Page_Section(gameWindow, "Instructions",stage_name)); }
         else if (stage_name === 'experiment_begin'){ pages.push(new Page_Section(gameWindow, "Experiment Start",stage_name)); }
+        else if (stage_name === 'basic_instruction'){ pages.push(new Page_BasicInstruction(gameWindow)); }
 
         else if (stage_name.includes('risky_tutorial')){pages.push(new Page_Tutorials(gameWindow, parseInt(stage_name.slice(-1))));}
 

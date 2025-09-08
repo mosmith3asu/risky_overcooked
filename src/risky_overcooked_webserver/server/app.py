@@ -427,6 +427,14 @@ def on_save(data):
         with curr_experiment.lock:
             curr_experiment.save_data()
 
+@socketio.on("trigger_prolific_redirect")
+def on_trigger_prolific_redirect(data):
+    if DEBUG: print("on_save triggered", data)
+    user_id = request.sid
+    url = "https://app.prolific.com/submissions/complete?cc=C1NXVB3O"
+    socketio.emit("redirect", {'url': url}, room=user_id)
+
+
 
 @socketio.on("connect")
 def on_connect():

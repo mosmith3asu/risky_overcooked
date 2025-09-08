@@ -418,7 +418,7 @@ def on_user_data(data):
         print(f'\t| icond: {curr_experiment.icond}', file=sys.stderr)
 
 @socketio.on("save")
-def on_save():
+def on_save(data):
     if DEBUG: print("on_save triggered", data)
 
     user_id = request.sid

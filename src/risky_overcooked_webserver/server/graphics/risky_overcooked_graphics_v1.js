@@ -10,6 +10,8 @@ Added enriched soup space graphics
 // How long a graphics update should take in milliseconds
 // Note that the server updates at 30 fps
 var ANIMATION_DURATION = 50;
+// var ANIMATION_DURATION = 30;
+
 
 var DIRECTION_TO_NAME = {
     '0,-1': 'NORTH',
@@ -20,12 +22,24 @@ var DIRECTION_TO_NAME = {
 
 var scene_config = {
     player_colors : {0: 'blue', 1: 'green'},
-    tileSize : 80,
+    tileSize : 100,
+    // tileSize : 60,
     animation_duration : ANIMATION_DURATION,
     show_post_cook_time : false,
     cook_time : 20,
     assets_loc : "./static/assets/",
-    hud_size : 150
+    hud_size : 0,
+    scale: {
+        // min: {
+        //     width: 500,
+        //     height: 500
+        // },
+        // max: {
+        //     width: 1600,
+        //     height: 1200
+        // },
+        mode: Phaser.Scale.FIT,
+    }
 };
 
 var game_config = {
@@ -69,6 +83,11 @@ class GraphicsManager {
         game_config.width = scene_config.tileSize*scene_config.terrain[0].length;
         game_config.height = scene_config.tileSize*scene_config.terrain.length  + scene_config.hud_size;
         game_config.parent = graphics_config.container_id;
+
+
+        scene_config.scale.parent = graphics_config.container_id;
+        game_config.scale = scene_config.scale;
+
         this.game = new Phaser.Game(game_config);
     }
 
@@ -92,8 +111,8 @@ class OvercookedScene extends Phaser.Scene {
         this.hud_data = {
             score : config.start_state.score,
             time : config.start_state.time_left,
-            bonus_orders : config.start_state.state.bonus_orders,
-            all_orders : config.start_state.state.all_orders
+            // bonus_orders : config.start_state.state.bonus_orders,
+            // all_orders : config.start_state.state.all_orders
         }
     }
 
@@ -179,6 +198,11 @@ class OvercookedScene extends Phaser.Scene {
             let [x, y] = chef.position;
             let dir = DIRECTION_TO_NAME[chef.orientation];
             let held_obj = chef.held_object;
+            let dropped_obj = chef.dropped_obj;
+            // if (dropped_obj !== 'none') {
+            //     alert(`You dropped an object! ${dropped_obj}`);
+            // }
+
             if (typeof(held_obj) !== 'undefined' && held_obj !== null) {
                 if (held_obj.name === 'soup') {
                     let ingredients = held_obj._ingredients.map(x => x['name']);
@@ -187,7 +211,7 @@ class OvercookedScene extends Phaser.Scene {
                     } else {
                         held_obj = "-soup-tomato";
                     }
-                    
+
                 }
                 else {
                     held_obj = "-"+held_obj.name;
@@ -205,7 +229,8 @@ class OvercookedScene extends Phaser.Scene {
                 );
                 chefsprite.setDisplaySize(this.tileSize, this.tileSize);
                 chefsprite.depth = 1;
-                chefsprite.setOrigin(0);
+                // chefsprite.setOrigin(0);
+                chefsprite.setOrigin(0.5);
                 let hatsprite = this.add.sprite(
                     this.tileSize*x,
                     this.tileSize*y,
@@ -214,18 +239,61 @@ class OvercookedScene extends Phaser.Scene {
                 );
                 hatsprite.setDisplaySize(this.tileSize, this.tileSize);
                 hatsprite.depth = 2;
-                hatsprite.setOrigin(0);
+                hatsprite.setOrigin(0.5);
                 sprites['chefs'][pi] = {chefsprite, hatsprite};
             }
             else {
                 let chefsprite = sprites['chefs'][pi]['chefsprite'];
                 let hatsprite = sprites['chefs'][pi]['hatsprite'];
-                chefsprite.setFrame(`${dir}${held_obj}.png`);
-                hatsprite.setFrame(`${dir}-${this.player_colors[pi]}hat.png`);
-                this.tweens.add({
+
+                const x_origin_offset = 0.5*this.tileSize;
+                const y_origin_offset = 0.5*this.tileSize;
+
+                if (dropped_obj !== 'none') {
+                    let rot=0;
+                    if (dir === 'EAST') {rot=-90;}
+                    else if (dir==='WEST') {rot=90;}
+                    else if (dir==='NORTH') {rot=-90;dir = 'EAST';}
+                    else if (dir==='SOUTH') {rot=90; dir = 'WEST';}
+
+
+                    // rotate chefsprite by 90 degrees
+                    chefsprite.setFrame(`${dir}${held_obj}.png`);
+                    // chefsprite.setFrame(`FALL-${dropped_obj}.png`);
+                    // chefsprite.setAngle(90);
+
+                    hatsprite.setFrame(`${dir}-${this.player_colors[pi]}hat.png`);
+                    // hatsprite.setFrame(`$FALL-${this.player_colors[pi]}hat.png`);
+
+
+                    this.tweens.add({
+                        targets: [chefsprite, hatsprite],
+                        x: this.tileSize*x+x_origin_offset,
+                        y: this.tileSize*y+y_origin_offset,
+                        angle: rot,
+                        duration: this.animation_duration,
+                        ease: 'Linear',
+                         yoyo: true,
+                        onComplete: (tween, target, player) => {
+                            target[0].setPosition(this.tileSize*(x), this.tileSize*(y));
+                            target[1].setPosition(this.tileSize*(x), this.tileSize*(y));
+                        }
+                    })
+
+
+
+                }
+                else{
+                    chefsprite.setFrame(`${dir}${held_obj}.png`);
+                    hatsprite.setFrame(`${dir}-${this.player_colors[pi]}hat.png`);
+                    chefsprite.setAngle(0);
+                    hatsprite.setAngle(0);
+                    // const xoffset = 0;
+
+                     this.tweens.add({
                     targets: [chefsprite, hatsprite],
-                    x: this.tileSize*x,
-                    y: this.tileSize*y,
+                    x: this.tileSize*x+x_origin_offset,
+                    y: this.tileSize*y+y_origin_offset,
                     duration: this.animation_duration,
                     ease: 'Linear',
                     onComplete: (tween, target, player) => {
@@ -233,6 +301,10 @@ class OvercookedScene extends Phaser.Scene {
                         //this.animating = false;
                     }
                 })
+                }
+
+
+
             }
         }
 

@@ -30,7 +30,7 @@
     },
     "EXPERIMENT_CONFIG": {
         "data_collection": true,
-        "debug": true,
+        "debug": false,
         "stages": {
             "consent": "DummyData",
             "participant_information": "DemographicData",

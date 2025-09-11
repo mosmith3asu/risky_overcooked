@@ -983,6 +983,7 @@ class RiskyOvercookedGame(OvercookedGame):
         obj_dict["terrain"] = self.mdp.terrain_mtx if self._is_active else None
         obj_dict["state"] = self.get_state() if self._is_active else None
         obj_dict["layout"] = self.layout if self._is_active else None
+        obj_dict["p_slip"] = self.p_slip if self._is_active else None
         return obj_dict
 
 

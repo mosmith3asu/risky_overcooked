@@ -33,8 +33,8 @@ const total_games = 4; // total number of games played
 const table_row_bg = ['#F5FBFF','white'];
 
 
-const LAYOUTS = ['risky_coordination_ring','risky_multipath'];
-const PSLIPS = [0.4,0.15];
+// const LAYOUTS = ['risky_coordination_ring','risky_multipath'];
+// const PSLIPS = [0.4,0.15];
 const AI_agents = ['RS-ToM','Rational'];
 
 const prolific_data = parse_prolific_data();
@@ -225,7 +225,9 @@ class Page_Join {
                     To begin, press the "Join" button below to join the study.
                    <br>
                    <br>
-                    <p><b>*Please zoom out until this page does not require scrolling</b></p>
+                    <p style="text-align: center"><b>*Please zoom out until this page does not require scrolling</b></p>
+                    <br>
+                    <p  style="text-align: center"><b>*Do not leave or close this webpage at anytime during the experiment</b></p>
                    </p>
                    
             `
@@ -331,34 +333,41 @@ class Page_ParticipantInformation {
             `
               <h3 class="text-center">Study Information</h3>
               <p>
-                General Information
+                <b>General Information:</b>
                 <ul>
                     <li>Your participation is expected to not exceed 45 minutes</li>
                     <li>You will be playing a game with a virtual agent using a keyboard</li>
                     <li>Please ensure you are in a distraction free environment before you begin</li>
-                    <li><b>Your compensation will depend on your performance during these games</b></li>
+                    <li><u><b>Your compensation will depend on your performance during these games</b></u></li>
                 </ul>
 
-                Before the experiment begins:
+                <b>Before the experiment begins:</b>
                 <ul>
                     <li>Basic background information will be collected</li>
-                    <li>One short surveys about your attitudes towards risk will be given</li>
+                    <li>One short survey about your attitude towards risk will be given</li>
                     <li>You will then be instructed on how to play the game</li>
-                    <li>You will then play a practice round to familiarize yourself with the controls</li>
+                    <li>You will then play four practice rounds to familiarize yourself with the controls</li>
                 </ul>
 
-                During the Experiment
+                <b>During the Experiment:</b>
                 <ul>
-                    <li>You will play a series of 5 games with two AI partners (10 total games)</li>
+                    <li>You will play a series of 5 games with an AI partner</li>
+                    <li>You will then play a series of 5 games with an different partner</li>
                     <li>Each games will last a maximum of 1 minute</li>
                     <li>After each game, you will be given a brief survey</li>
                 </ul>
 
-                After the Experiment
+                <b>After the Experiment:</b>
                 <ul>
                     <li>You take a brief survey comparing the two agents</li>
                     <li>You will be given a brief description of your contribution to this research</li>
-                    <li>You will be redirected to back to Prolific to receive your compensation</li>
+                    <li>You will be redirected to back to Prolific</li>
+                    <li>Compensation will be awarded within 5 days given...</li>
+                    <ol>
+                        <li>You completed the entire experiment</li>
+                        <li>Games are actively participated in (e.g., did not sit idly)</li>
+                        <li>You provided feasible responses to survey questions</li>
+                    </ol>
                 </ul>
               </p>
             `
@@ -428,9 +437,9 @@ class Page_Washout {
             `
               <h3 class="text-center">"You Have a New Partner"</h3>
 
-             <p>You have completed five games with the first of two partners.</p>
-            <p>You are now interacting with <strong>a new partner</strong> with <strong>different capabilities.</strong></p>
-            <p>Do not let any of your judgments about your previous partner affect your evaluation of the next one.</p>
+             <p>You have completed five games with the first partner.</p>
+            <p>You will now interact with <strong>a new partner</strong> with <strong>different capabilities.</strong></p>
+            <p>Do not let any of your judgments about your previous partner affect your evaluation of the next partner.</p>
             <p>Your responses to the questions after the following games should be <strong>made independently</strong> from the previous responses.</p>
             <hr>
             <p>Before continuing, please select the answer below that best describes how you should view your second partner:</p>
@@ -533,11 +542,12 @@ class Page_Debrief {
         this.text = [
             `
               <h3 class="text-center">The Experiment has Ended</h3>
-             Congratulations! <b>You will receive the maximum compensation of $${compensation_amount}</b>.
+             Congratulations! Provided you meet the afformentioned citeria (active participation and feasible survey responses) after our review, 
+             <b>you will receive the maximum compensation of $${compensation_amount}</b>.
              Previous remarks on your compensation depending on in-game performance was only used to elicit real-world perceptions of risk and vulnerability.
              We value the time of all participants and therefore fairly reward all who complete this study.
              <br> <br>
-            You are free to click the <b>“Complete Study”</b> button below to be redirected back to Prolific and where you receive compensation for your participation within 5 business days.
+            You are free to click the <b>“Complete Study”</b> button below to be redirected back to Prolific where you receive compensation for your participation within 5 business days.
             If you wish to learn more about this study, additional information is provided below:
             <br> <br>
             <i>Your data will be used to determine the effectiveness of an autonomous agent that models human risk-sensitivity when compared to one that assumes their human partner is rational.
@@ -806,7 +816,7 @@ class Page_RiskPropensityScale {
         this.cell_border_style = "none";
 
         this.instructions_txt = "Please indicate the extent to which you agree or disagree with the following statement" +
-            " selecting the option you prefer. Please do not think too long before answering;" +
+            "by selecting the option you prefer. Please do not think too long before answering;" +
             " usually your first inclination is also the best one."
         this.questions = [
             ["Safety first.", "Totally Disagree", "Totally Agree"],
@@ -1005,7 +1015,7 @@ class Page_TrustSurvey {
         this.fontSize = "14px";
         this.cell_border_style = "none";
 
-        this.instructions_txt = "Please indicate the extent to which you agree or disagree with the following statement selecting the " +
+        this.instructions_txt = "Please indicate the extent to which you agree or disagree with the following statement by selecting the " +
             "option you prefer. Please do not think too long before answering; usually your first inclination is also the best one.";
 
         // ];
@@ -1228,7 +1238,7 @@ class Page_RelativeTrustSurvey {
         this.cell_border_style = "none";
 
         this.instructions_txt = "Please indicate the extent to which you agree or disagree with the following statement" +
-            " selecting the option you prefer. Please do not think too long before answering;" +
+            "by selecting the option you prefer. Please do not think too long before answering;" +
             " usually your first inclination is also the best one."
 
         this.sections = [
@@ -1544,7 +1554,7 @@ class GamePlayTemplate {
         this.submitBtn.style.display = "block";
     }
 
-    render() {
+    render(sub_header = false) {
         // this.hide_finished_overlay()
         const header = document.createElement("h3");
         header.innerText = this.header;
@@ -1566,6 +1576,16 @@ class GamePlayTemplate {
         overcooked.style.padding = "0";
         this.container.appendChild(overcooked);
 
+    }
+    add_footnote(txt) {
+          const subheader = document.createElement("h4");
+            subheader.innerText = txt;
+            subheader.style.textAlign = "center";
+            subheader.style.margin = "0";
+            subheader.style.marginTop = "5px";
+            subheader.style.width = "100%";
+            subheader.style.height = "5%";
+            this.container.appendChild(subheader);
     }
 
     add_submit_button(txt) {
@@ -1639,9 +1659,9 @@ class Page_GamePlay extends GamePlayTemplate {
         this.prev_msg  = {}; this.next_msg[msg_name] = false;
         // Base Class Params
         this.ID = `perform_${num}`;
-        this.layout = LAYOUTS[num];
-        this.p_slip = PSLIPS[num];
-        this.header = `Game ${num+1}/${total_games+1}`
+        this.layout = 'N/a'//LAYOUTS[num];
+        this.p_slip = 'N/a'//PSLIPS[num];
+        this.header = `Game ${(num % 5)+1}/${total_games+1}`
         this.player0_name = 'human'; // human agent
         // this.player1_name = 'StayAI'; // AI agent
         this.player1_name = AI_agents[num]; // AI agent
@@ -1667,9 +1687,9 @@ class Page_GameInstructions extends GamePlayTemplate {
         this.prev_msg  = {}; this.next_msg[msg_name] = false;
 
         this.ID = `game_instructions_${num}`;
-        this.layout = LAYOUTS[num];
-        this.p_slip =  PSLIPS[num];
-        this.header = `Game ${num+1}/${total_games+1} Instructions`
+        this.layout = 'N/A';//LAYOUTS[num];
+        this.p_slip = 'N/A';// PSLIPS[num];
+        this.header = `Game ${(num % 5)+1}/${total_games+1} Instructions`
         this.player0_name = 'StayAI'; // human agent
         this.player1_name = 'StayAI'; // AI agent
         this.overcooked_id = `${this.ID}_gameplay`; // ID of overcooked div
@@ -1752,12 +1772,12 @@ class Page_GameInstructions extends GamePlayTemplate {
         info_div.style.padding = this.content_padding;
 
         const info_pslip = document.createElement("p");
-        info_pslip.innerHTML = `You have a ${this.p_slip*100}% chance of slipping in a puddle and losing your held object`;
+        info_pslip.innerHTML = `You have a <b>${this.p_slip*100}% chance of slipping</b> in a puddle and losing your held object`;
         info_div.appendChild(info_pslip);
 
         const priming_text = document.createElement("p");
-        priming_text.innerHTML = "Before you begin, please select what you believe to be the best strategy in this game:"
-        priming_text.style.fontWeight = "bold";
+        priming_text.innerHTML = "Before you begin, please select what you believe to be the <b>best strategy</b> in this game:"
+        // priming_text.style.fontWeight = "bold";
         info_div.appendChild(priming_text);
 
         // create priming options radio button
@@ -1938,38 +1958,41 @@ class Page_Tutorials extends GamePlayTemplate {
     get_instructions() {
         const instruct = [
         `
-        <p>Your goal here is to cook and deliver onion soup in order to earn reward.</p>
-        <p>Use the <b>arrow keys</b> to move and <b>spacebar</b> to interact with objects</p>
-        <p>See if you can Green Chef's actions and cook a soup.</p>
-         <p>You will advance when you have delivered a soup</p>
+        <p>Your goal here is to cook and deliver onion soup as fast as possible.</p>
+        <ul>
+            <li>Use the <b>arrow keys</b> to move and <b>spacebar</b> to interact with objects</li>
+            <li>See if you can Green Chef's actions and cook a soup.</li>
+        </ul>
+        <p>You will advance when you have delivered a soup</p>
         `,
         `
         <p>Oh no! Someone spilled water on the floor!</p>
         <ul>
-            <li>If you enter a paddle while holding an object, you MAY slip and fall.</li>
+            <li>If you enter a puddle while holding an object, you MAY slip and fall.</li>
             <li>Slipping will cause you to <b>lose your held object</b>.</li>
             <li>Each game will have a <b>different chance of slipping</b></li>
-        
         </ul>
-        <p>Try and cook a soup with a 50% chance of slipping.</p>
+        <p>Try and cook a soup with a <b>50% chance of slipping</b>.</p>
          <p>You will advance when you have delivered a soup</p>
         `,
         `
-        <p>One option you have is to simply go around the puddles.</p>
+        <p>In the following games, you must make a choice concerning puddles.</p>
         <p>Here, you must decide which is better:</p>
          <ul>
                     <li>Taking a longer path to avoid the puddle</li>
                     <li>Walking through the puddle and risking a slip</li>
            </ul>
-        <p>In this game, there is a ${this.p_slip}% chance of slipping.</p>
+        <p>In this game, there is a <b>${100*this.p_slip}% chance of slipping</b>.</p>
          <p>You will advance when you have delivered a soup</p>
         `,
         `
         <p>Alternatively, you can rely on your partner and <b>pass objects over the counter</b>.</p>
-        <p>In this game, there is a ${this.p_slip}% chance of slipping.</p>
-        <p>Therefore, the only reasonable stratagy is to pass items to your partner.</p>
-        <p>Try picking up onions/dishes and putting them on the counter where your partner can reach.</p>
-        <p>Your partner will then pass a soup to you for delivery.</p>
+        <ul>
+            <li>With so many puddles, this is your best option</li>   
+            <li>Try picking up onions/dishes and putting them on the counter where your partner can reach</li>     
+            <li>Your partner will then pass a soup to you for delivery</li>
+        </ul>
+        <p>In this game, there is a <b>${100*this.p_slip}% chance of slipping</b>.</p>
         <p>You will advance when you have delivered a soup</p>
         `
     ];
@@ -2025,23 +2048,23 @@ class Page_BasicInstruction {
         parent_container.appendChild(this.container);
         this.text = [
             `
-              <h3 class="text-center">Overcooked Objective</h3>
+              <h3 class="text-center">Basic Instructions</h3>
               <p>
-                Objective:
+                <b>Objective:</b>
                 <ul>
                     <li>You and your partner are cooks in a kitchen</li>
                     <li>You will both cook as many onion soups as possible</li>
                     <li>You will have a limited amount of time to cook soups</li>
-                    <li><b>Your compensation will depend on number of soups cooked</b></li>
+                    <li><u><b>Your compensation depends on how many soups are cooked</b></u></li>
                 </ul>
 
-                To cook a soup you must:
-                <ul>
+                <b>To cook a soup you must:</b>
+                <ol>
                     <li>Place 3 Onions in a Pot</li>
                     <li>Wait for the Soup to cook</li>
                     <li>Bring a Dish to a Pot</li>
                     <li>Deliver the Soup to a Service Window</li>
-                </ul>
+                </ol>
                 
               </p>             
             `
@@ -2165,26 +2188,24 @@ socket.on('start_game', function(data) {
         container_id : current_page.overcooked_id,
         start_info : data.start_info
     };
-    // $("#overcooked").empty();
-    // $('#game-over').hide();
-    // $('#try-again').hide();
-    // $('#try-again').attr('disabled', true)
-    // $('#hint-wrapper').hide();
-    // $('#show-hint').text('Show Hint');
-    // $('#game-title').text(`Tutorial in Progress, Phase ${curr_tutorial_phase}/${tutorial_instructions.length}`);
-    // $('#game-title').show();
-    // $('#tutorial-instructions').append(tutorial_instructions[curr_tutorial_phase]);
-    // $('#instructions-wrapper').show();
-    // $('#hint').append(tutorial_hints[curr_tutorial_phase]);
+
     if (data.is_priming) {
-        console.log("Priming game started with layout: ", data.start_info.layout)
+        // console.log("Priming game started with layout: ", data.start_info.layout)
+        console.log("Priming game started with layout: ", `layout = ${data.start_info.layout}, p_slip = ${data.start_info.p_slip}`)
         current_page.layout = data.start_info.layout;
+        current_page.p_slip = data.start_info.p_slip;
         current_page.update_priming_options()
         current_page.render();
         graphics_start(graphics_config);
         // graphics_end();
     }
     else{
+         current_page.layout = data.start_info.layout;
+         current_page.p_slip = data.start_info.p_slip;
+         if (!current_page.layout.includes("tutorial")) {
+                 current_page.add_footnote(`Chance of slipping: ${100*current_page.p_slip}%`)
+            }
+         // current_page.render(sub_header = `Chance of slipping: ${100*current_page.p_slip}%`)
          enable_key_listener();
          graphics_start(graphics_config);
     }

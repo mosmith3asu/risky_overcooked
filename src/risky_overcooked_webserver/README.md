@@ -22,6 +22,23 @@ C:\app\data\*.pkl
 ```
 
 # AWS
+Installing Docker
+```bash
+sudo yum install -y docker
+sudo service docker start #start service
+sudo usermod -a -G docker ec2-user #allow ec2-user to run docker commands without sudo
+# close and open ssh terminal to enable permission
+
+# install docker compose
+sudo curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+docker-compose version
+```
+```bash
+sudo yum install -y git # if not installed
+sudo git clone https://github.com/mosmith3asu/risky_overcooked.git /risky_overcooked
+
+```
 if up.sh not running `sudo chmod u+r+x up.sh`
 
 # Notes

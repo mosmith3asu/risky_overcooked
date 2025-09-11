@@ -1232,7 +1232,16 @@ class Experiment:
             # print(f"Saving data to {os.path.join(data_path, fname)}")
             print_link(os.path.join(data_path, fname))
 
-    def create_dirs(self, DOCKER_VOLUME = "\\app\\data"):
+    # def create_dirs(self, DOCKER_VOLUME = "\\app\\data"):
+    #     participant_folder = f'cond_{self.icond}'
+    #     path = os.path.join(
+    #         DOCKER_VOLUME,
+    #         participant_folder
+    #     )
+    #     if not os.path.exists(path):
+    #         os.makedirs(path)
+    #     return path
+    def create_dirs(self, DOCKER_VOLUME="/app/data"):
         participant_folder = f'cond_{self.icond}'
         path = os.path.join(
             DOCKER_VOLUME,

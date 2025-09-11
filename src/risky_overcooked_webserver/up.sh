@@ -18,7 +18,8 @@ else
   if [[ $1 = *local* ]]; then
     echo "development (local)"
     export BUILD_ENV=development_local
-    docker-compose-local -f docker-compose-local.yml up --build
+    docker-compose -f docker-compose-local.yml up --build
+
   else
     echo "development"
     export BUILD_ENV=development

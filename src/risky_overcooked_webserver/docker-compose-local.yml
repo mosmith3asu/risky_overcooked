@@ -18,6 +18,11 @@ services:
         ports:
             - "80:5000"
         volumes:
-            - data:/app/data
+#            - data:/app/data
+#            - D:/app/data:/app/data # for windows
+            - /app/data:/app/data # for linux
+#          - type: bind
+#            source: /app/data
+#            target: /app/data
 volumes:
   data:

@@ -2,7 +2,7 @@
     "logfile" : "app.log",
     "layouts" : [
         "risky_multipath6_pslip025",
-        "risky_mixed_coordination_pslip05",
+        "risky_mixed_coordination_pslip05"
 
     ],
     "unused_layouts": [

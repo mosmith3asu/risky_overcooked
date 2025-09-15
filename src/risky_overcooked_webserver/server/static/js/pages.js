@@ -1242,7 +1242,7 @@ class Page_RelativeTrustSurvey {
             " usually your first inclination is also the best one."
 
         this.sections = [
-            {title: "I believe my first partner partner is ____ than the my second partner.",
+            {title: "I believe my first partner is ____ than the my second partner.",
                 questions: ["More dependable", "More reliable", "More predictable"]
             },
             {title: "I believe my first partner _____ than my second partner…",
@@ -1961,7 +1961,7 @@ class Page_Tutorials extends GamePlayTemplate {
         <p>Your goal here is to cook and deliver onion soup as fast as possible.</p>
         <ul>
             <li>Use the <b>arrow keys</b> to move and <b>spacebar</b> to interact with objects</li>
-            <li>See if you can Green Chef's actions and cook a soup.</li>
+            <li>See if you can copy the Green Chef's actions and cook a soup.</li>
         </ul>
         <p>You will advance when you have delivered a soup</p>
         `,
@@ -2064,6 +2064,12 @@ class Page_BasicInstruction {
                     <li>Wait for the Soup to cook</li>
                     <li>Bring a Dish to a Pot</li>
                     <li>Deliver the Soup to a Service Window</li>
+                </ol>
+                
+                <b>You may not pass freely through:</b>
+                <ol>
+                    <li>Any brown counter top</li>
+                    <li>A space occupied by your partner</li>
                 </ol>
                 
               </p>             

@@ -4,6 +4,7 @@ import pickle
 import random
 from abc import ABC, abstractmethod
 from queue import Empty, Full, LifoQueue, Queue
+from collections import deque
 from threading import Lock, Thread
 from time import time
 
@@ -264,6 +265,7 @@ class Game(ABC):
 
         self.players[idx] = player_id
         self.pending_actions[idx] = Queue(maxsize=buff_size)
+        # self.pending_actions[idx] = deque(maxlen=buff_size)
 
     def add_spectator(self, spectator_id):
         """

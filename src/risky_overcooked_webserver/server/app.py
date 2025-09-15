@@ -10,7 +10,6 @@ from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from threading import Lock, Thread
 from time import time
-
 import queue
 from queue import Empty, Full, LifoQueue, Queue
 # from .data_logging import ExperimentData
@@ -730,7 +729,7 @@ class RiskyOvercookedGame(OvercookedGame):
         self.inpc = AGENTS['npc_player']
         self.ihuman = AGENTS['human_player']
         human_id = 'human' + f"_{self.ihuman}"
-        self.add_player(human_id, idx=self.ihuman, is_human=True)
+        self.add_player(human_id, idx=self.ihuman, is_human=True,buff_size=1) # ,buff_size=3
 
         self.write_data = False
         self.is_tutorial = 'tutorial' in layout.lower()
@@ -744,6 +743,28 @@ class RiskyOvercookedGame(OvercookedGame):
         # return  server_ready and self.client_ready
         return super(OvercookedGame, self).is_ready() and not self.is_empty() and not self.is_frozen
 
+    def enqueue_action(self, player_id, action):
+        """
+        Add (player_id, action) pair to the pending action queue, without modifying underlying game state
+
+        Note: This function IS thread safe
+        """
+        action = self.action_to_overcooked_action[action]
+
+        if not self.is_active:
+            # Could run into issues with is_active not being thread safe
+            return
+        if player_id not in self.players:
+            # Only players actively in game are allowed to enqueue actions
+            return
+        try:
+            player_idx = self.players.index(player_id)
+            if self.pending_actions[player_idx].full():
+                _ = self.pending_actions[player_idx].get(block=False)
+            self.pending_actions[player_idx].put(action)
+        except Full:
+            pass
+
     def apply_actions(self):
          # Default joint action, as NPC policies and clients probably don't enqueue actions fast
         # enough to produce one at every tick
@@ -756,6 +777,8 @@ class RiskyOvercookedGame(OvercookedGame):
                 try:
                     # we don't block here in case humans want to Stay
                     joint_action[i] = self.pending_actions[i].get(block=False)
+                    # while not self.pending_actions[i].empty():
+                    #     joint_action[i] = self.pending_actions[i].get(block=False)
                 except Empty:
                     # raise IOError("No action found in queue for HUMAN")
                     pass
@@ -1275,6 +1298,7 @@ def play_game(game: RiskyOvercookedGame, fps=6):
     """
 
 ########################
+    # fpss = deque(maxlen=10)
     status = Game.Status.ACTIVE
     if DEBUG: print('Starting Play')
     step = 0
@@ -1288,7 +1312,11 @@ def play_game(game: RiskyOvercookedGame, fps=6):
         )
 
         tdur = time() - tstart
+
         socketio.sleep(1 / fps - tdur)
+
+        # fpss.append(1 / (time()-tstart))
+        # print(f'Step {step} fps = {np.mean(fpss):.4f}')
 
     with game.lock:
         data = game.get_data(clear_trajectory=False)

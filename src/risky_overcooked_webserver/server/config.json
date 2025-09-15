@@ -3,12 +3,13 @@
     "layouts" : [
         "risky_multipath6_pslip025",
         "risky_mixed_coordination_pslip05",
-        "risky_spiral8_pslip02",
-        "risky_tree9_pslip025",
-        "risky_handoff2_pslip03"
+
     ],
     "unused_layouts": [
-         "risky_shortcuts3_pslip03"
+         "risky_shortcuts3_pslip03",
+         "risky_spiral8_pslip02",
+        "risky_tree9_pslip025",
+        "risky_handoff2_pslip03"
     ],
     "MAX_EXPERIMENTS" : 10,
     "MAX_GAME_LENGTH" : 60,

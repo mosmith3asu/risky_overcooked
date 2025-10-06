@@ -41,6 +41,11 @@ sudo git clone https://github.com/mosmith3asu/risky_overcooked.git /risky_overco
 ```
 if up.sh not running `sudo chmod u+r+x up.sh`
 
+Copying files:
+```bash
+scp -r -i risky_overcooked.pem ec2-user@54.234.124.182:/app/data D:/app/
+
+```
 # Notes
 - may have to remove `graphics.js` from `static/js/` when using docker. this was added manually
 - Binded local repo in docker-compose.yml

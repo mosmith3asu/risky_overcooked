@@ -26,7 +26,7 @@ from risky_overcooked_rl.algorithms.DDQN.utils.agents import DQN_vector_feature
 #########################################################################################
 #### GLOBALS ############################################################################
 #########################################################################################
-DEBUG = True
+DEBUG = False
 
 if True:
     # Read in global config
@@ -442,9 +442,9 @@ def on_connect():
     USERS[user_id] = Lock()
 
     """ Check if server is Full"""
-    if DEBUG:
-        print(f'\nNew Connection: {user_id}', file=sys.stderr)
-        print_server_info(header='\t| ', file=sys.stderr)
+    # if DEBUG:
+    print(f'\nNew Connection: {user_id}', file=sys.stderr)
+    print_server_info(header='\t| ', file=sys.stderr)
 
 
     if is_server_full():
@@ -729,7 +729,7 @@ class RiskyOvercookedGame(OvercookedGame):
         self.inpc = AGENTS['npc_player']
         self.ihuman = AGENTS['human_player']
         human_id = 'human' + f"_{self.ihuman}"
-        self.add_player(human_id, idx=self.ihuman, is_human=True,buff_size=1) # ,buff_size=3
+        self.add_player(human_id, idx=self.ihuman, is_human=True,buff_size=2) # ,buff_size=3
 
         self.write_data = False
         self.is_tutorial = 'tutorial' in layout.lower()

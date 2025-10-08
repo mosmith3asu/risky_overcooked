@@ -1164,7 +1164,6 @@ class TutorialAI:
             AI = state.players[1]  # get AI player
             pass_pos = (AI.position[0] + Direction.SOUTH[0], AI.position[1] + Direction.SOUTH[1])
             soup = self.get_AI_soup(state)
-            print()
             if soup is None or len(soup.ingredients) <3 : desired_obj = 'onion'
             elif soup.is_cooking or soup.is_ready : desired_obj = 'dish'
             else:  raise ValueError("Unknown pot state")

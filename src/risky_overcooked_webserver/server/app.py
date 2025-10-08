@@ -966,9 +966,9 @@ class RiskyOvercookedGame(OvercookedGame):
 
         if self.debug:
             print(f'\n\nActivating OvercookedGame...')
-            print("\tLayout: {}".format(self.curr_layout))
-            print("\tp_slip: {}".format(self.mdp.p_slip))
-            print("\tWrite data: {}".format(self.write_data))
+            print("\tLayout: {}".format(self.curr_layout), end='')
+            print("\tp_slip: {}".format(self.mdp.p_slip), end='')
+            print("\tWrite data: {}".format(self.write_data), end='')
 
         for key, val in self.npc_policies.items():
             if isinstance(val, ToMAI):
@@ -1254,6 +1254,8 @@ class Experiment:
         if DEBUG:
             # print(f"Saving data to {os.path.join(data_path, fname)}")
             print_link(os.path.join(data_path, fname))
+        else:
+            print(f'Saving data to {os.path.join(data_path, fname)}')
 
     # def create_dirs(self, DOCKER_VOLUME = "\\app\\data"):
     #     participant_folder = f'cond_{self.icond}'

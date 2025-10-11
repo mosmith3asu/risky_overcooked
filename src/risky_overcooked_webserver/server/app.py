@@ -710,7 +710,7 @@ class RiskyOvercookedGame(OvercookedGame):
                  p_slip,
                  **kwargs
                  ):
-
+        self.partner_color = kwargs.get("partner_color", 'green') # changes color
         self.layout = layout
         self.p_slip = p_slip
         kwargs['layouts'] = [layout]
@@ -1007,6 +1007,13 @@ class RiskyOvercookedGame(OvercookedGame):
         obj_dict["state"] = self.get_state() if self._is_active else None
         obj_dict["layout"] = self.layout if self._is_active else None
         obj_dict["p_slip"] = self.p_slip if self._is_active else None
+        obj_dict['player_colors'] = {0:'blue', 1: self.partner_color}
+
+        # print(obj_dict["terrain"])
+        # print(obj_dict["state"])
+        #
+        # obj_dict["terrain"] = np.replace(obj_dict["terrain"], 2, self.partner_id, obj_dict["terrain"])
+
         return obj_dict
 
 
@@ -1038,6 +1045,10 @@ class Experiment:
 
         self.timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") # timestamp of experiment start
 
+
+        colors = ['orange', 'purple']
+        np.random.shuffle(colors)
+        self.partner_colors = {'rs-tom':colors[0], 'rational':colors[1]}
         self.layouts, self.p_slips, self.partners = self.sample_condition()
         self.trial_params =list(zip(self.layouts, self.p_slips, self.partners))
 
@@ -1075,7 +1086,8 @@ class Experiment:
             """ Each partner will play all layouts."""
             self.icond = np.random.randint(0,2) # 0 or 1
             self.condition = self.CONDITIONS[self.icond]
-            for partner in self.condition:
+
+            for i, partner in enumerate(self.condition):
                 trials = copy.deepcopy(self.TRIALS)
                 np.random.shuffle(trials)
                 for trial in trials:
@@ -1176,19 +1188,23 @@ class Experiment:
 
         if 'tutorial' in name:
             self.is_priming = False
-            self.game = RiskyOvercookedGame(name,'TutorialAI',p_slip='default',**kwargs)
+            pc = 'green'
+            self.game = RiskyOvercookedGame(name,'TutorialAI',p_slip='default',partner_color=pc,**kwargs)
             # self.game = self.load_tutorial()
         elif 'game' in name:
             self.is_priming = False
             trial_idx = int(kwargs['name'].split('game')[1])
             layout, p_slip, partner_type = self.trial_params[trial_idx]
             if DEBUG: print(f'Opening game {name} with layout={layout}, p_slip={p_slip}, partner_type={partner_type}')
-            self.game = RiskyOvercookedGame(layout,partner_type,p_slip,**kwargs)
+            pc = self.partner_colors[partner_type]
+            self.game = RiskyOvercookedGame(layout,partner_type,p_slip,partner_color=pc,**kwargs)
+
         elif 'priming' in name:
             self.is_priming =True
             trial_idx = int(kwargs['name'].split('priming')[1])
             layout, p_slip, partner_type = self.trial_params[trial_idx]
-            self.game = RiskyOvercookedGame(layout, partner_type, p_slip, **kwargs)
+            pc = self.partner_colors[partner_type]
+            self.game = RiskyOvercookedGame(layout, partner_type, p_slip,partner_color=pc, **kwargs)
             self.game.is_frozen = True
 
 

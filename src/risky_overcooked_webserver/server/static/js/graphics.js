@@ -63,9 +63,16 @@ function drawState(state) {
 };
 
 // Invoked at 'start_game' event
-function graphics_start(graphics_config) {
+// function graphics_start(graphics_config) {
+//     graphics = new GraphicsManager(game_config, scene_config, graphics_config);
+// };
+function graphics_start(graphics_config,player_colors = null) {
+    if (player_colors !== null) {
+        scene_config.player_colors = player_colors;
+    }
     graphics = new GraphicsManager(game_config, scene_config, graphics_config);
 };
+
 
 // Invoked at 'end_game' event
 function graphics_end() {

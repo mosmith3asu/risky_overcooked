@@ -2213,7 +2213,9 @@ socket.on('start_game', function(data) {
             }
          // current_page.render(sub_header = `Chance of slipping: ${100*current_page.p_slip}%`)
          enable_key_listener();
-         graphics_start(graphics_config);
+
+         player_colors = data.start_info.player_colors
+         graphics_start(graphics_config,player_colors=player_colors);
     }
 });
 

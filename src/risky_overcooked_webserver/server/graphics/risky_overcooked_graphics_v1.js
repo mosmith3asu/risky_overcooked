@@ -21,7 +21,7 @@ var DIRECTION_TO_NAME = {
 };
 
 var scene_config = {
-    player_colors : {0: 'blue', 1: 'green'},
+    player_colors : {0: 'blue', 1: 'green', 2: 'red'},
     tileSize : 100,
     // tileSize : 60,
     animation_duration : ANIMATION_DURATION,
@@ -63,7 +63,10 @@ function drawState(state) {
 };
 
 // Invoked at 'start_game' event
-function graphics_start(graphics_config) {
+function graphics_start(graphics_config,player_colors = null) {
+    if (player_colors !== null) {
+        scene_config.player_colors = player_colors;
+    }
     graphics = new GraphicsManager(game_config, scene_config, graphics_config);
 };
 

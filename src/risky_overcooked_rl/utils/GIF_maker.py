@@ -168,6 +168,31 @@ def main():
         [S, X,1],  # P1 PLACE ONION 2
         [E, X,1],
     ]
+    seeking_joint_traj = [
+        [W, X, 0.5],
+        [W, X, 0.5],  # P2 PICK ONION
+        [W, X, 0.5],
+        [S, X, 0.5],
+        [W, X, 0.5],  # P1 PICK ONION
+        [I, X, 0.5],
+        [N, X, 0.5],  # P2 PLACE ONION 1 | P1 DROP ONION
+        [E, X, 0.5],
+        [N, X, 0.5],
+        [I, X, 0.5],  # place obj on counter
+        [E, X, 0.5],
+        [N, X, 0.5],
+        [W, X, 0.5],
+        [I, X, 0.5], # pick up obj from counter
+        [X, X, 0.5],
+        [X, X, 0.5],
+        [X, X, 0.5],
+        [X, X, 0.5],
+        [X, X, 0.5],
+        [X, X, 0.5],
+        [X, X, 0.5],
+        [X, X, 0.5],
+
+    ]
 
     averse_joint_traj = [
         [S, W, 1],

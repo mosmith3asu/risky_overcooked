@@ -27,6 +27,8 @@ from risky_overcooked_rl.algorithms.DDQN.utils.agents import DQN_vector_feature
 #### GLOBALS ############################################################################
 #########################################################################################
 DEBUG = False
+# PRINTEND = '\n'
+PRINTEND = ''
 
 if True:
     # Read in global config
@@ -410,8 +412,8 @@ def on_user_data(data):
             curr_experiment.study_id = data.get("study_id", None)
             curr_experiment.session_id = data.get("session_id", None)
     if DEBUG:
-        print(f'\n User {user_id} provided data: {data}', file=sys.stderr)
-        print(f'\t| prolific_id: {curr_experiment.prolific_id}', file=sys.stderr)
+        print(f'\n User {user_id} provided data: {data}', file=sys.stderr,end=PRINTEND)
+        print(f'\t| prolific_id: {curr_experiment.prolific_id}', file=sys.stderr,end=PRINTEND)
         print(f'\t| icond: {curr_experiment.icond}', file=sys.stderr)
 
 @socketio.on("save")

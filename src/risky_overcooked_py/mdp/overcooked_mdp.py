@@ -1687,11 +1687,17 @@ class OvercookedGridworld(object):
         return pos in self.terrain_pos_dict["W"]
 
     def check_can_slip(self,old_player_state,new_player_state):
-        # They end their turn in water
-        if not self.is_water(new_player_state.position): return False
-        # If they do not have a held item  ==> no slipping
-        if not new_player_state.has_object(): return False
-        # if not old_player_state.has_object(): return False
+        # Cant: if did not move
+        same_pos_and_or = np.all(np.array(old_player_state.pos_and_or) == np.array(new_player_state.pos_and_or))
+        if same_pos_and_or:
+            return False
+        # Cant: if they didnt end their turn in water
+        if not self.is_water(new_player_state.position):
+            return False
+        # Cant: if they does not have a held item
+        if not new_player_state.has_object():
+            return False
+
         return True
 
         # can_slip = True

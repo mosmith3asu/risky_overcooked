@@ -149,12 +149,10 @@ def cleanup_experiment(experiment):
 def get_experiment(experiment_id):
     return EXPERIMENTS.get(experiment_id, None)
 
-
 def get_curr_experiment(user_id):
     experiment_id = EXPERIMENT_MAP.get(user_id, None)
     return get_experiment(experiment_id)
     # return get_experiment(get_curr_room(user_id))
-
 
 def cleanup_game(game_id):
     pass
@@ -211,8 +209,8 @@ def _delete_user(user_id):
         if game is not None:
             if user_id in game.players:
                 game.remove_player(user_id)
-            else:
-                game.remove_spectator(user_id)
+            # else:
+            #     game.remove_spectator(user_id)
             game.deactivate()
             experiment.close_game()
 

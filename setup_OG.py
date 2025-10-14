@@ -21,7 +21,7 @@ setup(
         "risky_overcooked_py": [
             "data/layouts/*.layout",
             "data/planners/*.py",
-            "data/human_data/*.pickle",
+            "data/study2/*.pickle",
             "data/graphics/*.png",
             "data/graphics/*.json",
             "data/fonts/*.ttf",

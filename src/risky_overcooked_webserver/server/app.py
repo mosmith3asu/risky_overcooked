@@ -793,6 +793,9 @@ class RiskyOvercookedGame(OvercookedGame):
         self.state, info = self.mdp.get_state_transition(
             prev_state, joint_action
         )
+        can_slip = [self.mdp.check_can_slip(prev_state.players[i], self.state.players[i]) for i in range(2)]
+        did_slip = np.array(info['onion_slip']) + np.array(info['dish_slip']) + np.array(info['soup_slip'])
+
 
         # Send next state to all background consumers if needed
         if self.curr_tick % self.ticks_per_ai_action == 0:
@@ -823,6 +826,8 @@ class RiskyOvercookedGame(OvercookedGame):
             "player_0_is_human": self.players[0] in self.human_players,
             "player_1_is_human": self.players[1] in self.human_players,
             "belief": belief,
+            'can_slip': can_slip,
+            'did_slip': did_slip,
         }
 
         self.trajectory.append(transition)
@@ -1148,7 +1153,12 @@ class Experiment:
                 Ja = eval(transition['joint_action'])
                 aH = Ja[self.game.ihuman] #transition['joint_action'][self.game.ihuman]
                 aR = Ja[self.game.inpc] #transition['joint_action'][self.game.inpc]
-                info = {'belief': transition['belief']}
+                info = {'belief': transition['belief'],
+                        'reward': transition['reward'],
+                        'score': transition['score'],
+                        'can_slip': transition['can_slip'],
+                        'did_slip': transition['did_slip']
+                        }
                 self.stages[self.current_stage].log_transition(t, s, aH, aR, info)
             self.stages[self.current_stage].complete = True
 

@@ -292,9 +292,9 @@ class ExperimentData(Base):
 class DataViewer:
     DOCKER_VOLUME = '\\app\\data'
 
-    def __init__(self, fname):
-
-        file_path = os.path.join(self.DOCKER_VOLUME, fname)  # Replace with your actual file path
+    def __init__(self, fname, data_path=None):
+        if data_path is  None: data_path = self.DOCKER_VOLUME
+        file_path = os.path.join(data_path, fname)
 
         self.fname = fname
         self.path = file_path
@@ -334,7 +334,6 @@ class DataViewer:
     def print_survey(self,stage_name):
         surveydata = self.data[stage_name]
         print(surveydata)
-
     def get_game_visualizer(self,stage_name):
         gamedata = self.data[stage_name]
         layout = gamedata.layout
@@ -382,15 +381,19 @@ class DataViewer:
 
     def read_pickle_file(self,file_path):
         """Read a pickle file and return the deserialized object."""
-        with open(file_path, 'rb') as file:
-            data = pickle.load(file)
-        return data
-        # try:
-        #     with open(file_path, 'rb') as file:
-        #         data = pickle.load(file)
-        #     return data
-        # except Exception as e:
-        #     raise RuntimeError(f"Failed to read pickle file {file_path}: {e}")
+        try:
+            with open(file_path, 'rb') as file:
+                data = pickle.load(file)
+            return data
+        except:
+            # Patch pickle modul
+            import sys
+            from risky_overcooked_webserver.server import data_logging
+            sys.modules['data_logging'] = data_logging
+            with open(file_path, 'rb') as file:
+                data = pickle.load(file)
+            return data
+
 
     def analyze(self):
         raise NotImplementedError

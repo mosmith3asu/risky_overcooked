@@ -103,6 +103,11 @@ class BayesianBeliefUpdate():
         # posterior = posterior/np.sum(posterior)
         # self.belief = posterior
         # self.belief_history.append(self.belief)
+
+    def get_dist_partner_action(self,agent,obs):
+        _, _, action_probs = agent.choose_joint_action(obs, epsilon=0)
+        return action_probs[0, self.ipartner]
+
     def get_prob_partner_action(self,agent,obs,action,is_only_partner_action=False):
         """
         Gets probability that the partner took action given the observation

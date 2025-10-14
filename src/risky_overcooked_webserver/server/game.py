@@ -10,7 +10,11 @@ from time import time
 
 import numpy as np
 import torch
-from utils import DOCKER_VOLUME, create_dirs
+try:
+    from utils import DOCKER_VOLUME, create_dirs
+except:
+    from risky_overcooked_webserver.server.utils import DOCKER_VOLUME, create_dirs
+
 from risky_overcooked_py.mdp.actions import Action, Direction
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
@@ -1397,7 +1401,6 @@ class ToMAI:
             obs = self.mdp.get_lossless_encoding_vector_astensor(state, device=self.device).unsqueeze(0)
             human_iA = Action.ACTION_TO_INDEX[human_action]
             self.belief.update_belief(obs, human_iA, is_only_partner_action=True)
-
 
     def action(self, state):
         ego_policy = self.belief.best_response if self.n_candidates > 1 else self.policies[0]

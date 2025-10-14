@@ -1,7 +1,15 @@
 import copy
-from study2.static import *
+
 import pickle
 import numpy as np
+import torch
+import json
+
+from study2.static import *
+from risky_overcooked_rl.utils.evaluation_tools import CoordinationFluency
+from risky_overcooked_rl.algorithms.DDQN.utils.agents import DQN_vector_feature
+from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld, Action, OvercookedState
+from risky_overcooked_rl.algorithms.DDQN.utils.game_thoery import QuantalResponse_torch
 
 class DataPoint:
     def __init__(self, fname, data_path):
@@ -26,13 +34,13 @@ class DataPoint:
         self._games = self.parse_stage_key('game')
         self._primings = self.parse_stage_key('priming')
         self._trust_surveys = self.parse_stage_key('trust_survey')
+        self.layouts,self.p_slips = self.parse_ordered_layouts()
+        self._models = self.preload_models()
 
         # Begin computations
         self.RTP_score = self.compute_risk_taking_propensity()
         self.relative_trust_score = self.compute_relative_trust_score()
         self.relative_risk_perception = self.compute_relative_risk_perception()
-
-        self.layouts = self.compute_layout_orders()
         self.priming_labels = self.compute_priming_labels()
         # self.beliefs = self.compute_belief_accuracies()
 
@@ -40,8 +48,8 @@ class DataPoint:
         # self.nH_risks, self.nR_risks = self.compute_n_risks()
         self.trust_scores,self.delta_trusts = self.compute_trust_scores()
         ## self.KL_divergences = self.compute_KL_divergences()
-        # self.predictability = self.compute_predictabilities()
-        self.coactivities = self.compute_coactivities()
+        self.predictability = self.compute_predictabilities()
+        self.C_ACT, self.H_IDLE, self.R_IDLE = self.compute_coordination_fluency()
 
         # Check data validity
         self.was_active = self.check_activity()
@@ -120,12 +128,6 @@ class DataPoint:
 
     ###############################################
     # Trial metrics ###############################
-    def compute_layout_orders(self):
-        """Interates through raw data to get all games played in order"""
-        layouts = copy.deepcopy(self._def_dict)
-        for key,cond_games in self._games.items():
-            layouts[key] = [g.layout for g in cond_games]
-        return layouts
 
     def compute_priming_labels(self):
         priming_labels = copy.deepcopy(self._def_dict)
@@ -154,7 +156,7 @@ class DataPoint:
                     s.responses['Reliable'],
                     vmax - int(s.responses['Unresponsive']),
                     s.responses['Predictable'],
-                    s.responses['Act consitently'],
+                    s.responses['Act consistently'],
                     s.responses['Meet the needs of the task'],
                     s.responses['Perform as expected'],
                     # s.responses['Take too many risks'],
@@ -206,11 +208,59 @@ class DataPoint:
 
         return nH_risks,nR_risks
 
-    def compute_coactivities(self):
-        raise NotImplementedError("Coactivity computation not implemented yet")
+    def compute_coordination_fluency(self):
+        C_ACT = copy.deepcopy(self._def_dict)
+        H_IDLE = copy.deepcopy(self._def_dict)
+        R_IDLE = copy.deepcopy(self._def_dict)
 
-    def compute_KL_divergences(self):
-        raise NotImplementedError("Predictability computation not implemented yet")
+        for ic in range(len(self.conds)):
+            cond_games = self._games[self.conds[ic]]
+            for g in cond_games:
+                state_history = []
+                for t, s, aH, aR, info in g.transition_history:
+                    state = OvercookedState.from_dict(json.loads(s))
+                    state_history.append(state)
+                cf = CoordinationFluency(state_history=state_history)
+                cf_measures = cf.measures(iR=1,iH=0)
+
+                C_ACT[self.conds[ic]].append(cf_measures['C_ACT'])
+                C_ACT[ic].append(cf_measures['C_ACT'])
+
+                H_IDLE[self.conds[ic]].append(cf_measures['H_IDLE'])
+                H_IDLE[ic].append(cf_measures['H_IDLE'])
+
+                R_IDLE[self.conds[ic]].append(cf_measures['R_IDLE'])
+                R_IDLE[ic].append(cf_measures['R_IDLE'])
+        return C_ACT,H_IDLE,R_IDLE
+
+    def compute_predictabilities(self,iH=0,**kwargs):
+        predictabilities = copy.deepcopy(self._def_dict)
+        mdp_params = kwargs.get("mdp_params", {'neglect_boarders': True})
+
+        for ic in range(len(self.conds)):
+            cond_games = self._games[self.conds[ic]]
+
+            for ig, g in enumerate(cond_games):
+                mdp_params["p_slip"] = g.p_slip
+                mdp = OvercookedGridworld.from_layout_name(g.layout, **mdp_params)
+                model = self._models[self.conds[ic]][ig]
+
+                pred_history = []
+                for t, s, aH, aR, info in g.transition_history:
+                    ipolicy = np.argmax(info['belief'])
+                    state = OvercookedState.from_dict(json.loads(s))
+                    obs = mdp.get_lossless_encoding_vector_astensor(state, device='cpu').unsqueeze(0)
+                    _, _, action_probs = model[ipolicy].choose_joint_action(obs)
+                    aH_dist = action_probs[iH]
+                    pred = np.argmax(aH_dist) == Action.ACTION_TO_INDEX[aH if type(aH) == str else tuple(aH)] # was the human action the most likely?
+                    # pred = adist[np.argmax(adist)] # confidence of the prediction
+                    pred_history.append(pred)
+
+                predictabilities[self.conds[ic]].append(np.mean(pred_history))
+                predictabilities[ic].append(np.mean(pred_history))
+
+        return predictabilities
+        # raise NotImplementedError("Predictability computation not implemented yet")
 
     ###############################################
     # Validity checks #############################
@@ -231,6 +281,14 @@ class DataPoint:
 
     ###############################################
     # Helper methods ##############################
+    def parse_ordered_layouts(self):
+        """Interates through raw data to get all games played in order"""
+        layouts = copy.deepcopy(self._def_dict)
+        p_slips = copy.deepcopy(self._def_dict)
+        for key, cond_games in self._games.items():
+            layouts[key] = [g.layout for g in cond_games]
+            p_slips[key] = [g.p_slip for g in cond_games]
+        return layouts,p_slips
 
     def parse_stage_key(self,stage_key):
         """Interates through raw data to get all games played in order"""
@@ -271,6 +329,152 @@ class DataPoint:
             with open(file_path, 'rb') as file:
                 data = pickle.load(file)
             return data
+
+    def preload_models(self,**kwargs):
+        models = copy.deepcopy(self._def_dict)
+        mdp_params = kwargs.get("mdp_params", {'neglect_boarders': True})
+
+        for ic, cond in enumerate(self.conds):
+            cond_games = self._games[cond]
+            for g in cond_games:
+
+
+                if cond.lower() == 'rs-tom':
+                    policies = self.load_policies(g.layout,g.p_slip, ['averse', 'neutral', 'seeking'])
+                elif cond.lower() == 'rational':
+                    policies = self.load_policies(g.layout, g.p_slip, ['neutral'])
+                else:
+                    raise ValueError(f"Unknown condition {cond} in filename {self.fname}")
+
+                models[self.conds[ic]].append(policies)
+                models[ic].append(policies)
+
+        return models
+
+    def load_policies(self, layout,p_slip, candidates):
+        """
+        Loads the policies for the AI. This is used to test the ToM agent and its ability to predict the actions of the AI.
+        """
+        candidate_fnames = [f'{layout}_pslip{str(p_slip).replace(".", "")}__{candidate}.pt' for candidate  in candidates]
+        # print(f"All fnames {candidate_fnames}")
+        policies = []
+        for fname in candidate_fnames:
+            PATH = AGENT_DIR + f'{fname}'
+            if not os.path.exists(PATH):
+                raise ValueError(f"Policy file {PATH} does not exist")
+            try:
+                policies.append(TorchPolicy(PATH,'cpu'))
+            except Exception as e:
+                raise print(f"Error loading policy from {PATH}\n{e}")
+        return policies
+
+class TorchPolicy:
+    """Handles Torch.NN interface and action selection.
+    Is lightweight version of SelfPlay_QRE_OSA agent
+    """
+
+    def __init__(self, PATH, device, action_selection='softmax', ego_idx=1,
+                 sophistication=8, belief_trick=True
+                 ):
+        # torch.cuda.set_device(device)
+        # print(f"TorchPolicy: Loading policy from {PATH}")
+        self.PATH = PATH
+        self.device = device
+        assert action_selection in ['greedy', 'softmax'], "Action selection must be either greedy or softmax"
+        self.action_selection = action_selection
+        self.ego_idx = ego_idx
+        # self.num_hidden_layers = num_hidden_layers
+        # self.size_hidden_layers = size_hidden_layers
+
+        self.player_action_dim = len(Action.ALL_ACTIONS)
+        self.joint_action_dim = len(Action.ALL_JOINT_ACTIONS)
+        self.joint_action_space = Action.ALL_JOINT_ACTIONS
+        self.num_agents = 2
+        self.rationality = 20
+        self.model = self.load_model(PATH)
+
+        self.QRE = QuantalResponse_torch(rationality=self.rationality, belief_trick=belief_trick,
+                                         sophistication=sophistication, joint_action_space=self.joint_action_space,
+                                         device=self.device)
+
+    def load_model(self, PATH):
+        loaded_model = torch.load(PATH, weights_only=True, map_location=self.device)
+        # print(f'Geting model data')
+        # obs_shape = (loaded_model['layer1.weight'].size()[1],)
+        # size_hidden_layers = loaded_model['layer1.weight'].shape[0]
+        obs_shape = (loaded_model['layers.0.weight'].size()[1],)
+        size_hidden_layers = loaded_model['layers.0.weight'].shape[0]
+        num_hidden_layers = int(len(loaded_model.keys()) / 2)
+        # size_hidden_layers = loaded_model['layer1.weight'].size()[0]
+        # for key,val in loaded_model.items():
+        #     print(key, "\t", val.size())
+
+        n_actions = self.joint_action_dim
+        # model = DQN_vector_feature(obs_shape, n_actions, self.num_hidden_layers, self.size_hidden_layers).to(self.device)
+        model = DQN_vector_feature(obs_shape, n_actions, num_hidden_layers, size_hidden_layers).to(self.device)
+        model.load_state_dict(loaded_model)
+        return model
+
+    def action(self, obs):
+        with torch.no_grad():
+            _, _, joint_pA = self.choose_joint_action(obs)
+            ego_pA = joint_pA[0, self.ego_idx]
+            if self.action_selection == 'greedy':
+                ego_action = Action.INDEX_TO_ACTION[np.argmax(ego_pA)]
+            elif self.action_selection == 'softmax':
+                ia = np.random.choice(np.arange(len(ego_pA)), p=ego_pA)
+                ego_action = Action.INDEX_TO_ACTION[ia]
+        return ego_action
+
+    def choose_joint_action(self, obs, epsilon=0):
+        with torch.no_grad():
+            NF_Game = self.get_normal_form_game(obs)
+            joint_action, joint_action_idx, action_probs = self.QRE.choose_actions(NF_Game)
+        return joint_action, joint_action_idx, action_probs
+
+    def compute_EQ(self, NF_Games):
+        NF_Games = NF_Games.reshape(-1, self.num_agents, self.player_action_dim, self.player_action_dim)
+        all_dists = self.QRE.level_k_qunatal(NF_Games)
+        return all_dists
+
+    def get_normal_form_game(self, obs):
+        """ Batch compute the NF games for each observation"""
+        batch_size = obs.shape[0]
+        all_games = torch.zeros([batch_size, self.num_agents, self.player_action_dim, self.player_action_dim],
+                                device=self.device)
+        for i in range(self.num_agents):
+            if i == 1: obs = self.invert_obs(obs)
+            q_values = self.model(obs).detach()
+            q_values = q_values.reshape(batch_size, self.player_action_dim, self.player_action_dim)
+            all_games[:, i, :, :] = q_values if i == 0 else torch.transpose(q_values, -1, -2)
+        return all_games
+
+    def invert_obs(self, obs, N_PLAYER_FEAT=9):
+        if isinstance(obs, np.ndarray):
+            _obs = np.concatenate([obs[N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+                                   obs[:N_PLAYER_FEAT],
+                                   obs[2 * N_PLAYER_FEAT:]])
+        elif isinstance(obs, torch.Tensor):
+            n_dim = len(obs.shape)
+            if n_dim == 1:
+                _obs = torch.cat([obs[N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+                                  obs[:N_PLAYER_FEAT],
+                                  obs[2 * N_PLAYER_FEAT:]])
+            elif n_dim == 2:
+                _obs = torch.cat([obs[:, N_PLAYER_FEAT:2 * N_PLAYER_FEAT],
+                                  obs[:, :N_PLAYER_FEAT],
+                                  obs[:, 2 * N_PLAYER_FEAT:]], dim=1)
+            else:
+                raise ValueError("Invalid obs dimension")
+        else:
+            raise ValueError("Invalid obs type")
+        return _obs
+
+    def __repr__(self):
+        s = ""
+        s += f"[DataPoint: {self.fname}]"
+        s += f"[age:{self.age} sex:{self.sex}]" #demographic
+
 
 
 

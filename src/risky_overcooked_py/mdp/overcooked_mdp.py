@@ -2402,6 +2402,7 @@ class OvercookedGridworld(object):
         if obj_drop_key not in event_infos:
             raise ValueError("Unknown event {}".format(obj_drop_key))
         event_infos[obj_drop_key][player_index] = True
+
     def is_dish_pickup_useful(self, state, pot_states, player_index=None):
         """
         NOTE: this only works if self.num_players == 2

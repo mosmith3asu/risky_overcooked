@@ -794,8 +794,11 @@ class RiskyOvercookedGame(OvercookedGame):
             prev_state, joint_action
         )
         can_slip = [self.mdp.check_can_slip(prev_state.players[i], self.state.players[i]) for i in range(2)]
-        did_slip = np.array(info['onion_slip']) + np.array(info['dish_slip']) + np.array(info['soup_slip'])
-
+        events = info['event_infos']
+        # for key, val in info['event_infos'].items():
+        #     print(f"{key}: {val}")
+        did_slip = np.array(events['onion_slip']) + np.array(events['dish_slip']) + np.array(events['soup_slip'])
+        did_slip = did_slip.tolist()
 
         # Send next state to all background consumers if needed
         if self.curr_tick % self.ticks_per_ai_action == 0:

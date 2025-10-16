@@ -102,8 +102,53 @@ class TrajectoryVisualizer(object):
             while plt.fignum_exists(self.fig_number):
                 self.fig.canvas.flush_events()
                 time.sleep(0.1)
+    def _approve_callback(self,event):
+        plt.close(self.fig)
+        self.approved = True
 
+    def _reject_callback(self,event):
+        plt.close(self.fig)
+        self.approved = False
+    def preview_approve_trajectory(self,state_history):
+        if self.blocking:
+            self.spawn_figure()
 
+        self.imgs = []
+        for state in state_history:
+            self.imgs.append(self.render_image(state))
+        self.time_slider.on_changed(self.update_slider)
+
+        xstart,xend = 0.8,0.99
+        ystart,yend = 0.2,0.8
+
+        plt.subplots_adjust(right=xstart)
+
+        # Add approve button
+        left = xstart
+        bottom = 0.5 * (yend - ystart) + ystart + 0.05
+        width = xend - xstart
+        height = 0.5 * (yend - ystart) - 0.05
+        rect = [left, bottom, width, height]
+        approve_ax = plt.axes(rect)
+        approve_button = Button(approve_ax, 'Approve', color='green', hovercolor='0.975')
+        approve_button.on_clicked(self._approve_callback)
+
+        # Add reject button
+        left = xstart
+        bottom = ystart
+        width = xend - xstart
+        height = 0.5 * (yend - ystart) - 0.05
+        rect = [left, bottom, width, height]
+        reject_ax = plt.axes(rect)
+        reject_button = Button(reject_ax, 'Reject', color='red', hovercolor='0.975')
+        reject_button.on_clicked(self._reject_callback)
+
+        self.fig.show()
+        if self.blocking:
+            while plt.fignum_exists(self.fig_number):
+                self.fig.canvas.flush_events()
+                time.sleep(0.1)
+        return self.approved
 
 def parallel_trajectory_heatmap(traj_heatmap,ax_dict=None):
     if ax_dict is not None:

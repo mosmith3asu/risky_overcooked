@@ -1,18 +1,23 @@
+import sys
 import copy
-
 import pickle
 import numpy as np
 import torch
 import json
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.widgets import Button
 
 from study2.static import *
 from risky_overcooked_rl.utils.evaluation_tools import CoordinationFluency
 from risky_overcooked_rl.algorithms.DDQN.utils.agents import DQN_vector_feature
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld, Action, OvercookedState
+from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_rl.algorithms.DDQN.utils.game_thoery import QuantalResponse_torch
+from risky_overcooked_rl.utils.visualization import TrajectoryVisualizer
 
 class DataPoint:
-    def __init__(self, fname, data_path):
+    def __init__(self, fname, data_path,min_survey_var = 0.0):
 
         # Load raw data
         file_path = os.path.join(data_path, fname)
@@ -25,6 +30,7 @@ class DataPoint:
         self.sex = self._raw['demographic'].responses['sex']
         self.icond = int(fname.split('cond')[-1][0])
         self.conds = [['rs-tom', 'rational'],['rational','rs-tom']][self.icond]
+
 
         # Begin parsing data
         self._def_dict = {0: [], 1: []}  # default timeseries format
@@ -41,25 +47,29 @@ class DataPoint:
         self.RTP_score = self.compute_risk_taking_propensity()
         self.relative_trust_score = self.compute_relative_trust_score()
         self.relative_risk_perception = self.compute_relative_risk_perception()
-        self.priming_labels = self.compute_priming_labels()
+        self.priming_labels,self.priming_scores = self.compute_priming_labels()
         # self.beliefs = self.compute_belief_accuracies()
 
-        # self.rewards = self.compute_rewards()
-        # self.nH_risks, self.nR_risks = self.compute_n_risks()
+        self.rewards = self.compute_rewards()
+        self.nH_risks, self.nR_risks = self.compute_n_risks()
         self.trust_scores,self.delta_trusts = self.compute_trust_scores()
-        ## self.KL_divergences = self.compute_KL_divergences()
+        self.risk_perceptions = self.compute_risk_perceptions()
         self.predictability = self.compute_predictabilities()
-        self.C_ACT, self.H_IDLE, self.R_IDLE = self.compute_coordination_fluency()
+        self.C_ACTs, self.H_IDLEs, self.R_IDLEs = self.compute_coordination_fluency()
 
         # Check data validity
-        self.was_active = self.check_activity()
+        self.min_survey_var = min_survey_var
+        self.survey_var = self.compute_survey_variance()
         self.surveys_valid = self.check_surveys()
-        self.passed_review = self.check_manually()
+        self.was_active = self.check_activity()
+        self.passed_review,self.manual_reviews = self.check_manually()
+
+
 
     ###############################################
     # Metadata metrics ############################
     def compute_risk_taking_propensity(self):
-        vmax, vmin = 9, 1
+        vmax, vmin = 9, 0
         responses = self._raw['risk_propensity'].responses
         ID = responses.pop('ID')
 
@@ -72,11 +82,11 @@ class DataPoint:
         assert np.all(raw_vals <= vmax), f"Invalid (Max) response detected in risk taking propensity survey{raw_vals}"
 
         scores = np.array(list(responses.values()),dtype=int)
-        scores[reverse_coded] = vmax - scores[reverse_coded] # reverse code
+        scores[reverse_coded] = vmax + vmin - scores[reverse_coded] # reverse code
         return np.mean(scores)
 
     def compute_relative_trust_score(self):
-        vmax, vmin = 9, 1
+        vmax, vmin = 9, 0
         all_responses = self._raw['relative_trust_survey'].responses
 
         raw_vals = np.array([
@@ -91,52 +101,58 @@ class DataPoint:
         assert np.all(raw_vals <= vmax), f"Invalid (Max) response detected in risk taking propensity survey{raw_vals}"
 
         scores = raw_vals
-        if self.icond == 1: scores = vmax - scores  # reverse code for cond1
+        if self.icond == 1: scores = vmax + vmin - scores  # reverse code for cond1
         return np.mean(scores)
 
     def compute_relative_risk_perception(self):
-        vmax, vmin = 9, 1
+        vmax, vmin = 9, 0
         all_responses = self._raw['relative_trust_survey'].responses
 
         raw_vals = np.array([
             all_responses[' Took more risks'],
-            all_responses['Played more safe'],
+            vmax + 1 - int(all_responses['Played more safe']),
         ], dtype=int)
 
-        assert np.all(
-            raw_vals >= vmin), f"Invalid (Min) response detected in risk taking propensity survey{raw_vals}"
-        assert np.all(
-            raw_vals <= vmax), f"Invalid (Max) response detected in risk taking propensity survey{raw_vals}"
+        assert np.all(raw_vals >= vmin), f"Invalid (Min) response detected in risk taking propensity survey {raw_vals}"
+        assert np.all(raw_vals <= vmax), f"Invalid (Max) response detected in risk taking propensity survey {raw_vals}"
 
         scores = raw_vals
-        if self.icond == 1: scores = vmax - scores  # reverse code for cond1
+        if self.icond == 1: scores = vmax + vmin - scores  # reverse code for cond1
         return np.mean(scores)
-
-
-
-        reverse_coded = [0, 1, 2, 4]
-
-        raw_vals = np.array(list(responses.values()), dtype=int)
-        assert len(raw_vals) == 7, "Expected 7 responses for risk taking propensity survey"
-        assert np.all(raw_vals >= vmin), f"Invalid (Min) response detected in risk taking propensity survey{raw_vals}"
-        assert np.all(raw_vals <= vmax), f"Invalid (Max) response detected in risk taking propensity survey{raw_vals}"
-
-        scores = np.array(list(responses.values()), dtype=int)
-        scores[reverse_coded] = vmax - scores[reverse_coded]  # reverse code
-        return np.mean(scores)
-        raise NotImplementedError("Relative trust score computation not implemented yet")
 
     ###############################################
     # Trial metrics ###############################
 
     def compute_priming_labels(self):
         priming_labels = copy.deepcopy(self._def_dict)
+        priming_scores = copy.deepcopy(self._def_dict)
+        averse_responses = ['Take the longer detour that avoids all puddles',
+                            'Pass objects to partner using counter tops to avoid all puddles' ]
+        rational_responses = ['Take the middle route through one puddle',]
+        seeking_responses = ['Take the most direct route by going through two puddles']
         for ic in range(len(self.conds)):
             cond_primings = self._primings[self.conds[ic]]
-            labels = [p.responses['priming'] for p in cond_primings]
+            labels = []
+            scores = []
+
+            for p in cond_primings:
+                if p.responses['priming'] in averse_responses:
+                    label,score = 'averse', -1
+                elif p.responses['priming'] in rational_responses:
+                    label,score = 'rational', -1
+                elif p.responses['priming'] in seeking_responses:
+                    label,score = 'seeking',1
+                else:
+                    raise ValueError(f"Unknown priming response {p.responses['priming']} in filename {self.fname}")
+                labels.append(label)
+                scores.append(score)
+
             priming_labels[ic] = labels
             priming_labels[self.conds[ic]] = labels
-        return priming_labels
+            priming_scores[ic] = scores
+            priming_scores[self.conds[ic]] = scores
+
+        return priming_labels, priming_scores
 
     def compute_belief_accuracies(self):
         raise NotImplementedError("Belief accuracy computation not implemented yet")
@@ -154,7 +170,7 @@ class DataPoint:
                 raw_vals = [
                     s.responses['Dependable'],
                     s.responses['Reliable'],
-                    vmax - int(s.responses['Unresponsive']),
+                    vmax + vmin - int(s.responses['Unresponsive']),
                     s.responses['Predictable'],
                     s.responses['Act consistently'],
                     s.responses['Meet the needs of the task'],
@@ -174,6 +190,28 @@ class DataPoint:
                     delta_trusts[self.conds[ic]].append(dtrust)
 
         return trust_scores, delta_trusts
+
+    def compute_risk_perceptions(self):
+        # raise NotImplementedError("Trust score computation not implemented yet")
+        rel_risk_scores = copy.deepcopy(self._def_dict)
+
+        for ic in range(len(self.conds)):
+            vmax, vmin = 9, 0
+            cond_surveys = self._trust_surveys[self.conds[ic]]
+            # cond_games = self._games[self.conds[ic]]
+            for _is, s in enumerate(cond_surveys):
+                raw_vals = [
+                    s.responses['Take too many risks'],
+                    vmax + vmin - int(s.responses['Play too safe']),
+                ]
+                raw_vals = np.array(raw_vals, dtype=int)
+                score = np.mean(raw_vals)
+                rel_risk_scores[self.conds[ic]].append(score)
+                rel_risk_scores[ic].append(score)
+
+
+
+        return rel_risk_scores
 
     ###############################################
     # Gameplay metrics ############################
@@ -264,16 +302,80 @@ class DataPoint:
 
     ###############################################
     # Validity checks #############################
-    def check_activity(self):
+    def check_activity(self,max_idle_thresh = 0.5, mean_idle_thresh = 0.3):
         """Validity check: did they actively participate in the task?"""
-        raise NotImplementedError("Activity check not implemented yet")
+        # raise NotImplementedError("Activity check not implemented yet")
+        KEYS = ['rs-tom', 'rational']
+        H_IDLEs = [np.mean(self.H_IDLEs[key]) for key in KEYS]
+
+        max_idle = max(H_IDLEs)
+        mean_idle = np.mean(H_IDLEs)
+        was_inactive = max_idle > max_idle_thresh or mean_idle > mean_idle_thresh
+
+        if was_inactive:
+            print(f"Warning: Participant {self.fname} was inactive (max_idle={max_idle}, mean_idle={mean_idle})",file=sys.stderr)
+        return not was_inactive
+
+    def compute_survey_variance(self):
+        vmax, vmin = 9, 0
+        within_vars = []
+        for ic, cond in enumerate(self.conds):
+            cond_surveys = self._trust_surveys[self.conds[ic]]
+
+            for _is, s in enumerate(cond_surveys):
+                raw_vals = [
+                    s.responses['Dependable'],
+                    s.responses['Reliable'],
+                    vmax + vmin - int(s.responses['Unresponsive']),
+                    s.responses['Predictable'],
+                    s.responses['Act consistently'],
+                    s.responses['Meet the needs of the task'],
+                    s.responses['Perform as expected'],
+                ]
+                raw_vals = np.array(raw_vals, dtype=int)
+                within_vars.append(np.var(raw_vals))
+
+        return np.mean(within_vars)
 
     def check_surveys(self):
         """Validity check: did they complete the surveys in reasonable manner?"""
-        raise NotImplementedError("Survey check not implemented yet")
+        is_valid = self.min_survey_var <= self.survey_var
+        if not is_valid:
+            print(f"Warning: Participant {self.fname} had low survey variance ({self.survey_var})",file=sys.stderr)
+        return is_valid
 
     def check_manually(self):
-        raise NotImplementedError("Manual check not implemented yet")
+        approvals = []
+        for ic in range(len(self.conds)):
+            # Check Surveys
+            for s in self._trust_surveys[self.conds[ic]]:
+                s.responses.pop('ID',None)  # remove ID field if it exists
+                responses = {}
+                for key in s.responses:
+                    responses[key] = int(s.responses[key])
+                approved = SurveyVisualizer(responses).review(title='')
+                print(f'{approved}')
+                approvals.append(approved)
+                # plot survey responses in table
+
+            # Check Gameplay
+            cond_games = self._games[self.conds[ic]]
+            for g in cond_games:
+                state_history = []
+                for t, s, aH, aR, info in g.transition_history:
+                    state = OvercookedState.from_dict(json.loads(s))
+                    state_history.append(state)
+                mdp = OvercookedGridworld.from_layout_name(g.layout, p_slip=g.p_slip,neglect_boarders=True)
+                env = OvercookedEnv.from_mdp(mdp, horizon=360)
+                visualizer = TrajectoryVisualizer(env)
+                approved = visualizer.preview_approve_trajectory(state_history)
+                approvals.append(approved)
+
+
+        all_approved = np.all(approvals)
+        if not all_approved:
+            print(f"Warning: Participant {self.fname} failed manual review",file=sys.stderr)
+        return all_approved,approvals
 
     @property
     def is_valid(self):
@@ -309,14 +411,30 @@ class DataPoint:
         stages[self.conds[1]] =  all_stages[n_games // 2:]
         return stages
 
-    def save_processed(self, file_path):
-        raise NotImplementedError("Processed data saving not implemented yet")
+    def save(self, fname=None):
+        fname = self.fname if fname is None else fname
+        if ".pkl" not in fname: fname += ".pkl"
+
+        if not self.is_valid:
+            save_dir = PROCESSED_REJECT_DIR
+        else:
+            save_dir = PROCESSED_COND0_DIR if self.icond == 0 else PROCESSED_COND1_DIR
+
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+
+        file_path = os.path.join(save_dir, fname)
+        # save this DataPoint object to a pickle file
+        with open(file_path, 'wb') as file:
+            pickle.dump(self, file)
+        print(f"Processed data saved to {file_path}")
 
     def load_processed(self, file_path):
         raise NotImplementedError("Processed data loading not implemented yet")
 
     def load_raw(self, file_path):
         """Read a pickle file and return the deserialized object."""
+        if ".pkl" not in file_path: file_path += ".pkl"
         try:
             with open(file_path, 'rb') as file:
                 data = pickle.load(file)
@@ -367,6 +485,35 @@ class DataPoint:
             except Exception as e:
                 raise print(f"Error loading policy from {PATH}\n{e}")
         return policies
+    def __repr__(self):
+        KEYS = ['rs-tom', 'rational']
+        meta_data = {
+            'fname': self.fname,
+            'RTP': self.RTP_score,
+            'RelTrust': self.relative_trust_score,
+            'RelRisk': self.relative_risk_perception,
+            'Priming (-1A<=>1S)': np.mean([np.mean(self.priming_scores[key]) for key in KEYS]),
+                     }
+        print(f'Metadata:')
+        for key,val in meta_data.items():
+            print(f'  {key}: {val}')
+
+        print(f'\nTrialdata:')
+        data_by_index = {
+            # 'Priming (-1A<=>1S)': {key: np.mean(self.priming_scores[key]) for key in KEYS},
+            'Reward':           {key: np.mean(self.rewards[key]) for key in KEYS},
+            '#Risk Human':      {key: np.mean(self.nH_risks[key]) for key in KEYS},
+            '#Risk Robot':      {key: np.mean(self.nR_risks[key]) for key in KEYS},
+            'Trust Score':      {key: np.mean(self.trust_scores[key]) for key in KEYS},
+            'Risk Perception' : {key: np.mean(self.risk_perceptions[key]) for key in KEYS},
+            'Delta Trust':      {key: np.mean(self.delta_trusts[key]) for key in KEYS},
+            'Predictability':   {key: np.mean(self.predictability[key]) for key in KEYS},
+            'C_ACT':            {key: np.mean(self.C_ACTs[key]) for key in KEYS},
+            'H_IDLE':           {key: np.mean(self.H_IDLEs[key]) for key in KEYS},
+            'R_IDLE':           {key: np.mean(self.R_IDLEs[key]) for key in KEYS},
+        }
+        df_index = pd.DataFrame.from_dict(data_by_index, orient='index')
+        return str(df_index)
 
 class TorchPolicy:
     """Handles Torch.NN interface and action selection.
@@ -470,21 +617,134 @@ class TorchPolicy:
             raise ValueError("Invalid obs type")
         return _obs
 
-    def __repr__(self):
-        s = ""
-        s += f"[DataPoint: {self.fname}]"
-        s += f"[age:{self.age} sex:{self.sex}]" #demographic
 
 
+
+class SurveyVisualizer:
+    def __init__(self, responses):
+        """
+        responses: dict[str, int] mapping question -> integer in [0, 9]
+        """
+        # Validate inputs lightly
+        for k, v in responses.items():
+            if not isinstance(v, int) or not (0 <= v <= 9):
+                raise ValueError(f"Response for '{k}' must be an int in [0, 9]. Got: {v}")
+        self.responses = responses
+        self._decision = None  # will be set True/False by buttons
+
+    def plot_table(self, ax=None, title="Survey Responses"):
+        """Draw the survey table on the given axes (or create one)."""
+        questions = list(self.responses.keys())
+        cols = list(range(10))
+        n_questions = len(questions)
+
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(10, 0.2 * n_questions + 2))
+        else:
+            fig = ax.figure
+
+        ax.set_axis_off()
+
+        # Build cell text
+        cell_text = []
+        for q in questions:
+            row = ["X" if i == self.responses[q] else "" for i in cols]
+            cell_text.append(row)
+
+        table = ax.table(
+            cellText=cell_text,
+            rowLabels=questions,
+            colLabels=[str(c) for c in cols],
+            loc='center',
+            cellLoc='center'
+        )
+
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(0.7, 1)
+        ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+
+        # Bold column headers
+        for (row, col), cell in table.get_celld().items():
+            if row == 0:
+                cell.set_text_props(weight='bold')
+
+        return fig, ax, table
+
+    def review(self, title="Survey Responses", accept_label="Accept", reject_label="Reject",
+               block=True, figsize=None):
+        """
+        Spawn an interactive review window with Accept/Reject buttons.
+        Returns:
+            True  -> Accept
+            False -> Reject
+            None  -> Window closed without selection
+        """
+        self._decision = None
+
+        # Sizing
+        n_rows = max(1, len(self.responses))
+        if figsize is None:
+            figsize = (10, 0.2 * n_rows + 2.8)  # extra height for buttons
+
+        fig, ax = plt.subplots(figsize=figsize)
+
+        # Draw table
+        self.plot_table(ax=ax, title=title)
+
+        # Button axes (in figure coordinates)
+        btn_h = 0.07
+        btn_w = 0.18
+        y = 0.02
+        ax_accept = fig.add_axes([0.25, y, btn_w, btn_h])
+        ax_reject = fig.add_axes([0.57, y, btn_w, btn_h])
+
+        btn_accept = Button(ax_accept, accept_label)
+        btn_reject = Button(ax_reject, reject_label)
+
+        # Callbacks
+        def _on_accept(event):
+            self._decision = True
+            plt.close(fig)
+
+        def _on_reject(event):
+            self._decision = False
+            plt.close(fig)
+
+        def _on_key(event):
+            # Keyboard shortcuts: 'a' accept, 'r' reject
+            if event.key is None:
+                return
+            key = event.key.lower()
+            if key == 'a':
+                _on_accept(event)
+            elif key == 'r':
+                _on_reject(event)
+
+        btn_accept.on_clicked(_on_accept)
+        btn_reject.on_clicked(_on_reject)
+        fig.canvas.mpl_connect('key_press_event', _on_key)
+
+        # Leave some bottom margin for buttons
+        plt.subplots_adjust(bottom=0.14)
+
+        # Show and (optionally) block until user selects
+        plt.show(block=block)
+
+        # If non-blocking, return None now; decision can be read later
+        return self._decision
 
 
 def main():
-    fname = "2025-09-15_20-08-54__PIDmax1__cond0.pkl"
+    # fname = "2025-09-15_20-08-54__PIDmax1__cond0.pkl"
+    fname = "2025-10-15_10-35-32__PID123__cond1"
     # viewer = DataViewer(fname,data_path=RAW_COND0_DIR)
     # viewer.summary()
 
-    DataPoint(fname,data_path=RAW_COND0_DIR)
 
+    dp = DataPoint(fname,data_path=RAW_COND1_DIR)
+    dp.save()
+    print(dp)
 
 if __name__ == '__main__':
     main()

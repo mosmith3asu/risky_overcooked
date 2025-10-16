@@ -7,8 +7,10 @@ ARG GRAPHICS
 ARG SRC_PATH
 
 WORKDIR /app
+
 # Install non-chai dependencies
 RUN apt-get -y update
+RUN apt-get upgrade -y
 RUN apt-get install -y libgl1-mesa-dev
 RUN pip install opencv-python-headless
 RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu

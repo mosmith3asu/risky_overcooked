@@ -1277,14 +1277,16 @@ class Experiment:
         """ Save the experiment data to a file. """
         data_path = self.create_dirs()
         fname = f'{self.timestamp}__PID{self.prolific_id}__cond{self.icond}.pkl'
-        with open(os.path.join(data_path, fname), "wb") as f:
-            pickle.dump(self.stages, f)
+        fpath = os.path.join(data_path, fname)
 
-        if DEBUG:
-            # print(f"Saving data to {os.path.join(data_path, fname)}")
-            print_link(os.path.join(data_path, fname))
-        else:
-            print(f'Saving data to {os.path.join(data_path, fname)}')
+        with open(fpath, "wb") as f:
+            pickle.dump(self.stages, f)
+        print(f'Saving data to {fpath}')
+        # if DEBUG:
+        #     # print(f"Saving data to {os.path.join(data_path, fname)}")
+        #     print_link(fpath)
+        # else:
+        #
 
     # def create_dirs(self, DOCKER_VOLUME = "\\app\\data"):
     #     participant_folder = f'cond_{self.icond}'

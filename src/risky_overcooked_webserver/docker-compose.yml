@@ -16,7 +16,7 @@ services:
         ports:
             - "80:5000"
         volumes:
-            - data:/app/data
+#            - data:/app/data
             - /app/data:/app/data # for linux
 
 

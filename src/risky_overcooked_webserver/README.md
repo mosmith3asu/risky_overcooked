@@ -37,7 +37,7 @@ docker-compose version
 ```bash
 sudo yum install -y git # if not installed
 sudo git clone https://github.com/mosmith3asu/risky_overcooked.git /risky_overcooked
-
+.
 ```
 if up.sh not running `sudo chmod u+r+x up.sh`
 

@@ -96,7 +96,7 @@ jobs:
 #  risky_handoff2:
   risky_mixed_coordination:
     agents: ['neutral','seeking']
-    p_slips: [0.4,0.5,0.6]
+    p_slips: [0.3,0.4]
 
     set:
       note: ''

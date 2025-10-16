@@ -2746,14 +2746,17 @@ class OvercookedGridworld(object):
                 # if held_objs[iplayer] is not None:
                 #     next_state.players[iplayer].set_object(held_objs[iplayer])
                 else:  # interacting with counter (pick up)
-                    pos = next_state.players[iplayer].position
-                    orientation = next_state.players[iplayer].orientation
-                    # get object player is facing and pick up
-                    adj_pos = Action.move_in_direction(pos, orientation)
-                    for obj in state.objects.values():
-                        if adj_pos == obj.position:
-                            next_state.players[iplayer].set_object(obj)
-                            break
+                    try:
+                        pos = next_state.players[iplayer].position
+                        orientation = next_state.players[iplayer].orientation
+                        # get object player is facing and pick up
+                        adj_pos = Action.move_in_direction(pos, orientation)
+                        for obj in state.objects.values():
+                            if adj_pos == obj.position:
+                                next_state.players[iplayer].set_object(obj)
+                                break
+                    except:
+                        pass
             outcomes.append([joint_action, make_obs(next_state), prob])
             # print(f'BL: {[player.has_object() for player in next_state.players]}')
 

@@ -17,6 +17,7 @@ services:
             - "80:5000"
         volumes:
             - data:/app/data
+            - /app/data:/app/data # for linux
 
 
 volumes:

@@ -46,6 +46,12 @@ Copying files:
 scp -r -i risky_overcooked.pem ec2-user@54.234.124.182:/app/data D:/app/
 
 ```
+
+## Basic Docker Commands
+```bash
+docker ps # view running containers
+docker logs <constainer_id> # veiw logs for a cotnainer
+``` 
 # Notes
 - may have to remove `graphics.js` from `static/js/` when using docker. this was added manually
 - Binded local repo in docker-compose.yml

@@ -10,7 +10,7 @@
     "unused_layouts": [
          "risky_shortcuts3_pslip03"
     ],
-    "MAX_EXPERIMENTS" : 10,
+    "MAX_EXPERIMENTS" : 1,
     "MAX_GAME_LENGTH" : 60,
     "AGENT_DIR" : "./static/assets/agents",
     "MAX_FPS" : 30,

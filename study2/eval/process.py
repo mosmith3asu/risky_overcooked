@@ -17,13 +17,15 @@ from risky_overcooked_rl.algorithms.DDQN.utils.game_thoery import QuantalRespons
 from risky_overcooked_rl.utils.visualization import TrajectoryVisualizer
 
 class DataPoint:
-    def __init__(self, fname, data_path,min_survey_var = 0.0):
+    def __init__(self, fname, min_survey_var = 0.0):
+        data_path = RAW_COND0_DIR if 'cond0' in fname else RAW_COND1_DIR
 
         # Load raw data
         file_path = os.path.join(data_path, fname)
         self.fname = fname
         self.path = file_path
         self._raw = self.load_raw(file_path)
+        self.survey_range = (10,0)
 
         # Extract metadata/demographics
         self.age = self._raw['demographic'].responses['age']
@@ -69,7 +71,7 @@ class DataPoint:
     ###############################################
     # Metadata metrics ############################
     def compute_risk_taking_propensity(self):
-        vmax, vmin = 9, 0
+        vmax, vmin = self.survey_range
         responses = self._raw['risk_propensity'].responses
         ID = responses.pop('ID')
 
@@ -86,7 +88,7 @@ class DataPoint:
         return np.mean(scores)
 
     def compute_relative_trust_score(self):
-        vmax, vmin = 9, 0
+        vmax, vmin = self.survey_range
         all_responses = self._raw['relative_trust_survey'].responses
 
         raw_vals = np.array([
@@ -105,7 +107,7 @@ class DataPoint:
         return np.mean(scores)
 
     def compute_relative_risk_perception(self):
-        vmax, vmin = 9, 0
+        vmax, vmin = self.survey_range
         all_responses = self._raw['relative_trust_survey'].responses
 
         raw_vals = np.array([
@@ -128,8 +130,15 @@ class DataPoint:
         priming_scores = copy.deepcopy(self._def_dict)
         averse_responses = ['Take the longer detour that avoids all puddles',
                             'Pass objects to partner using counter tops to avoid all puddles' ]
-        rational_responses = ['Take the middle route through one puddle',]
-        seeking_responses = ['Take the most direct route by going through two puddles']
+
+        rational_responses = ['Take the middle route through one puddle',
+                              "A mix of handing off items and avoiding puddles",
+                              'Take the route through one puddle']
+
+        seeking_responses = ['Take the most direct route by going through two puddles',
+                             'Enter one puddle to handoff items to my partner',
+                             'Take the most direct route by going through both puddles']
+
         for ic in range(len(self.conds)):
             cond_primings = self._primings[self.conds[ic]]
             labels = []
@@ -143,7 +152,7 @@ class DataPoint:
                 elif p.responses['priming'] in seeking_responses:
                     label,score = 'seeking',1
                 else:
-                    raise ValueError(f"Unknown priming response {p.responses['priming']} in filename {self.fname}")
+                    raise ValueError(f"Unknown priming response [{p.responses['priming']}] in filename {self.fname}")
                 labels.append(label)
                 scores.append(score)
 
@@ -163,7 +172,7 @@ class DataPoint:
         delta_trusts = copy.deepcopy(self._def_dict)
 
         for ic in range(len(self.conds)):
-            vmax, vmin = 9, 0
+            vmax, vmin = self.survey_range
             cond_surveys = self._trust_surveys[self.conds[ic]]
             # cond_games = self._games[self.conds[ic]]
             for _is, s in enumerate(cond_surveys):
@@ -196,7 +205,7 @@ class DataPoint:
         rel_risk_scores = copy.deepcopy(self._def_dict)
 
         for ic in range(len(self.conds)):
-            vmax, vmin = 9, 0
+            vmax, vmin = self.survey_range
             cond_surveys = self._trust_surveys[self.conds[ic]]
             # cond_games = self._games[self.conds[ic]]
             for _is, s in enumerate(cond_surveys):
@@ -302,7 +311,7 @@ class DataPoint:
 
     ###############################################
     # Validity checks #############################
-    def check_activity(self,max_idle_thresh = 0.5, mean_idle_thresh = 0.3):
+    def check_activity(self,max_idle_thresh = 0.9, mean_idle_thresh = 0.6):
         """Validity check: did they actively participate in the task?"""
         # raise NotImplementedError("Activity check not implemented yet")
         KEYS = ['rs-tom', 'rational']
@@ -317,7 +326,7 @@ class DataPoint:
         return not was_inactive
 
     def compute_survey_variance(self):
-        vmax, vmin = 9, 0
+        vmax, vmin = self.survey_range
         within_vars = []
         for ic, cond in enumerate(self.conds):
             cond_surveys = self._trust_surveys[self.conds[ic]]
@@ -359,17 +368,18 @@ class DataPoint:
                 # plot survey responses in table
 
             # Check Gameplay
-            cond_games = self._games[self.conds[ic]]
-            for g in cond_games:
-                state_history = []
-                for t, s, aH, aR, info in g.transition_history:
-                    state = OvercookedState.from_dict(json.loads(s))
-                    state_history.append(state)
-                mdp = OvercookedGridworld.from_layout_name(g.layout, p_slip=g.p_slip,neglect_boarders=True)
-                env = OvercookedEnv.from_mdp(mdp, horizon=360)
-                visualizer = TrajectoryVisualizer(env)
-                approved = visualizer.preview_approve_trajectory(state_history)
-                approvals.append(approved)
+            if not self.was_active:
+                cond_games = self._games[self.conds[ic]]
+                for g in cond_games:
+                    state_history = []
+                    for t, s, aH, aR, info in g.transition_history:
+                        state = OvercookedState.from_dict(json.loads(s))
+                        state_history.append(state)
+                    mdp = OvercookedGridworld.from_layout_name(g.layout, p_slip=g.p_slip,neglect_boarders=True)
+                    env = OvercookedEnv.from_mdp(mdp, horizon=360)
+                    visualizer = TrajectoryVisualizer(env)
+                    approved = visualizer.preview_approve_trajectory(state_history)
+                    approvals.append(approved)
 
 
         all_approved = np.all(approvals)
@@ -435,6 +445,14 @@ class DataPoint:
     def load_raw(self, file_path):
         """Read a pickle file and return the deserialized object."""
         if ".pkl" not in file_path: file_path += ".pkl"
+        if not os.path.exists(file_path):
+            # check where file path is invalidated
+            _dirs = str(file_path).split('\\')
+            for i in range(len(_dirs)):
+                _path = "\\".join(_dirs[:i+1])
+                if not os.path.exists(_path):
+                    raise ValueError(f"File path {file_path} is invalid at {_path}")
+
         try:
             with open(file_path, 'rb') as file:
                 data = pickle.load(file)
@@ -621,21 +639,32 @@ class TorchPolicy:
 
 
 class SurveyVisualizer:
-    def __init__(self, responses):
+    def __init__(self, responses, survey_range=(10,0)):
         """
         responses: dict[str, int] mapping question -> integer in [0, 9]
         """
         # Validate inputs lightly
+        vmax,vmin = survey_range
+
+        # responses['Unresponsive'] = vmax + vmin - responses['Unresponsive']
+
+        responses['1-(Unresponsive)'] = vmax + vmin - responses.pop('Unresponsive','ERROR: Reverse Code Name')
+
+        _too_risky = responses.pop('Take too many risks', None)
+        # responses['Play too safe'] = vmax + vmin - responses['Play too safe']
+        responses['1-(Play too safe)'] = vmax + vmin - responses.pop('Play too safe', 'ERROR: Reverse Code Name')
+        responses['Take too many risks'] = _too_risky
+
         for k, v in responses.items():
-            if not isinstance(v, int) or not (0 <= v <= 9):
-                raise ValueError(f"Response for '{k}' must be an int in [0, 9]. Got: {v}")
+            if not isinstance(v, int) or not (vmin <= v <= vmax):
+                raise ValueError(f"Response for '{k}' must be an int in [0, 10]. Got: {v}")
         self.responses = responses
         self._decision = None  # will be set True/False by buttons
 
     def plot_table(self, ax=None, title="Survey Responses"):
         """Draw the survey table on the given axes (or create one)."""
         questions = list(self.responses.keys())
-        cols = list(range(10))
+        cols = list(range(11))
         n_questions = len(questions)
 
         if ax is None:
@@ -692,6 +721,15 @@ class SurveyVisualizer:
         # Draw table
         self.plot_table(ax=ax, title=title)
 
+        #color last two rows
+        table = ax.tables[0]
+        n_cols = len(table.get_celld()[0,0].get_text().get_text())
+        for col in range(11):
+            cell1 = table.get_celld()[(len(self.responses)-1, col)]
+            cell2 = table.get_celld()[(len(self.responses), col)]
+            cell1.set_facecolor('#ffcccc')
+            cell2.set_facecolor('#ffcccc')
+
         # Button axes (in figure coordinates)
         btn_h = 0.07
         btn_w = 0.18
@@ -734,17 +772,45 @@ class SurveyVisualizer:
         # If non-blocking, return None now; decision can be read later
         return self._decision
 
+import os
+from pathlib import Path
+
+def get_unprocessed_fnames(dir_a=RAW_DIR, dir_b=PROCESSED_DIR, full_path=False):
+    """
+    Returns a list of file paths (relative to dir_a) that exist in dir_a (and its subdirectories)
+    but NOT in dir_b (and its subdirectories).
+
+    Args:
+        dir_a (str or Path): Source directory to compare from.
+        dir_b (str or Path): Directory to compare against.
+
+    Returns:
+        list[str]: List of file paths (relative to dir_a) not present in dir_b.
+    """
+    dir_a = Path(dir_a).resolve()
+    dir_b = Path(dir_b).resolve()
+
+    # Get all files in each directory (recursively)
+    files_a = {f.relative_to(dir_a) for f in dir_a.rglob('*') if f.is_file()}
+    files_b = {f.relative_to(dir_b) for f in dir_b.rglob('*') if f.is_file()}
+
+    # Compute difference
+    unique_files = files_a - files_b
+    unique_files = [str(f).split('\\')[-1] for f in unique_files]  # only keep filenames
+
+    # Return as full paths if you prefer
+    if full_path:
+        return [str(dir_a + f) for f in unique_files]
+
+    else:
+        return [str(f) for f in unique_files]
+
 
 def main():
-    # fname = "2025-09-15_20-08-54__PIDmax1__cond0.pkl"
-    fname = "2025-10-15_10-35-32__PID123__cond1"
-    # viewer = DataViewer(fname,data_path=RAW_COND0_DIR)
-    # viewer.summary()
+    for fname in get_unprocessed_fnames():
+        dp = DataPoint(fname)
+        dp.save()
 
-
-    dp = DataPoint(fname,data_path=RAW_COND1_DIR)
-    dp.save()
-    print(dp)
 
 if __name__ == '__main__':
     main()

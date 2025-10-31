@@ -7,8 +7,11 @@ import json
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
+from pingouin import cronbach_alpha
 
 from study2.static import *
+from study2.eval.eval_utils import get_unprocessed_fnames
+
 from risky_overcooked_rl.utils.evaluation_tools import CoordinationFluency
 from risky_overcooked_rl.algorithms.DDQN.utils.agents import DQN_vector_feature
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld, Action, OvercookedState
@@ -17,6 +20,35 @@ from risky_overcooked_rl.algorithms.DDQN.utils.game_thoery import QuantalRespons
 from risky_overcooked_rl.utils.visualization import TrajectoryVisualizer
 
 class DataPoint:
+    """
+    Scores and Reverse Codes are framed as:
+        - Risk-Seeking = higher score
+        - More trust = higher score
+        - Relative measures are framed as:
+            - More trust in RS-ToM agent = higher score
+            - RS-ToM agent more risk-seeking = higher score
+    """
+    @classmethod
+    def load_processed(cls, file_path):
+        # raise NotImplementedError("Processed data loading not implemented yet")
+        if ".pkl" not in file_path: file_path += ".pkl"
+        # with open(file_path, 'rb') as file:
+        #     data_point = pickle.load(file)
+        # return data_point
+
+        try:
+            with open(file_path, 'rb') as file:
+                data_point = pickle.load(file)
+            return data_point
+        except:
+            # Patch pickle modul
+            import sys
+            from study2.eval.process import TorchPolicy
+            sys.modules['TorchPolicy'] = TorchPolicy
+            with open(file_path, 'rb') as file:
+                data = pickle.load(file)
+            return data
+
     def __init__(self, fname, min_survey_var = 0.0):
         data_path = RAW_COND0_DIR if 'cond0' in fname else RAW_COND1_DIR
 
@@ -26,6 +58,12 @@ class DataPoint:
         self.path = file_path
         self._raw = self.load_raw(file_path)
         self.survey_range = (10,0)
+
+
+        # self.reverse_coded = []
+        # self.reverse_coded += ['Unresponsive', 'Take too many risks', 'Played more safe']
+        # self.reverse_coded += ['Safety first.', 'I do not take risks with my health.',
+        #                        'I prefer to avoid risks.', 'I really dislike not knowing what is going to happen.']
 
         # Extract metadata/demographics
         self.age = self._raw['demographic'].responses['age']
@@ -45,24 +83,27 @@ class DataPoint:
         self.layouts,self.p_slips = self.parse_ordered_layouts()
         self._models = self.preload_models()
 
-        # Begin computations
-        self.RTP_score = self.compute_risk_taking_propensity()
-        self.relative_trust_score = self.compute_relative_trust_score()
-        self.relative_risk_perception = self.compute_relative_risk_perception()
-        self.priming_labels,self.priming_scores = self.compute_priming_labels()
-        # self.beliefs = self.compute_belief_accuracies()
+        # Begin computations ########################
 
+        # Surveys (single measure)
+        self.RTP_responses, self.RTP_score = self.compute_risk_taking_propensity()
+        self.rel_trust_responses, self.rel_trust_score = self.compute_relative_trust_score()
+        self.rel_risk_perc_responses, self.rel_risk_perc_score = self.compute_relative_risk_perception()
+
+        # Surveys (repeated measures)
+        self.trust_responses, self.trust_scores, self.delta_trusts = self.compute_trust_scores()
+        self.risk_perc_responses, self.risk_perc_scores = self.compute_risk_perceptions()
+        self.priming_labels,self.priming_scores = self.compute_priming_labels()
+
+        # Gameplay
         self.rewards = self.compute_rewards()
         self.nH_risks, self.nR_risks = self.compute_n_risks()
-        self.trust_scores,self.delta_trusts = self.compute_trust_scores()
-        self.risk_perceptions = self.compute_risk_perceptions()
         self.predictability = self.compute_predictabilities()
         self.C_ACTs, self.H_IDLEs, self.R_IDLEs = self.compute_coordination_fluency()
 
         # Check data validity
         self.min_survey_var = min_survey_var
-        self.survey_var = self.compute_survey_variance()
-        self.surveys_valid = self.check_surveys()
+        self.surveys_valid,self.survey_approval_rate = self.check_survey_validity()
         self.was_active = self.check_activity()
         self.passed_review,self.manual_reviews = self.check_manually()
 
@@ -70,57 +111,103 @@ class DataPoint:
 
     ###############################################
     # Metadata metrics ############################
-    def compute_risk_taking_propensity(self):
+    def _parse_survey_responses(self,responses,reverse_coded=()):
+        """Survey helper: reverse code and compute average score"""
+        # check that all reverse coded questions are in responses
+        checks= [rcq in responses.keys() for rcq in reverse_coded]
+        assert all(checks), f"Reverse coded questions {reverse_coded} not all in responses {responses.keys()}"
+
+        # parse responses
+        _responses = {}
+        _score = 0
+        for response_key, response_val in responses.items():
+            key,val = self._check_RC(response_key,response_val, reverse_coded)
+            _responses[key] = val
+            _score += val
+        _score /= len(responses)
+        return _responses, _score
+
+    def _check_RC(self, name, score, reverse_coded):
+        """Survey helper: Checks if should reverse code a survey score"""
+        if name in reverse_coded:
+            new_score = self._RC(score)
+            new_name = f'-({name})'
+            return new_name, new_score
+        return name, int(score)
+
+    def _RC(self, score):
+        """Survey helper: Reverse codes a survey score"""
         vmax, vmin = self.survey_range
-        responses = self._raw['risk_propensity'].responses
-        ID = responses.pop('ID')
+        new_score = vmax + vmin - int(score)
+        return new_score
 
-        # reverse_coded = np.zeros(len(responses))
-        reverse_coded = [0,1,2,4]
+    def _exclude_survey_items(self, responses, exclude_items):
+        """Survey helper: Excludes certain survey items from responses"""
+        responses = copy.deepcopy(responses)
+        for item in exclude_items:
+            assert item in responses.keys(), f"Item {item} not in responses {responses.keys()}"
+            responses.pop(item, None)
+        return responses
 
-        raw_vals = np.array(list(responses.values()),dtype=int)
-        assert len(raw_vals) == 7, "Expected 7 responses for risk taking propensity survey"
-        assert np.all(raw_vals >= vmin), f"Invalid (Min) response detected in risk taking propensity survey{raw_vals}"
-        assert np.all(raw_vals <= vmax), f"Invalid (Max) response detected in risk taking propensity survey{raw_vals}"
+    def compute_risk_taking_propensity(self,N=7 ):
+        reverse_coded = (
+            'Safety first.',
+            'I do not take risks with my health.',
+            'I prefer to avoid risks.',
+            'I really dislike not knowing what is going to happen.'
+        )
+        exclude_items = ['ID']
 
-        scores = np.array(list(responses.values()),dtype=int)
-        scores[reverse_coded] = vmax + vmin - scores[reverse_coded] # reverse code
-        return np.mean(scores)
+        #################################################
+        responses = copy.deepcopy(self._raw['risk_propensity'].responses)
+        responses = self._exclude_survey_items(responses, exclude_items=exclude_items)
+        RTP_responses, RTP_score = self._parse_survey_responses(responses, reverse_coded=reverse_coded)
+        assert len(RTP_responses) == N, f"Expected {N} RTP responses," \
+                                       f" got {len(RTP_responses)} in filename {self.fname}"
+        return RTP_responses, RTP_score
 
-    def compute_relative_trust_score(self):
-        vmax, vmin = self.survey_range
-        all_responses = self._raw['relative_trust_survey'].responses
+    def compute_relative_trust_score(self, N=6):
+        reverse_coded = ()
+        exclude_items = ['ID', ' Took more risks', 'Played more safe']
 
-        raw_vals = np.array([
-            all_responses['More dependable'],
-            all_responses['More reliable'],
-            all_responses['More predictable'],
-            all_responses['Acted more consistently'],
-            all_responses['Better met the needs of the task'],
-            all_responses['Better performed as expected'],
-        ],dtype=int)
-        assert np.all(raw_vals >= vmin), f"Invalid (Min) response detected in risk taking propensity survey{raw_vals}"
-        assert np.all(raw_vals <= vmax), f"Invalid (Max) response detected in risk taking propensity survey{raw_vals}"
+        #################################################
+        responses = copy.deepcopy(self._raw['relative_trust_survey'].responses)
+        responses = self._exclude_survey_items(responses, exclude_items=exclude_items)
+        rel_trust_responses, rel_trust_score = self._parse_survey_responses(responses,reverse_coded=reverse_coded)
 
-        scores = raw_vals
-        if self.icond == 1: scores = vmax + vmin - scores  # reverse code for cond1
-        return np.mean(scores)
+        # If cond 1, reverse code the overall score
+        if self.icond == 1:
+            rel_trust_score = self._RC(rel_trust_score)
+            for key,val in rel_trust_responses.items():
+                rel_trust_responses[key] = self._RC(val)
+        assert len(rel_trust_responses) == N, f"Expected {N} relative trust responses," \
+                                              f" got {len(rel_trust_responses)} in filename {self.fname}"
+        return rel_trust_responses, rel_trust_score
 
-    def compute_relative_risk_perception(self):
-        vmax, vmin = self.survey_range
-        all_responses = self._raw['relative_trust_survey'].responses
+    def compute_relative_risk_perception(self, N=2):
+        reverse_coded = ('Played more safe',)
+        exclude_items = ['ID',
+                         'More dependable' ,
+                         'More reliable',
+                         'More predictable',
+                         'Acted more consistently',
+                         'Better met the needs of the task',
+                        'Better performed as expected']
 
-        raw_vals = np.array([
-            all_responses[' Took more risks'],
-            vmax + 1 - int(all_responses['Played more safe']),
-        ], dtype=int)
+        #################################################
+        responses = copy.deepcopy(self._raw['relative_trust_survey'].responses)
+        responses = self._exclude_survey_items(responses, exclude_items=exclude_items)
+        rel_risk_perception_responses, rel_risk_perception_score = self._parse_survey_responses(responses,reverse_coded=reverse_coded)
 
-        assert np.all(raw_vals >= vmin), f"Invalid (Min) response detected in risk taking propensity survey {raw_vals}"
-        assert np.all(raw_vals <= vmax), f"Invalid (Max) response detected in risk taking propensity survey {raw_vals}"
+        # If cond 1, reverse code the overall score
+        if self.icond == 1:
+            rel_risk_perception_score = self._RC(rel_risk_perception_score)
+            for key,val in rel_risk_perception_responses.items():
+                rel_risk_perception_responses[key] = self._RC(val)
 
-        scores = raw_vals
-        if self.icond == 1: scores = vmax + vmin - scores  # reverse code for cond1
-        return np.mean(scores)
+        assert len(rel_risk_perception_responses) == N, f"Expected {N} relative risk perception responses," \
+                                                        f" got {len(rel_risk_perception_responses)} in filename {self.fname}"
+        return rel_risk_perception_responses, rel_risk_perception_score
 
     ###############################################
     # Trial metrics ###############################
@@ -166,29 +253,28 @@ class DataPoint:
     def compute_belief_accuracies(self):
         raise NotImplementedError("Belief accuracy computation not implemented yet")
 
-    def compute_trust_scores(self):
-        # raise NotImplementedError("Trust score computation not implemented yet")
+    def compute_trust_scores(self,N=7  ):
+        reverse_coded = ('Unresponsive',)
+        exclude_items = ['ID','Take too many risks', 'Play too safe']
+
+        trust_responses = copy.deepcopy(self._def_dict)
         trust_scores = copy.deepcopy(self._def_dict)
         delta_trusts = copy.deepcopy(self._def_dict)
 
+
+
         for ic in range(len(self.conds)):
-            vmax, vmin = self.survey_range
-            cond_surveys = self._trust_surveys[self.conds[ic]]
+            cond_surveys =  copy.deepcopy(self._trust_surveys[self.conds[ic]])
+
             # cond_games = self._games[self.conds[ic]]
             for _is, s in enumerate(cond_surveys):
-                raw_vals = [
-                    s.responses['Dependable'],
-                    s.responses['Reliable'],
-                    vmax + vmin - int(s.responses['Unresponsive']),
-                    s.responses['Predictable'],
-                    s.responses['Act consistently'],
-                    s.responses['Meet the needs of the task'],
-                    s.responses['Perform as expected'],
-                    # s.responses['Take too many risks'],
-                    # s.responses['Play too safe'],
-                ]
-                raw_vals = np.array(raw_vals, dtype=int)
-                score = np.mean(raw_vals)
+                responses = self._exclude_survey_items(s.responses, exclude_items=exclude_items)
+                coded_responses, score = self._parse_survey_responses(responses,reverse_coded=reverse_coded)
+                assert len(coded_responses) == N, f"Expected {N} trust responses,got {len(coded_responses)} "
+
+                trust_responses[self.conds[ic]].append(coded_responses)
+                trust_responses[ic].append(coded_responses)
+
                 trust_scores[self.conds[ic]].append(score)
                 trust_scores[ic].append(score)
 
@@ -198,29 +284,32 @@ class DataPoint:
                     delta_trusts[ic].append(dtrust)
                     delta_trusts[self.conds[ic]].append(dtrust)
 
-        return trust_scores, delta_trusts
+        return trust_responses, trust_scores, delta_trusts
 
-    def compute_risk_perceptions(self):
-        # raise NotImplementedError("Trust score computation not implemented yet")
+    def compute_risk_perceptions(self,N=2):
+        reverse_coded = ('Play too safe',)
+        exclude_items = ['ID', 'Dependable', 'Reliable', 'Unresponsive', 'Predictable',
+                   'Act consistently', 'Meet the needs of the task', 'Perform as expected']
+
+        rel_risk_responses = copy.deepcopy(self._def_dict)
         rel_risk_scores = copy.deepcopy(self._def_dict)
 
         for ic in range(len(self.conds)):
-            vmax, vmin = self.survey_range
-            cond_surveys = self._trust_surveys[self.conds[ic]]
+            cond_surveys = copy.deepcopy(self._trust_surveys[self.conds[ic]])
+
             # cond_games = self._games[self.conds[ic]]
             for _is, s in enumerate(cond_surveys):
-                raw_vals = [
-                    s.responses['Take too many risks'],
-                    vmax + vmin - int(s.responses['Play too safe']),
-                ]
-                raw_vals = np.array(raw_vals, dtype=int)
-                score = np.mean(raw_vals)
+                responses = self._exclude_survey_items(s.responses, exclude_items=exclude_items)
+                coded_responses, score = self._parse_survey_responses(responses,reverse_coded=reverse_coded)
+                assert len(coded_responses) == N, f"Expected {N} risk perception responses,got {len(coded_responses)} "
+
+                rel_risk_responses[self.conds[ic]].append(coded_responses)
+                rel_risk_responses[ic].append(coded_responses)
+
                 rel_risk_scores[self.conds[ic]].append(score)
                 rel_risk_scores[ic].append(score)
 
-
-
-        return rel_risk_scores
+        return rel_risk_responses, rel_risk_scores
 
     ###############################################
     # Gameplay metrics ############################
@@ -325,47 +414,130 @@ class DataPoint:
             print(f"Warning: Participant {self.fname} was inactive (max_idle={max_idle}, mean_idle={mean_idle})",file=sys.stderr)
         return not was_inactive
 
-    def compute_survey_variance(self):
-        vmax, vmin = self.survey_range
-        within_vars = []
-        for ic, cond in enumerate(self.conds):
-            cond_surveys = self._trust_surveys[self.conds[ic]]
+    def _score_survey_validity(self, survey, min_var = 0.25, max_var = 2.5):
+        """Checks agreement before and after reverse coding to detect straight-lining or random responses"""
+        assert isinstance(survey, dict), "Survey must be a dictionary of responses"
 
-            for _is, s in enumerate(cond_surveys):
-                raw_vals = [
-                    s.responses['Dependable'],
-                    s.responses['Reliable'],
-                    vmax + vmin - int(s.responses['Unresponsive']),
-                    s.responses['Predictable'],
-                    s.responses['Act consistently'],
-                    s.responses['Meet the needs of the task'],
-                    s.responses['Perform as expected'],
-                ]
-                raw_vals = np.array(raw_vals, dtype=int)
-                within_vars.append(np.var(raw_vals))
+        rc_responses = list(survey.values())
+        raw_responses = []
+        for key, val in survey.items():
+            raw_val = self._RC(val) if "-" in key else val
+            raw_responses.append(raw_val)
 
-        return np.mean(within_vars)
 
-    def check_surveys(self):
-        """Validity check: did they complete the surveys in reasonable manner?"""
-        is_valid = self.min_survey_var <= self.survey_var
+        raw_var = np.var(np.array(raw_responses))
+        rc_var = np.var(np.array(rc_responses))
+
+        # vmax, vmin = self.survey_range
+        # raw_var = np.var(np.array(raw_responses)/vmax)
+        # rc_var = np.var(np.array(rc_responses)/vmax)
+
+        # raw_var = np.var(raw_responses)/len(survey)
+        # rc_var  = np.var(rc_responses)/len(survey)
+        # diff_var = rc_var - raw_var
+
+
+        info = {}
+        info['failed_rc'] = (rc_var > raw_var)      # Reverse Coded: The agreement should not decrease after reverse coding
+        info['failed_uniform'] = raw_var < min_var  # Straight-lining: should not have extremely low variance in Raw
+        info['failed_rand'] =  rc_var > max_var     # Random Responses: should not have extremely high variance in RC
+        return raw_var, rc_var, info
+
+    def check_survey_validity(self, approval_thresh=0.9):
+        """Computes variance of all survey responses to check for low-variance responses"""
+        approvals = []
+
+        single_survey = [
+            self.RTP_responses,
+            self.rel_trust_responses,
+            self.rel_risk_perc_responses,
+        ]
+        repeated_survey = [
+            # self.trust_responses,
+            self.risk_perc_responses
+        ]
+
+        # Test Cases
+        # STRAIGHT_SURVEY1 = {'A': 1, 'B': 0, 'C': 0, 'D': 1, 'E': 0, 'F': 1 ,'-(G)': self._RC(0)}
+        # RAND_SURVEY1     = {'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5, 'F': 4, '-(G)': self._RC(3)}
+        # GOOD_SURVEY1     = {'A': 0, 'B': 1, 'C': 2, 'D': 0, 'E': 1, 'F': 2, '-(G)': 3}
+        #
+        # STRAIGHT_SURVEY2 = {'A': 0, '-(B)': self._RC(1)}
+        # RAND_SURVEY2     = {'A': 1, '-(B)': self._RC(5)}
+        # GOOD_SURVEY2     = {'A': 0, '-(B)': 3}
+
+        # Single Surveys ###############
+        for rps in single_survey:
+            raw_var, rc_var, fails = self._score_survey_validity(rps)
+            if any(fails.values()):
+                print(f"Warning: Participant {self.fname} failed survey validity check:"
+                      f"\n raw_var={raw_var}, rc_var={rc_var}, fails={fails}",file=sys.stderr)
+                approved = SurveyVisualizer(rps).review(title=self.fname)
+            else: approved = True
+            approvals.append(approved)
+
+        # Repeated surveys ###############
+        for survey in repeated_survey:
+            for cond in self.conds:
+                for rps in survey[cond]:
+                    raw_var, rc_var, fails = self._score_survey_validity(rps)
+                    # if True:
+                    if any(fails.values()):
+                        print(f"Warning: Participant {self.fname} failed survey validity check:"
+                              f"\n raw_var={raw_var}, rc_var={rc_var}, fails={fails}", file=sys.stderr)
+                        approved = SurveyVisualizer(rps).review(title='')
+                    else:
+                        approved = True
+                    approvals.append(approved)
+
+
+
+
+
+        # for cond in self.conds:
+        #     cond_surveys = copy.deepcopy(repeated_surveys[0][cond])
+        #     for survey in cond_surveys:
+        #         raw_var, rc_var, fails = self._score_survey_validity(survey)
+        #         if any(fails.values()):
+        #             print(f"Warning: Participant {self.fname} failed survey validity check:"
+        #                   f" raw_var={raw_var}, rc_var={rc_var}, fails={fails}",file=sys.stderr)
+        #             approved = SurveyVisualizer(survey).review(title='')
+        #         else:
+        #             approved = True
+        #         approvals.append(approved)
+        #
+        approval_rate = np.array(approvals, dtype=int).mean()
+        is_valid = approval_rate > approval_thresh
+
+
         if not is_valid:
-            print(f"Warning: Participant {self.fname} had low survey variance ({self.survey_var})",file=sys.stderr)
-        return is_valid
+            print(f"\n\nWarning: Participant {self.fname} failed survey validity with approval rate {approval_rate}")
+            print(f'Rejection Messsage:')
+            print(f"Unfortunately, your responses to {(1-approval_rate)*100:0.1f}% of the provided surveys"
+                  f" failed one or more conservative validity checks, which indicate that they may not have been completed with sufficient attention or effort."
+                  f" This result was determined by analysis of variance in reverse-coded questions (i.e., questions with opposite meaning) which show"
+                  f" inconsistent responses in favor of random or inattentive answering patterns rather than reflective engagement with the content ."
+                  " \n\nAs a result, we are unable to approve this submission. We appreciate your time, but to ensure data quality"
+                  " and fairness across participants, only valid and attentive responses can be accepted.")
+
+        return is_valid, approval_rate
 
     def check_manually(self):
+        if not self.surveys_valid:
+            return False, []
+
         approvals = []
         for ic in range(len(self.conds)):
-            # Check Surveys
-            for s in self._trust_surveys[self.conds[ic]]:
-                s.responses.pop('ID',None)  # remove ID field if it exists
-                responses = {}
-                for key in s.responses:
-                    responses[key] = int(s.responses[key])
-                approved = SurveyVisualizer(responses).review(title='')
-                print(f'{approved}')
-                approvals.append(approved)
-                # plot survey responses in table
+            # # Check Surveys
+            # for s in self._trust_surveys[self.conds[ic]]:
+            #     s.responses.pop('ID',None)  # remove ID field if it exists
+            #     responses = {}
+            #     for key in s.responses:
+            #         responses[key] = int(s.responses[key])
+            #     approved = SurveyVisualizer(responses).review(title='')
+            #     print(f'{approved}')
+            #     approvals.append(approved)
+            #     # plot survey responses in table
 
             # Check Gameplay
             if not self.was_active:
@@ -424,7 +596,8 @@ class DataPoint:
     def save(self, fname=None):
         fname = self.fname if fname is None else fname
         if ".pkl" not in fname: fname += ".pkl"
-
+        if not self.is_valid:
+            fname = 'REJECTED_' + fname
         if not self.is_valid:
             save_dir = PROCESSED_REJECT_DIR
         else:
@@ -439,8 +612,12 @@ class DataPoint:
             pickle.dump(self, file)
         print(f"Processed data saved to {file_path}")
 
-    def load_processed(self, file_path):
-        raise NotImplementedError("Processed data loading not implemented yet")
+    # def load_processed(self, file_path):
+    #     # raise NotImplementedError("Processed data loading not implemented yet")
+    #     if ".pkl" not in file_path: file_path += ".pkl"
+    #     with open(file_path, 'rb') as file:
+    #         data_point = pickle.load(file)
+    #     return data_point
 
     def load_raw(self, file_path):
         """Read a pickle file and return the deserialized object."""
@@ -503,6 +680,8 @@ class DataPoint:
             except Exception as e:
                 raise print(f"Error loading policy from {PATH}\n{e}")
         return policies
+
+
     def __repr__(self):
         KEYS = ['rs-tom', 'rational']
         meta_data = {
@@ -644,20 +823,20 @@ class SurveyVisualizer:
         responses: dict[str, int] mapping question -> integer in [0, 9]
         """
         # Validate inputs lightly
-        vmax,vmin = survey_range
+        # vmax,vmin = survey_range
+        #
+        # # responses['Unresponsive'] = vmax + vmin - responses['Unresponsive']
+        #
+        # responses['1-(Unresponsive)'] = vmax + vmin - responses.pop('Unresponsive','ERROR: Reverse Code Name')
+        #
+        # _too_risky = responses.pop('Take too many risks', None)
+        # # responses['Play too safe'] = vmax + vmin - responses['Play too safe']
+        # responses['1-(Play too safe)'] = vmax + vmin - responses.pop('Play too safe', 'ERROR: Reverse Code Name')
+        # responses['Take too many risks'] = _too_risky
 
-        # responses['Unresponsive'] = vmax + vmin - responses['Unresponsive']
-
-        responses['1-(Unresponsive)'] = vmax + vmin - responses.pop('Unresponsive','ERROR: Reverse Code Name')
-
-        _too_risky = responses.pop('Take too many risks', None)
-        # responses['Play too safe'] = vmax + vmin - responses['Play too safe']
-        responses['1-(Play too safe)'] = vmax + vmin - responses.pop('Play too safe', 'ERROR: Reverse Code Name')
-        responses['Take too many risks'] = _too_risky
-
-        for k, v in responses.items():
-            if not isinstance(v, int) or not (vmin <= v <= vmax):
-                raise ValueError(f"Response for '{k}' must be an int in [0, 10]. Got: {v}")
+        # for k, v in responses.items():
+        #     if not isinstance(v, int) or not (vmin <= v <= vmax):
+        #         raise ValueError(f"Response for '{k}' must be an int in [0, 10]. Got: {v}")
         self.responses = responses
         self._decision = None  # will be set True/False by buttons
 
@@ -677,7 +856,16 @@ class SurveyVisualizer:
         # Build cell text
         cell_text = []
         for q in questions:
-            row = ["X" if i == self.responses[q] else "" for i in cols]
+            row = []
+            for i in cols:
+                if i == self.responses[q]:
+                    row.append("X")
+                elif "-" in q and i== 10-self.responses[q]: # reverse coded
+                    row.append("-")
+                else:
+                    row.append("")
+
+            # row = ["X" if i == self.responses[q] else "" for i in cols]
             cell_text.append(row)
 
         table = ax.table(
@@ -724,11 +912,17 @@ class SurveyVisualizer:
         #color last two rows
         table = ax.tables[0]
         n_cols = len(table.get_celld()[0,0].get_text().get_text())
-        for col in range(11):
-            cell1 = table.get_celld()[(len(self.responses)-1, col)]
-            cell2 = table.get_celld()[(len(self.responses), col)]
-            cell1.set_facecolor('#ffcccc')
-            cell2.set_facecolor('#ffcccc')
+        for i,q in enumerate(self.responses.keys()):
+            if "-" in q:
+                for col in range(11):
+                    cell1 = table.get_celld()[(i+1, col)]
+                    cell1.set_facecolor('#ffcccc')
+
+        # for col in range(11):
+        #     cell1 = table.get_celld()[(len(self.responses)-1, col)]
+        #     cell2 = table.get_celld()[(len(self.responses), col)]
+        #     cell1.set_facecolor('#ffcccc')
+        #     cell2.set_facecolor('#ffcccc')
 
         # Button axes (in figure coordinates)
         btn_h = 0.07
@@ -772,44 +966,17 @@ class SurveyVisualizer:
         # If non-blocking, return None now; decision can be read later
         return self._decision
 
-import os
-from pathlib import Path
-
-def get_unprocessed_fnames(dir_a=RAW_DIR, dir_b=PROCESSED_DIR, full_path=False):
-    """
-    Returns a list of file paths (relative to dir_a) that exist in dir_a (and its subdirectories)
-    but NOT in dir_b (and its subdirectories).
-
-    Args:
-        dir_a (str or Path): Source directory to compare from.
-        dir_b (str or Path): Directory to compare against.
-
-    Returns:
-        list[str]: List of file paths (relative to dir_a) not present in dir_b.
-    """
-    dir_a = Path(dir_a).resolve()
-    dir_b = Path(dir_b).resolve()
-
-    # Get all files in each directory (recursively)
-    files_a = {f.relative_to(dir_a) for f in dir_a.rglob('*') if f.is_file()}
-    files_b = {f.relative_to(dir_b) for f in dir_b.rglob('*') if f.is_file()}
-
-    # Compute difference
-    unique_files = files_a - files_b
-    unique_files = [str(f).split('\\')[-1] for f in unique_files]  # only keep filenames
-
-    # Return as full paths if you prefer
-    if full_path:
-        return [str(dir_a + f) for f in unique_files]
-
-    else:
-        return [str(f) for f in unique_files]
 
 
 def main():
-    for fname in get_unprocessed_fnames():
-        dp = DataPoint(fname)
-        dp.save()
+    # fname = "2025-10-28_22-46-41__PID5dce29700ad506063969a4a5__cond1"
+    fname = "2025-10-28_23-12-28__PID58a0c507890ea500014c4e9b__cond0"
+    # fname = "2025-10-28_23-57-46__PID5f3ac1732efa0a74f975b1a8__cond1"
+    dp = DataPoint(fname)
+    dp.save()
+    # for fname in get_unprocessed_fnames():
+    #     dp = DataPoint(fname)
+    #     dp.save()
 
 
 if __name__ == '__main__':

@@ -94,9 +94,9 @@ jobs:
 ##        full_task: 999 # pick_up_onion1 = full_task
 
 #  risky_handoff2:
-  risky_mixed_coordination:
+  risky_mixed_coordination2:
     agents: ['neutral','seeking']
-    p_slips: [0.3,0.4]
+    p_slips: [0.35,0.45]
 
     set:
       note: ''

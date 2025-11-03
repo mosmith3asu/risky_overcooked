@@ -1043,7 +1043,6 @@ class Experiment:
     #### INITIALIZATION #####################################################################
 
     def __init__(self, uid, **kwargs):
-
         self.id = uid # used for internal client id
         self.prolific_id = kwargs.get('prolific_id','NoProlificID' ) # the id used by prolific
         self.study_id = kwargs.get('study_id', 'NoStudyID') # the id used by the study
@@ -1064,6 +1063,7 @@ class Experiment:
 
         self.stages = self.init_stage_data() # initialize data logging
         self.stage_names = list(self.stages.keys())
+        self.stage_tstart = time()
         self.current_stage = self.stage_names[0]
         self.stage_idx = -1
 
@@ -1170,7 +1170,9 @@ class Experiment:
             assert name in self.stages.keys(), f"Survey Stage {name} not found in stages."
             self.stages[name].set_responses(response_dict)
             self.update_stage(name, True)
+
             if DEBUG: print(f"Logging {name} SURVEY data: {self.stages[name]}")
+
 
     def update_stage(self,stage,completed):
         """ Update the current stage of the experiment. """
@@ -1178,11 +1180,18 @@ class Experiment:
         assert stage == self.current_stage, \
             f"Attemptingg to update stage {stage} when currently on {self.current_stage}"
 
+        self.stages[stage].duration = self.stage_duration
         self.stages[stage].complete = completed
         self.stage_idx = self.stage_names.index(stage) + (1 if completed else -1)
         self.current_stage = self.stage_names[self.stage_idx]
-        if DEBUG: print(f"\n\nUPDATING STAGE: [{stage} -> {self.current_stage}]")
+        self.stage_tstart = time()
+        print(f'Stage [{stage}] completed: {completed} dur {self.stages[stage].duration:.2f}s')
+        if DEBUG:
+            print(f"\n\nUPDATING STAGE: [{stage} -> {self.current_stage}]")
 
+    @property
+    def stage_duration(self):
+        return time() - self.stage_tstart
 
     def verify(self):
         """ Verify that all stages are complete. """

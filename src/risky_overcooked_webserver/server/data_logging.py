@@ -15,6 +15,7 @@ from risky_overcooked_rl.utils.visualization import TrajectoryVisualizer
 
 @dataclass
 class DummyData:
+    duration: float = None
     complete: bool = False
 
 @dataclass
@@ -144,6 +145,7 @@ class SurveyData(PseudoFrozenClass):
     name: str
     player_id: str = None
     responses: dict = field(default_factory=dict)
+    duration: float = None
     complete = False
 
     def set_responses(self,data_dict):
@@ -173,6 +175,7 @@ class InteractionData(PseudoFrozenClass):
     partner_type: str
     transition_history: list = field(default_factory=list)
     player_id: str = None
+    duration: float = None
     complete = False
 
     def log_transition(self, t, s, aH, aR, info):

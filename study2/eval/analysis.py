@@ -163,13 +163,15 @@ class TrustPlot:
 
 def main():
     COND0_FNAMES = [
-        "2025-10-16_22-37-54__PID68c08483061276d20b570579__cond0",
+        # "2025-10-16_22-37-54__PID68c08483061276d20b570579__cond0",
         "2025-10-28_23-12-28__PID58a0c507890ea500014c4e9b__cond0",
-        "2025-10-27_18-53-52__PID67062295123561f8241f65fc__cond0"
+        "2025-10-27_18-53-52__PID67062295123561f8241f65fc__cond0",
+        "2025-10-27_19-38-25__PID66b504cd131c63b36b682b8d__cond0"
     ]
     COND1_FNAMES = [
         "2025-10-28_22-46-41__PID5dce29700ad506063969a4a5__cond1",
-        "2025-10-16_22-32-23__PID672135003f5e272c889620ea__cond1"
+        "2025-10-28_23-57-46__PID5f3ac1732efa0a74f975b1a8__cond1"
+        # "2025-10-16_22-32-23__PID672135003f5e272c889620ea__cond1"
     ]
     # fname = "2025-10-16_22-37-54__PID68c08483061276d20b570579__cond0"
     # fpath = PROCESSED_COND0_DIR + r"\\"+ fname
@@ -178,12 +180,16 @@ def main():
     dps_cond0 = []
     dps_all = []
     for fname in COND0_FNAMES:
-        fpath = PROCESSED_COND0_DIR + r"\\"+ fname
+        fpath = PROCESSED_COND0_DIR + "\\"+ fname
+        # fpath = PROCESSED_COND0_DIR + fname
+
         dp = DataPoint.load_processed(fpath)
         dps_cond0.append(dp)
 
     for fname in COND1_FNAMES:
-        fpath = PROCESSED_COND1_DIR + r"\\"+ fname
+        fpath = PROCESSED_COND1_DIR + "\\"+ fname
+
+        # fpath = PROCESSED_COND1_DIR + r"\\"+ fname
         dp = DataPoint.load_processed(fpath)
         dps_cond1.append(dp)
 
@@ -194,50 +200,14 @@ def main():
 
     plt.ioff()
 ###############################
-    trust_plot = TrustPlot(dps_cond1,scope='cond1')
-    offset = 'rs-tom'
-    cond_label = 'Cond1'
-    # fig.suptitle(f'Metrics - {cond_label}: Rational -> RS-ToM', fontsize=16)
-
-    trust_plot.timeseries_plot(axs[0, 0], 'trust_scores', title=f'({cond_label}) Trust Over Time', offset=offset)
-    trust_plot.delta_plot(axs[0, 1], 'delta_trusts', title=f'({cond_label}) Delta Trust')
-
-
-    trust_plot.timeseries_plot(axs[1, 0], 'C_ACTs', title=f'({cond_label}) C_ACTS', offset=offset)
-    trust_plot.timeseries_plot(axs[1, 1], 'H_IDLEs', title=f'({cond_label}) H_IDLEs', offset=offset)
-    trust_plot.timeseries_plot(axs[1, 2], 'R_IDLEs', title=f'({cond_label}) R_IDLEs', offset=offset)
-
-    trust_plot.timeseries_plot(axs[2, 0], 'rewards', title=f'({cond_label}) Reward', offset=offset)
-    trust_plot.timeseries_plot(axs[2, 1], 'predictability', title=f'({cond_label}) Predictability', offset=offset)
-    trust_plot.delta_plot(axs[2, 2], 'risk_perceptions', title=f'({cond_label}) Risk Perception')
-
-    ###############################
-    trust_plot = TrustPlot(dps_cond0, scope='cond0')
-    offset = 'rational'
-    cond_label = 'Cond0'
-    fig.suptitle(f'Metrics - {cond_label}: RS-ToM -> Rational', fontsize=16)
-
-    trust_plot.timeseries_plot(axs[0, 0], 'trust_scores', title=f'({cond_label}) Trust Over Time', offset=offset)
-    trust_plot.delta_plot(     axs[0, 1], 'delta_trusts', title=f'({cond_label}) Delta Trust')
-    trust_plot.delta_plot(     axs[0, 2], 'risk_perceptions', title=f'({cond_label}) Risk Perception')
-
-    trust_plot.timeseries_plot(axs[1, 0], 'C_ACTs', title=f'({cond_label}) C_ACTS', offset=offset)
-    trust_plot.timeseries_plot(axs[1, 1], 'H_IDLEs', title=f'({cond_label}) H_IDLEs', offset=offset)
-    trust_plot.timeseries_plot(axs[1, 2], 'R_IDLEs', title=f'({cond_label}) R_IDLEs', offset=offset)
-
-    trust_plot.timeseries_plot(axs[2, 0], 'rewards', title=f'({cond_label}) Reward', offset=offset)
-    trust_plot.timeseries_plot(axs[2, 1], 'predictability', title=f'({cond_label}) Predictability', offset=offset)
-
-    ###############################
-
-    # trust_plot = TrustPlot(dps_all, scope='cond0')
-    # offset = None
-    # cond_label = 'All'
-    # fig.suptitle(f'Metrics - {cond_label}', fontsize=16)
+    # trust_plot = TrustPlot(dps_cond1,scope='cond1')
+    # offset = 'rs-tom'
+    # cond_label = 'Cond1'
+    # # fig.suptitle(f'Metrics - {cond_label}: Rational -> RS-ToM', fontsize=16)
     #
     # trust_plot.timeseries_plot(axs[0, 0], 'trust_scores', title=f'({cond_label}) Trust Over Time', offset=offset)
     # trust_plot.delta_plot(axs[0, 1], 'delta_trusts', title=f'({cond_label}) Delta Trust')
-    # trust_plot.delta_plot(axs[0, 2], 'risk_perceptions', title=f'({cond_label}) Risk Perception')
+    #
     #
     # trust_plot.timeseries_plot(axs[1, 0], 'C_ACTs', title=f'({cond_label}) C_ACTS', offset=offset)
     # trust_plot.timeseries_plot(axs[1, 1], 'H_IDLEs', title=f'({cond_label}) H_IDLEs', offset=offset)
@@ -245,6 +215,42 @@ def main():
     #
     # trust_plot.timeseries_plot(axs[2, 0], 'rewards', title=f'({cond_label}) Reward', offset=offset)
     # trust_plot.timeseries_plot(axs[2, 1], 'predictability', title=f'({cond_label}) Predictability', offset=offset)
+    # trust_plot.delta_plot(axs[2, 2], 'risk_perc_scores', title=f'({cond_label}) Risk Perception')
+
+    ###############################
+    # trust_plot = TrustPlot(dps_cond0, scope='cond0')
+    # offset = 'rational'
+    # cond_label = 'Cond0'
+    # fig.suptitle(f'Metrics - {cond_label}: RS-ToM -> Rational', fontsize=16)
+    #
+    # trust_plot.timeseries_plot(axs[0, 0], 'trust_scores', title=f'({cond_label}) Trust Over Time', offset=offset)
+    # trust_plot.delta_plot(     axs[0, 1], 'delta_trusts', title=f'({cond_label}) Delta Trust')
+    # trust_plot.delta_plot(     axs[0, 2], 'risk_perceptions', title=f'({cond_label}) Risk Perception')
+    #
+    # trust_plot.timeseries_plot(axs[1, 0], 'C_ACTs', title=f'({cond_label}) C_ACTS', offset=offset)
+    # trust_plot.timeseries_plot(axs[1, 1], 'H_IDLEs', title=f'({cond_label}) H_IDLEs', offset=offset)
+    # trust_plot.timeseries_plot(axs[1, 2], 'R_IDLEs', title=f'({cond_label}) R_IDLEs', offset=offset)
+    #
+    # trust_plot.timeseries_plot(axs[2, 0], 'rewards', title=f'({cond_label}) Reward', offset=offset)
+    # trust_plot.timeseries_plot(axs[2, 1], 'predictability', title=f'({cond_label}) Predictability', offset=offset)
+
+    ###############################
+
+    trust_plot = TrustPlot(dps_all, scope='all')
+    offset = None
+    cond_label = 'All'
+    fig.suptitle(f'Metrics - {cond_label}', fontsize=16)
+
+    trust_plot.timeseries_plot(axs[0, 0], 'trust_scores', title=f'({cond_label}) Trust Over Time', offset=offset)
+    trust_plot.delta_plot(axs[0, 1], 'delta_trusts', title=f'({cond_label}) Delta Trust')
+    # trust_plot.delta_plot(axs[0, 2], 'risk_perc_scores', title=f'({cond_label}) Risk Perception')
+
+    trust_plot.timeseries_plot(axs[1, 0], 'C_ACTs', title=f'({cond_label}) C_ACTS', offset=offset)
+    trust_plot.timeseries_plot(axs[1, 1], 'H_IDLEs', title=f'({cond_label}) H_IDLEs', offset=offset)
+    trust_plot.timeseries_plot(axs[1, 2], 'R_IDLEs', title=f'({cond_label}) R_IDLEs', offset=offset)
+
+    trust_plot.timeseries_plot(axs[2, 0], 'rewards', title=f'({cond_label}) Reward', offset=offset)
+    trust_plot.timeseries_plot(axs[2, 1], 'predictability', title=f'({cond_label}) Predictability', offset=offset)
 
 
     plt.show()

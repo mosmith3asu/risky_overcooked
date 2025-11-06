@@ -465,8 +465,8 @@ class DataPoint:
             [self.rel_risk_perc_responses, self.rel_risk_perc_dur],
         ]
         repeated_survey = [
-            [self.trust_responses, self.trust_durs],
-            [self.risk_perc_responses, self.risk_perc_durs]
+            self.trust_responses,
+            # self.risk_perc_responses
         ]
 
         # Test Cases
@@ -492,16 +492,31 @@ class DataPoint:
         # Repeated surveys ###############
         for survey in repeated_survey:
             for cond in self.conds:
-                for rps in survey[cond]:
+                for i, rps in enumerate(survey[cond]):
+                    rps = copy.deepcopy(rps)
+                    rps.update(self.risk_perc_responses[cond][i])
+
                     raw_var, rc_var, fails = self._score_survey_validity(rps)
-                    # if True:
-                    if any(fails.values()):
-                        print(f"Warning: Participant {self.fname} failed survey validity check:"
-                              f"\n raw_var={raw_var}, rc_var={rc_var}, fails={fails}", file=sys.stderr)
+                    if True:
+                    # if any(fails.values()):
+                    #     print(f"Warning: Participant {self.fname} failed survey validity check:"
+                    #           f"\n raw_var={raw_var}, rc_var={rc_var}, fails={fails}", file=sys.stderr)
                         approved = SurveyVisualizer(rps).review(title='')
                     else:
                         approved = True
                     approvals.append(approved)
+        # for survey in repeated_survey:
+        #     for cond in self.conds:
+        #         for rps in survey[cond]:
+        #             raw_var, rc_var, fails = self._score_survey_validity(rps)
+        #             # if True:
+        #             if any(fails.values()):
+        #                 print(f"Warning: Participant {self.fname} failed survey validity check:"
+        #                       f"\n raw_var={raw_var}, rc_var={rc_var}, fails={fails}", file=sys.stderr)
+        #                 approved = SurveyVisualizer(rps).review(title='')
+        #             else:
+        #                 approved = True
+        #             approvals.append(approved)
 
 
 
@@ -532,7 +547,8 @@ class DataPoint:
                   f" inconsistent responses in favor of random or inattentive answering patterns rather than reflective engagement with the content ."
                   " \n\nAs a result, we are unable to approve this submission. We appreciate your time, but to ensure data quality"
                   " and fairness across participants, only valid and attentive responses can be accepted.")
-
+        else:
+            print(f'Participant {self.fname} passed survey validity with approval rate {approval_rate}')
         return is_valid, approval_rate
 
     def check_manually(self):

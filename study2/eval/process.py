@@ -86,14 +86,14 @@ class DataPoint:
         # Begin computations ########################
 
         # Surveys (single measure)
-        self.RTP_responses, self.RTP_score = self.compute_risk_taking_propensity()
-        self.rel_trust_responses, self.rel_trust_score = self.compute_relative_trust_score()
-        self.rel_risk_perc_responses, self.rel_risk_perc_score = self.compute_relative_risk_perception()
+        self.RTP_responses, self.RTP_score, self.RTP_dur = self.compute_risk_taking_propensity()
+        self.rel_trust_responses, self.rel_trust_score,self.rel_trust_dur = self.compute_relative_trust_score()
+        self.rel_risk_perc_responses, self.rel_risk_perc_score,self.rel_risk_perc_dur = self.compute_relative_risk_perception()
 
         # Surveys (repeated measures)
-        self.trust_responses, self.trust_scores, self.delta_trusts = self.compute_trust_scores()
-        self.risk_perc_responses, self.risk_perc_scores = self.compute_risk_perceptions()
-        self.priming_labels,self.priming_scores = self.compute_priming_labels()
+        self.trust_responses, self.trust_scores, self.delta_trusts, self.trust_durs = self.compute_trust_scores()
+        self.risk_perc_responses, self.risk_perc_scores, self.risk_perc_durs = self.compute_risk_perceptions()
+        self.priming_labels,self.priming_scores, self.priming_durs = self.compute_priming_labels()
 
         # Gameplay
         self.rewards = self.compute_rewards()
@@ -159,18 +159,20 @@ class DataPoint:
         exclude_items = ['ID']
 
         #################################################
+        duration = self._raw['risk_propensity'].duration
         responses = copy.deepcopy(self._raw['risk_propensity'].responses)
         responses = self._exclude_survey_items(responses, exclude_items=exclude_items)
         RTP_responses, RTP_score = self._parse_survey_responses(responses, reverse_coded=reverse_coded)
         assert len(RTP_responses) == N, f"Expected {N} RTP responses," \
                                        f" got {len(RTP_responses)} in filename {self.fname}"
-        return RTP_responses, RTP_score
+        return RTP_responses, RTP_score, duration
 
     def compute_relative_trust_score(self, N=6):
         reverse_coded = ()
         exclude_items = ['ID', ' Took more risks', 'Played more safe']
 
         #################################################
+        duration = self._raw['relative_trust_survey'].duration
         responses = copy.deepcopy(self._raw['relative_trust_survey'].responses)
         responses = self._exclude_survey_items(responses, exclude_items=exclude_items)
         rel_trust_responses, rel_trust_score = self._parse_survey_responses(responses,reverse_coded=reverse_coded)
@@ -182,7 +184,7 @@ class DataPoint:
                 rel_trust_responses[key] = self._RC(val)
         assert len(rel_trust_responses) == N, f"Expected {N} relative trust responses," \
                                               f" got {len(rel_trust_responses)} in filename {self.fname}"
-        return rel_trust_responses, rel_trust_score
+        return rel_trust_responses, rel_trust_score, duration
 
     def compute_relative_risk_perception(self, N=2):
         reverse_coded = ('Played more safe',)
@@ -195,6 +197,7 @@ class DataPoint:
                         'Better performed as expected']
 
         #################################################
+        duration = self._raw['relative_trust_survey'].duration
         responses = copy.deepcopy(self._raw['relative_trust_survey'].responses)
         responses = self._exclude_survey_items(responses, exclude_items=exclude_items)
         rel_risk_perception_responses, rel_risk_perception_score = self._parse_survey_responses(responses,reverse_coded=reverse_coded)
@@ -207,7 +210,7 @@ class DataPoint:
 
         assert len(rel_risk_perception_responses) == N, f"Expected {N} relative risk perception responses," \
                                                         f" got {len(rel_risk_perception_responses)} in filename {self.fname}"
-        return rel_risk_perception_responses, rel_risk_perception_score
+        return rel_risk_perception_responses, rel_risk_perception_score, duration
 
     ###############################################
     # Trial metrics ###############################
@@ -215,6 +218,8 @@ class DataPoint:
     def compute_priming_labels(self):
         priming_labels = copy.deepcopy(self._def_dict)
         priming_scores = copy.deepcopy(self._def_dict)
+        priming_durs = copy.deepcopy(self._def_dict)
+
         averse_responses = ['Take the longer detour that avoids all puddles',
                             'Pass objects to partner using counter tops to avoid all puddles' ]
 
@@ -228,9 +233,10 @@ class DataPoint:
 
         for ic in range(len(self.conds)):
             cond_primings = self._primings[self.conds[ic]]
-            labels = []
-            scores = []
+            priming_durs[self.conds[ic]] = [p.duration for p in cond_primings]
+            priming_durs[ic] = [p.duration for p in cond_primings]
 
+            labels, scores = [], []
             for p in cond_primings:
                 if p.responses['priming'] in averse_responses:
                     label,score = 'averse', -1
@@ -248,7 +254,7 @@ class DataPoint:
             priming_scores[ic] = scores
             priming_scores[self.conds[ic]] = scores
 
-        return priming_labels, priming_scores
+        return priming_labels, priming_scores, priming_durs
 
     def compute_belief_accuracies(self):
         raise NotImplementedError("Belief accuracy computation not implemented yet")
@@ -260,11 +266,13 @@ class DataPoint:
         trust_responses = copy.deepcopy(self._def_dict)
         trust_scores = copy.deepcopy(self._def_dict)
         delta_trusts = copy.deepcopy(self._def_dict)
-
+        trust_durs = copy.deepcopy(self._def_dict)
 
 
         for ic in range(len(self.conds)):
             cond_surveys =  copy.deepcopy(self._trust_surveys[self.conds[ic]])
+            trust_durs[self.conds[ic]] = [s.duration for s in cond_surveys]
+            trust_durs[ic] = [s.duration for s in cond_surveys]
 
             # cond_games = self._games[self.conds[ic]]
             for _is, s in enumerate(cond_surveys):
@@ -284,7 +292,7 @@ class DataPoint:
                     delta_trusts[ic].append(dtrust)
                     delta_trusts[self.conds[ic]].append(dtrust)
 
-        return trust_responses, trust_scores, delta_trusts
+        return trust_responses, trust_scores, delta_trusts, trust_durs
 
     def compute_risk_perceptions(self,N=2):
         reverse_coded = ('Play too safe',)
@@ -293,9 +301,13 @@ class DataPoint:
 
         rel_risk_responses = copy.deepcopy(self._def_dict)
         rel_risk_scores = copy.deepcopy(self._def_dict)
+        rel_risk_durs = copy.deepcopy(self._def_dict)
+
 
         for ic in range(len(self.conds)):
             cond_surveys = copy.deepcopy(self._trust_surveys[self.conds[ic]])
+            rel_risk_durs[self.conds[ic]] = [s.duration for s in cond_surveys]
+            rel_risk_durs[ic] = [s.duration for s in cond_surveys]
 
             # cond_games = self._games[self.conds[ic]]
             for _is, s in enumerate(cond_surveys):
@@ -309,7 +321,7 @@ class DataPoint:
                 rel_risk_scores[self.conds[ic]].append(score)
                 rel_risk_scores[ic].append(score)
 
-        return rel_risk_responses, rel_risk_scores
+        return rel_risk_responses, rel_risk_scores, rel_risk_durs
 
     ###############################################
     # Gameplay metrics ############################
@@ -443,18 +455,18 @@ class DataPoint:
         info['failed_rand'] =  rc_var > max_var     # Random Responses: should not have extremely high variance in RC
         return raw_var, rc_var, info
 
-    def check_survey_validity(self, approval_thresh=0.9):
+    def check_survey_validity(self, approval_thresh=0.9,min_dur=10):
         """Computes variance of all survey responses to check for low-variance responses"""
         approvals = []
 
         single_survey = [
-            self.RTP_responses,
-            self.rel_trust_responses,
-            self.rel_risk_perc_responses,
+            [self.RTP_responses, self.RTP_dur],
+            [self.rel_trust_responses, self.rel_trust_dur],
+            [self.rel_risk_perc_responses, self.rel_risk_perc_dur],
         ]
         repeated_survey = [
-            # self.trust_responses,
-            self.risk_perc_responses
+            [self.trust_responses, self.trust_durs],
+            [self.risk_perc_responses, self.risk_perc_durs]
         ]
 
         # Test Cases
@@ -467,12 +479,13 @@ class DataPoint:
         # GOOD_SURVEY2     = {'A': 0, '-(B)': 3}
 
         # Single Surveys ###############
-        for rps in single_survey:
+        for rps,dur in single_survey:
             raw_var, rc_var, fails = self._score_survey_validity(rps)
-            if any(fails.values()):
-                print(f"Warning: Participant {self.fname} failed survey validity check:"
-                      f"\n raw_var={raw_var}, rc_var={rc_var}, fails={fails}",file=sys.stderr)
-                approved = SurveyVisualizer(rps).review(title=self.fname)
+            if any(fails.values()) or (dur < min_dur):
+                print(f"\nWarning: Participant {self.fname} failed survey validity check:"
+                      f"\n\t| Duration = {dur}"
+                      f"\n\t| raw_var={raw_var}, rc_var={rc_var}, fails={fails}",file=sys.stderr)
+                approved = SurveyVisualizer(rps).review(title=f' ({dur:.1f}s) [self.fname]')
             else: approved = True
             approvals.append(approved)
 
@@ -970,8 +983,11 @@ class SurveyVisualizer:
 
 def main():
     # fname = "2025-10-28_22-46-41__PID5dce29700ad506063969a4a5__cond1"
-    fname = "2025-10-28_23-12-28__PID58a0c507890ea500014c4e9b__cond0"
+    # fname = "2025-10-28_23-12-28__PID58a0c507890ea500014c4e9b__cond0"
     # fname = "2025-10-28_23-57-46__PID5f3ac1732efa0a74f975b1a8__cond1"
+    # fname = "2025-11-06_17-35-29__TEST_PID67f447d8bd15d28465f1ec51__cond0"
+    # fname = "2025-11-06_18-23-16__PID64136bf30b27746cb96f7db8__cond1"
+    fname = "2025-11-06_20-10-11__PID61501cb61a74bfb111a98657__cond0"
     dp = DataPoint(fname)
     dp.save()
     # for fname in get_unprocessed_fnames():

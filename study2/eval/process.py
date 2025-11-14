@@ -64,51 +64,52 @@ class DataPoint:
         # self.reverse_coded += ['Unresponsive', 'Take too many risks', 'Played more safe']
         # self.reverse_coded += ['Safety first.', 'I do not take risks with my health.',
         #                        'I prefer to avoid risks.', 'I really dislike not knowing what is going to happen.']
-
-        # Extract metadata/demographics
-        self.age = self._raw['demographic'].responses['age']
-        self.sex = self._raw['demographic'].responses['sex']
-        self.icond = int(fname.split('cond')[-1][0])
-        self.conds = [['rs-tom', 'rational'],['rational','rs-tom']][self.icond]
-
-
-        # Begin parsing data
-        self._def_dict = {0: [], 1: []}  # default timeseries format
-        for c in self.conds: self._def_dict[c] = []
-
-        self._stage_list = list(self._raw.keys())
-        self._games = self.parse_stage_key('game')
-        self._primings = self.parse_stage_key('priming')
-        self._trust_surveys = self.parse_stage_key('trust_survey')
-        self.layouts,self.p_slips = self.parse_ordered_layouts()
-        self._models = self.preload_models()
-
-        # Begin computations ########################
-
-        # Surveys (single measure)
-        self.RTP_responses, self.RTP_score, self.RTP_dur = self.compute_risk_taking_propensity()
-        self.rel_trust_responses, self.rel_trust_score,self.rel_trust_dur = self.compute_relative_trust_score()
-        self.rel_risk_perc_responses, self.rel_risk_perc_score,self.rel_risk_perc_dur = self.compute_relative_risk_perception()
-
-        # Surveys (repeated measures)
-        self.trust_responses, self.trust_scores, self.delta_trusts, self.trust_durs = self.compute_trust_scores()
-        self.risk_perc_responses, self.risk_perc_scores, self.risk_perc_durs = self.compute_risk_perceptions()
-        self.priming_labels,self.priming_scores, self.priming_durs = self.compute_priming_labels()
-
-        # Gameplay
-        self.rewards = self.compute_rewards()
-        self.nH_risks, self.nR_risks = self.compute_n_risks()
-        self.predictability = self.compute_predictabilities()
-        self.C_ACTs, self.H_IDLEs, self.R_IDLEs = self.compute_coordination_fluency()
-
-        # Check data validity
-        self.min_survey_var = min_survey_var
-        self.surveys_valid,self.survey_approval_rate = self.check_survey_validity()
-        self.was_active = self.check_activity()
-        self.passed_review,self.manual_reviews = self.check_manually()
+        try:
+            # Extract metadata/demographics
+            self.age = self._raw['demographic'].responses['age']
+            self.sex = self._raw['demographic'].responses['sex']
+            self.icond = int(fname.split('cond')[-1][0])
+            self.conds = [['rs-tom', 'rational'],['rational','rs-tom']][self.icond]
 
 
+            # Begin parsing data
+            self._def_dict = {0: [], 1: []}  # default timeseries format
+            for c in self.conds: self._def_dict[c] = []
 
+            self._stage_list = list(self._raw.keys())
+            self._games = self.parse_stage_key('game')
+            self._primings = self.parse_stage_key('priming')
+            self._trust_surveys = self.parse_stage_key('trust_survey')
+            self.layouts,self.p_slips = self.parse_ordered_layouts()
+            self._models = self.preload_models()
+
+            # Begin computations ########################
+
+            # Surveys (single measure)
+            self.RTP_responses, self.RTP_score, self.RTP_dur = self.compute_risk_taking_propensity()
+            self.rel_trust_responses, self.rel_trust_score,self.rel_trust_dur = self.compute_relative_trust_score()
+            self.rel_risk_perc_responses, self.rel_risk_perc_score,self.rel_risk_perc_dur = self.compute_relative_risk_perception()
+
+            # Surveys (repeated measures)
+            self.trust_responses, self.trust_scores, self.delta_trusts, self.trust_durs = self.compute_trust_scores()
+            self.risk_perc_responses, self.risk_perc_scores, self.risk_perc_durs = self.compute_risk_perceptions()
+            self.priming_labels,self.priming_scores, self.priming_durs = self.compute_priming_labels()
+            self.trust_slopes = self.compute_trust_slopes()
+
+            # Gameplay
+            self.rewards = self.compute_rewards()
+            self.nH_risks, self.nR_risks = self.compute_n_risks()
+            self.predictability = self.compute_predictabilities()
+            self.C_ACTs, self.H_IDLEs, self.R_IDLEs = self.compute_coordination_fluency()
+
+            # Check data validity
+            self.min_survey_var = min_survey_var
+            self.surveys_valid,self.survey_approval_rate = self.check_survey_validity()
+            self.was_active = self.check_activity()
+            self.passed_review,self.manual_reviews = self.check_manually()
+        except Exception as e:
+            print(f"Error processing file {self.fname}: {e}", file=sys.stderr)
+            raise e
     ###############################################
     # Metadata metrics ############################
     def _parse_survey_responses(self,responses,reverse_coded=()):
@@ -294,6 +295,16 @@ class DataPoint:
 
         return trust_responses, trust_scores, delta_trusts, trust_durs
 
+    def compute_trust_slopes(self):
+        trust_slopes = copy.deepcopy(self._def_dict)
+        for ic in range(len(self.conds)):
+            data = np.array(self.trust_scores[self.conds[ic]])
+            x = np.arange(data.shape[0])
+            coeffs = np.polyfit(x, data, 1)
+            trust_slopes[self.conds[ic]] = coeffs[0]
+            trust_slopes[ic] = coeffs[0]
+        return trust_slopes
+
     def compute_risk_perceptions(self,N=2):
         reverse_coded = ('Play too safe',)
         exclude_items = ['ID', 'Dependable', 'Reliable', 'Unresponsive', 'Predictable',
@@ -455,7 +466,7 @@ class DataPoint:
         info['failed_rand'] =  rc_var > max_var     # Random Responses: should not have extremely high variance in RC
         return raw_var, rc_var, info
 
-    def check_survey_validity(self, approval_thresh=0.9,min_dur=10):
+    def check_survey_validity(self, approval_thresh=0.8,min_dur=15):
         """Computes variance of all survey responses to check for low-variance responses"""
         approvals = []
 
@@ -469,6 +480,9 @@ class DataPoint:
             # self.risk_perc_responses
         ]
 
+        failure_durs = []
+        failure_item_durs = []
+
         # Test Cases
         # STRAIGHT_SURVEY1 = {'A': 1, 'B': 0, 'C': 0, 'D': 1, 'E': 0, 'F': 1 ,'-(G)': self._RC(0)}
         # RAND_SURVEY1     = {'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5, 'F': 4, '-(G)': self._RC(3)}
@@ -481,11 +495,17 @@ class DataPoint:
         # Single Surveys ###############
         for rps,dur in single_survey:
             raw_var, rc_var, fails = self._score_survey_validity(rps)
-            if any(fails.values()) or (dur < min_dur):
+
+            if any(fails.values()) or (dur < min_dur if dur is not None else False):
                 print(f"\nWarning: Participant {self.fname} failed survey validity check:"
                       f"\n\t| Duration = {dur}"
                       f"\n\t| raw_var={raw_var}, rc_var={rc_var}, fails={fails}",file=sys.stderr)
-                approved = SurveyVisualizer(rps).review(title=f' ({dur:.1f}s) [self.fname]')
+                dur_str = f' (dur={dur:.1f}s)' if dur is not None else 'No Dur'
+                approved = SurveyVisualizer(rps).review(title=f' ({dur_str}s) [{self.fname}]')
+                if not approved:
+                    dur = dur if dur is not None else -1
+                    failure_durs.append(dur)
+                    failure_item_durs.append(dur / len(rps))
             else: approved = True
             approvals.append(approved)
 
@@ -495,13 +515,19 @@ class DataPoint:
                 for i, rps in enumerate(survey[cond]):
                     rps = copy.deepcopy(rps)
                     rps.update(self.risk_perc_responses[cond][i])
+                    dur = self.trust_durs[cond][i]
 
                     raw_var, rc_var, fails = self._score_survey_validity(rps)
                     if True:
                     # if any(fails.values()):
                     #     print(f"Warning: Participant {self.fname} failed survey validity check:"
                     #           f"\n raw_var={raw_var}, rc_var={rc_var}, fails={fails}", file=sys.stderr)
-                        approved = SurveyVisualizer(rps).review(title='')
+                        dur_str = f' (dur={dur:.1f}s)' if dur is not None else None
+                        approved = SurveyVisualizer(rps).review(title=f' ({dur_str}s) [{self.fname}]')
+                        if not approved:
+                            dur = dur if dur is not None else -1
+                            failure_durs.append(dur)
+                            failure_item_durs.append(dur/len(rps))
                     else:
                         approved = True
                     approvals.append(approved)
@@ -543,8 +569,10 @@ class DataPoint:
             print(f'Rejection Messsage:')
             print(f"Unfortunately, your responses to {(1-approval_rate)*100:0.1f}% of the provided surveys"
                   f" failed one or more conservative validity checks, which indicate that they may not have been completed with sufficient attention or effort."
-                  f" This result was determined by analysis of variance in reverse-coded questions (i.e., questions with opposite meaning) which show"
-                  f" inconsistent responses in favor of random or inattentive answering patterns rather than reflective engagement with the content ."
+                  f" This result was determined by "
+                    f"A) analysis of variance in reverse-coded questions (i.e., questions with opposite meaning) which show inconsistent responses and "
+                    f"B) unusually short completion times with an average of {np.mean(failure_durs):.1f} seconds per survey ({np.mean(failure_item_durs):.1f} seconds per item). "
+                  f"Both determinations indicate insufficient engagement with the content, typically due to straight-lined or random responses."
                   " \n\nAs a result, we are unable to approve this submission. We appreciate your time, but to ensure data quality"
                   " and fairness across participants, only valid and attentive responses can be accepted.")
         else:
@@ -579,7 +607,7 @@ class DataPoint:
                     mdp = OvercookedGridworld.from_layout_name(g.layout, p_slip=g.p_slip,neglect_boarders=True)
                     env = OvercookedEnv.from_mdp(mdp, horizon=360)
                     visualizer = TrajectoryVisualizer(env)
-                    approved = visualizer.preview_approve_trajectory(state_history)
+                    approved = visualizer.preview_approve_trajectory(state_history, title=f'{self.conds[ic]}')
                     approvals.append(approved)
 
 
@@ -590,7 +618,8 @@ class DataPoint:
 
     @property
     def is_valid(self):
-        return self.was_active and self.surveys_valid and self.passed_review
+        # return self.was_active and self.surveys_valid and self.passed_review
+        return self.surveys_valid and self.passed_review
 
     ###############################################
     # Helper methods ##############################
@@ -998,17 +1027,18 @@ class SurveyVisualizer:
 
 
 def main():
-    # fname = "2025-10-28_22-46-41__PID5dce29700ad506063969a4a5__cond1"
-    # fname = "2025-10-28_23-12-28__PID58a0c507890ea500014c4e9b__cond0"
-    # fname = "2025-10-28_23-57-46__PID5f3ac1732efa0a74f975b1a8__cond1"
-    # fname = "2025-11-06_17-35-29__TEST_PID67f447d8bd15d28465f1ec51__cond0"
+    # # fname = "2025-10-28_22-46-41__PID5dce29700ad506063969a4a5__cond1"
+    # # fname = "2025-10-28_23-12-28__PID58a0c507890ea500014c4e9b__cond0"
+    # # fname = "2025-10-28_23-57-46__PID5f3ac1732efa0a74f975b1a8__cond1"
+    # # fname = "2025-11-06_17-35-29__TEST_PID67f447d8bd15d28465f1ec51__cond0"
     # fname = "2025-11-06_18-23-16__PID64136bf30b27746cb96f7db8__cond1"
-    fname = "2025-11-06_20-10-11__PID61501cb61a74bfb111a98657__cond0"
-    dp = DataPoint(fname)
-    dp.save()
-    # for fname in get_unprocessed_fnames():
-    #     dp = DataPoint(fname)
-    #     dp.save()
+    # # fname = "2025-11-06_20-10-11__PID61501cb61a74bfb111a98657__cond0"
+    # # fname = "2025-11-06_20-41-46__PID63d1c79ff86ec609af6f77ad__cond1"
+    # dp = DataPoint(fname)
+    # dp.save()
+    for fname in get_unprocessed_fnames():
+        dp = DataPoint(fname)
+        dp.save()
 
 
 if __name__ == '__main__':

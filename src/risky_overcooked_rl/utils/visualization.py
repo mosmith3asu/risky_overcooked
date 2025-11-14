@@ -109,9 +109,12 @@ class TrajectoryVisualizer(object):
     def _reject_callback(self,event):
         plt.close(self.fig)
         self.approved = False
-    def preview_approve_trajectory(self,state_history):
+    def preview_approve_trajectory(self,state_history, title=None):
         if self.blocking:
             self.spawn_figure()
+
+        if title is not None:
+            self.fig.suptitle(title)
 
         self.imgs = []
         for state in state_history:

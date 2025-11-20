@@ -7,7 +7,7 @@ import json
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
-from pingouin import cronbach_alpha
+# from pingouin import cronbach_alpha
 
 from study2.static import *
 from study2.eval.eval_utils import get_unprocessed_fnames
@@ -51,6 +51,9 @@ class DataPoint:
 
     def __init__(self, fname, min_survey_var = 0.0):
         data_path = RAW_COND0_DIR if 'cond0' in fname else RAW_COND1_DIR
+        self._mean_idle_thresh = 0.6 # mean threshold for considering an agent "inactive" during a game
+        self._max_idle_thresh = 0.9 # max threshold for considering an agent "inactive" during a game
+        self._max_frozen_steps = 50 # threshold for considering an agent "frozen" during a game (0.1s per step, so 5s)
 
         # Load raw data
         file_path = os.path.join(data_path, fname)
@@ -100,12 +103,14 @@ class DataPoint:
         self.nH_risks, self.nR_risks = self.compute_n_risks()
         self.predictability = self.compute_predictabilities()
         self.C_ACTs, self.H_IDLEs, self.R_IDLEs = self.compute_coordination_fluency()
+        self.H_frozen, self.R_frozen, self.any_frozen = self.compute_frozen()
 
         # Check data validity
+
         self.min_survey_var = min_survey_var
-        self.surveys_valid,self.survey_approval_rate = self.check_survey_validity()
+        # self.surveys_valid,self.survey_approval_rate = self.check_survey_validity()
         self.was_active = self.check_activity()
-        self.passed_review,self.manual_reviews = self.check_manually()
+        self.passed_review, self.manual_reviews = self.check_game_validity()
 
 
 
@@ -412,7 +417,7 @@ class DataPoint:
 
     ###############################################
     # Validity checks #############################
-    def check_activity(self,max_idle_thresh = 0.9, mean_idle_thresh = 0.6):
+    def check_activity(self):
         """Validity check: did they actively participate in the task?"""
         # raise NotImplementedError("Activity check not implemented yet")
         KEYS = ['rs-tom', 'rational']
@@ -420,7 +425,7 @@ class DataPoint:
 
         max_idle = max(H_IDLEs)
         mean_idle = np.mean(H_IDLEs)
-        was_inactive = max_idle > max_idle_thresh or mean_idle > mean_idle_thresh
+        was_inactive = max_idle > self._max_idle_thresh or mean_idle > self._mean_idle_thresh
 
         if was_inactive:
             print(f"Warning: Participant {self.fname} was inactive (max_idle={max_idle}, mean_idle={mean_idle})",file=sys.stderr)
@@ -551,27 +556,20 @@ class DataPoint:
             print(f'Participant {self.fname} passed survey validity with approval rate {approval_rate}')
         return is_valid, approval_rate
 
-    def check_manually(self):
-        if not self.surveys_valid:
-            return False, []
+    def check_game_validity(self):
+        # if not self.surveys_valid:
+        #     return False, []
 
         approvals = []
         for ic in range(len(self.conds)):
-            # # Check Surveys
-            # for s in self._trust_surveys[self.conds[ic]]:
-            #     s.responses.pop('ID',None)  # remove ID field if it exists
-            #     responses = {}
-            #     for key in s.responses:
-            #         responses[key] = int(s.responses[key])
-            #     approved = SurveyVisualizer(responses).review(title='')
-            #     print(f'{approved}')
-            #     approvals.append(approved)
-            #     # plot survey responses in table
 
-            # Check Gameplay
-            if not self.was_active:
-                cond_games = self._games[self.conds[ic]]
-                for g in cond_games:
+
+            cond_games = self._games[self.conds[ic]]
+            for ig, g in enumerate(cond_games):
+                was_frozen = self.H_frozen[self.conds[ic]][ig] or self.R_frozen[self.conds[ic]][ig]
+                this_inactive = self.H_IDLEs[self.conds[ic]][ig] > self._max_idle_thresh
+
+                if was_frozen or this_inactive or not self.was_active:
                     state_history = []
                     for t, s, aH, aR, info in g.transition_history:
                         state = OvercookedState.from_dict(json.loads(s))
@@ -579,14 +577,66 @@ class DataPoint:
                     mdp = OvercookedGridworld.from_layout_name(g.layout, p_slip=g.p_slip,neglect_boarders=True)
                     env = OvercookedEnv.from_mdp(mdp, horizon=360)
                     visualizer = TrajectoryVisualizer(env)
-                    approved = visualizer.preview_approve_trajectory(state_history)
+                    title=f' {self.conds[ic]} - Game {ig+1} [Inactive: {was_frozen} Frozen: {was_frozen}]'
+                    approved = visualizer.preview_approve_trajectory(state_history, title = title)
                     approvals.append(approved)
+                else:
+                    approvals.append(True)
 
 
         all_approved = np.all(approvals)
         if not all_approved:
             print(f"Warning: Participant {self.fname} failed manual review",file=sys.stderr)
         return all_approved,approvals
+
+    def compute_frozen(self, start_step = 30, verbose=True):
+        """Check if any agent was frozen for <thresh> steps"""
+        human_frozen = copy.deepcopy(self._def_dict)
+        robot_frozen = copy.deepcopy(self._def_dict)
+        any_frozen = False
+
+        for ic in range(len(self.conds)):
+            cond_games = self._games[self.conds[ic]]
+            for g in cond_games:
+                maxH, maxR = 0, 0
+                nH,nR = 0,0 # count of same state conseutively
+
+                t, s, aH, aR, info = g.transition_history[start_step + 0]
+                last_state = OvercookedState.from_dict(json.loads(s))
+                for t, s, aH, aR, info in g.transition_history[start_step + 1:]:
+                    state = OvercookedState.from_dict(json.loads(s))
+                    sameH = state.players[0] == last_state.players[0]
+                    sameR = state.players[1] == last_state.players[1]
+
+                    if sameH:   nH += 1
+                    else:       nH = 0
+
+                    if sameR:   nR += 1
+                    else:       nR = 0
+
+                    maxH = max(maxH,nH)
+                    maxR = max(maxR,nR)
+                    last_state = state
+
+                frozenH = (maxH >= self._max_frozen_steps)
+                frozenR = (maxR >= self._max_frozen_steps)
+                any_frozen = frozenH or frozenR or any_frozen
+
+                if verbose:
+                    if frozenH:
+                        print(f"Warning: Participant {self.fname} had frozen HUMAN in layout {g.layout} (max frozen={maxH})",file=sys.stderr)
+                    if frozenR:
+                        print(f"Warning: Participant {self.fname} had frozen ROBOT in layout {g.layout} (max frozen={maxR})",file=sys.stderr)
+
+                human_frozen[self.conds[ic]].append(frozenH)
+                human_frozen[ic].append(frozenH)
+
+                robot_frozen[self.conds[ic]].append(frozenR)
+                robot_frozen[ic].append(frozenR)
+
+        return human_frozen, robot_frozen, any_frozen
+
+
 
     @property
     def is_valid(self):
@@ -844,8 +894,6 @@ class TorchPolicy:
         return _obs
 
 
-
-
 class SurveyVisualizer:
     def __init__(self, responses, survey_range=(10,0)):
         """
@@ -998,12 +1046,12 @@ class SurveyVisualizer:
 
 
 def main():
-    # fname = "2025-10-28_22-46-41__PID5dce29700ad506063969a4a5__cond1"
+    fname = "2025-10-28_22-46-41__PID5dce29700ad506063969a4a5__cond1"
     # fname = "2025-10-28_23-12-28__PID58a0c507890ea500014c4e9b__cond0"
     # fname = "2025-10-28_23-57-46__PID5f3ac1732efa0a74f975b1a8__cond1"
     # fname = "2025-11-06_17-35-29__TEST_PID67f447d8bd15d28465f1ec51__cond0"
     # fname = "2025-11-06_18-23-16__PID64136bf30b27746cb96f7db8__cond1"
-    fname = "2025-11-06_20-10-11__PID61501cb61a74bfb111a98657__cond0"
+    # fname = "2025-11-06_20-10-11__PID61501cb61a74bfb111a98657__cond0"
     dp = DataPoint(fname)
     dp.save()
     # for fname in get_unprocessed_fnames():

@@ -398,6 +398,37 @@ class Curriculum:
         xi = np.random.choice(x, p=p_samples)
         return xi
 
+    def modify_bad_state(self, state):
+        """Intentially create bad/out of distribution state for to prevent freezing with humans"""
+        nsituation = 2
+        situation = np.random.choice(np.arange(nsituation))
+        bad_iplayer = np.random.randint(2)
+        bad_player = state.players[bad_iplayer]
+
+        if situation == 0:
+            """Onion in front/near of full pot"""
+            n_onion = 3
+            player_dist = np.random.choice([1, 2, 3], p=[0.8, 0.1, 0.1])
+            held_objs = [["onion", None], [None, "onion"]][bad_iplayer]
+
+            state = self.add_held_objs(state, held_objs)
+            state = self.add_onions_to_pots(state, n_onions=n_onion)
+            self.assign_dist2goal_start_loc(state, bad_player, 'pot', distance=player_dist)  # start near pot
+
+        elif situation == 1:
+            """Dish in front/near of unfilled pot"""
+            n_onion = np.random.choice([0, 1, 2], p=[0.2, 0.4, 0.4])
+            player_dist = np.random.choice([1, 2, 3], p=[0.8, 0.1, 0.1])
+            held_objs = [["dish", None], [None, "dish"]][bad_iplayer]
+
+            state = self.add_held_objs(state, held_objs)
+            state = self.add_onions_to_pots(state, n_onions=n_onion)
+            self.assign_dist2goal_start_loc(state, bad_player, 'pot', distance=player_dist)  # start near pot
+
+        else:
+            raise ValueError(f"Invalid bad state situation '{situation}'")
+
+        return state
 
     def deliver_onion(self,N, state,p=0.5):
 
@@ -412,7 +443,7 @@ class Curriculum:
             n_onions = max(0,N-2)
             held_objs = ["onion", "onion"]
 
-        onions_in_play = n_onions + np.sum([1  for obj in held_objs if obj=='onion'])
+        # onions_in_play = n_onions + np.sum([1  for obj in held_objs if obj=='onion'])
         # assert onions_in_play == N, f"(DELIVER) Total number of onions in play ({onions_in_play})mismatched with specified {N} onions"
         assert n_onions >= 0 and n_onions <= 3, "Number of onions must be between 0 and 3"
 
@@ -464,7 +495,10 @@ class Curriculum:
         self.sampled_curriculum = self.curriculums[i]
         return self.sampled_curriculum
 
-    def sample_curriculum_state(self):
+    def sample_curriculum_state(self,p_ood=0.01):
+        """Samples a state according to the current curriculum strategy.
+        - p_ood: probability of sampling an out-of-distribution (bad) state
+        """
 
         self.sampled_curriculum = self.sample_curriculum()
 
@@ -540,6 +574,10 @@ class Curriculum:
 
         else:
             raise ValueError(f"Invalid curriculum mode '{self.sampled_curriculum}'")
+
+        if np.random.rand() < p_ood:
+            state = self.modify_bad_state(state)
+
         return state, self.sampled_curriculum
 
     def eval(self,status):

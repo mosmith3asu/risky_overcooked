@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from study2.eval.process import DataPoint,TorchPolicy
+from study2.eval.eval_utils import get_processed_fnames
 from study2.static import *
 
 COLOR = {'oracle': tuple([50 / 255 for _ in range(3)]),
@@ -69,6 +70,7 @@ class TrustPlot:
 
         self.dp_list = dp_list
         self.scope = scope
+        self.outlier_thresh = 2 #std deviations
 
     def radar_plot(self, ax, title=''):
         pass
@@ -80,6 +82,105 @@ class TrustPlot:
         coeffs = np.polyfit(x, y, 1)
         poly = np.poly1d(coeffs)
         ax.plot(x, poly(x), **kwargs)
+
+    def remove_outliers(
+            self,
+            X,
+            mode: str = "by_time",  # "by_time" or "by_series"
+            thresh: float = 3.5,  # robustness threshold (≈ 3–4 is common)
+            fix: str = "median",  # "median", "nan", or "interpolate"
+            eps: float = 1e-12  # numerical floor for MAD
+    ):
+        """
+        Remove/repair outliers in an N x T array using robust median + MAD.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            Array of shape (N, T).
+        mode : {"by_time", "by_series"}
+            - "by_time": detect outliers at each timestep across samples (axis=0).
+            - "by_series": detect outliers within each series across time (axis=1).
+        thresh : float
+            Outlier threshold in scaled MAD units (3–4 is typical).
+        fix : {"median", "nan", "interpolate"}
+            How to repair flagged points:
+              - "median": replace with the robust center (median per time or per series).
+              - "nan": set to NaN.
+              - "interpolate": linear interpolation along time for each row.
+                (Only meaningful if T >= 2; works across interior NaN runs.)
+        eps : float
+            Small constant to avoid division by zero when MAD==0.
+
+        Returns
+        -------
+        X_fixed : np.ndarray
+            Cleaned array (same shape as X).
+        mask : np.ndarray (bool)
+            Boolean mask of shape (N, T) where True indicates an outlier.
+        """
+        X = np.asarray(X)
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D array of shape (N, T).")
+        N, T = X.shape
+
+        if mode not in {"by_time", "by_series"}:
+            raise ValueError("mode must be 'by_time' or 'by_series'.")
+        if fix not in {"median", "nan", "interpolate"}:
+            raise ValueError("fix must be 'median', 'nan', or 'interpolate'.")
+
+        X_fixed = X.copy()
+
+        # Robust center and scale
+        if mode == "by_time":
+            # center/scale per timestep (axis=0)
+            center = np.median(X, axis=0, keepdims=True)  # (1, T)
+            mad = np.median(np.abs(X - center), axis=0, keepdims=True)  # (1, T)
+            scale = 1.4826 * np.maximum(mad, eps)
+        else:  # "by_series"
+            # center/scale per series (axis=1)
+            center = np.median(X, axis=1, keepdims=True)  # (N, 1)
+            mad = np.median(np.abs(X - center), axis=1, keepdims=True)  # (N, 1)
+            scale = 1.4826 * np.maximum(mad, eps)
+
+        z = (X - center) / scale
+        mask = np.abs(z) > thresh
+
+        # Repair strategy
+        if fix == "median":
+            X_fixed[mask] = center[mask]  # broadcast matches the computed center
+        elif fix == "nan":
+            X_fixed[mask] = np.nan
+        else:  # "interpolate"
+            # Interpolate along time for each series (row-wise), leaving non-flagged values untouched.
+            # We set flagged values to NaN, then fill NaNs via 1D linear interpolation over time.
+            X_nan = X_fixed.astype(float).copy()
+            X_nan[mask] = np.nan
+
+            # Build time index once
+            t_idx = np.arange(T)
+            for i in range(N):
+                row = X_nan[i]
+                good = ~np.isnan(row)
+                if good.sum() == 0:
+                    # All points are NaN: fall back to robust center for that row
+                    if mode == "by_time":
+                        # Use per-timestep centers
+                        X_fixed[i] = center[0]
+                    else:
+                        # Use per-series center
+                        X_fixed[i] = center[i, 0]
+                    continue
+                if good.sum() == 1:
+                    # Only one good point: constant fill
+                    X_fixed[i] = np.where(np.isnan(row), row[good][0], row)
+                    continue
+
+                # Linear interpolate across NaNs
+                interp_vals = np.interp(t_idx, t_idx[good], row[good])
+                X_fixed[i] = interp_vals
+
+        return X_fixed, mask
 
     def timeseries_plot(self, ax, metric,
                         lbf=True, std=True,
@@ -99,7 +200,10 @@ class TrustPlot:
 
         rs_tom = np.array(rs_tom)
         rational = np.array(rational)
-
+        # for mode in ["by_time", "by_series"]:
+        for mode in ["by_series"]:
+            rs_tom, rs_tom_mask = self.remove_outliers(rs_tom, mode=mode, thresh=self.outlier_thresh , fix="interpolate")
+            rational, rational_mask = self.remove_outliers(rational, mode=mode, thresh=self.outlier_thresh , fix="interpolate")
 
         T = rs_tom.shape[1]
         x_rs_tom = np.arange(T)
@@ -144,6 +248,12 @@ class TrustPlot:
             rational.append(eval(f"dp.{metric}['rational']"))
         rs_tom = np.array(rs_tom)
         rational = np.array(rational)
+
+        for mode in ["by_time"]:
+            rs_tom, rs_tom_mask = self.remove_outliers(rs_tom, mode=mode, thresh=self.outlier_thresh , fix="interpolate")
+            rational, rational_mask = self.remove_outliers(rational, mode=mode, thresh=self.outlier_thresh , fix="interpolate")
+
+
         rs_tom_style = {'color': COLOR['rs-tom']}
         rational_style = {'color': COLOR['rational']}
 
@@ -162,17 +272,22 @@ class TrustPlot:
 
 
 def main():
-    COND0_FNAMES = [
-        # "2025-10-16_22-37-54__PID68c08483061276d20b570579__cond0",
-        "2025-10-28_23-12-28__PID58a0c507890ea500014c4e9b__cond0",
-        "2025-10-27_18-53-52__PID67062295123561f8241f65fc__cond0",
-        "2025-10-27_19-38-25__PID66b504cd131c63b36b682b8d__cond0"
-    ]
-    COND1_FNAMES = [
-        "2025-10-28_22-46-41__PID5dce29700ad506063969a4a5__cond1",
-        "2025-10-28_23-57-46__PID5f3ac1732efa0a74f975b1a8__cond1"
-        # "2025-10-16_22-32-23__PID672135003f5e272c889620ea__cond1"
-    ]
+    # COND0_FNAMES = [
+    #     # "2025-10-16_22-37-54__PID68c08483061276d20b570579__cond0",
+    #     "2025-10-28_23-12-28__PID58a0c507890ea500014c4e9b__cond0",
+    #     "2025-10-27_18-53-52__PID67062295123561f8241f65fc__cond0",
+    #     "2025-10-27_19-38-25__PID66b504cd131c63b36b682b8d__cond0"
+    # ]
+    # COND1_FNAMES = [
+    #     "2025-10-28_22-46-41__PID5dce29700ad506063969a4a5__cond1",
+    #     "2025-10-28_23-57-46__PID5f3ac1732efa0a74f975b1a8__cond1"
+    #     # "2025-10-16_22-32-23__PID672135003f5e272c889620ea__cond1"
+    # ]
+
+    fname_dict = get_processed_fnames(full_path=False)
+    COND1_FNAMES = fname_dict['cond1']
+    COND0_FNAMES = fname_dict['cond0']
+
     # fname = "2025-10-16_22-37-54__PID68c08483061276d20b570579__cond0"
     # fpath = PROCESSED_COND0_DIR + r"\\"+ fname
     # dp = DataPoint.load_processed(fpath)
@@ -224,8 +339,8 @@ def main():
     # fig.suptitle(f'Metrics - {cond_label}: RS-ToM -> Rational', fontsize=16)
     #
     # trust_plot.timeseries_plot(axs[0, 0], 'trust_scores', title=f'({cond_label}) Trust Over Time', offset=offset)
-    # trust_plot.delta_plot(     axs[0, 1], 'delta_trusts', title=f'({cond_label}) Delta Trust')
-    # trust_plot.delta_plot(     axs[0, 2], 'risk_perceptions', title=f'({cond_label}) Risk Perception')
+    # trust_plot.delta_plot(axs[0, 1], 'delta_trusts', title=f'({cond_label}) Delta Trust')
+    #
     #
     # trust_plot.timeseries_plot(axs[1, 0], 'C_ACTs', title=f'({cond_label}) C_ACTS', offset=offset)
     # trust_plot.timeseries_plot(axs[1, 1], 'H_IDLEs', title=f'({cond_label}) H_IDLEs', offset=offset)
@@ -233,6 +348,7 @@ def main():
     #
     # trust_plot.timeseries_plot(axs[2, 0], 'rewards', title=f'({cond_label}) Reward', offset=offset)
     # trust_plot.timeseries_plot(axs[2, 1], 'predictability', title=f'({cond_label}) Predictability', offset=offset)
+    # trust_plot.delta_plot(axs[2, 2], 'risk_perc_scores', title=f'({cond_label}) Risk Perception')
 
     ###############################
 

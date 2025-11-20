@@ -8,7 +8,7 @@ from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
 from itertools import count
 from src.risky_overcooked_py.mdp.actions import Action
-import study_1 as Algorithm
+import study1 as Algorithm
 from risky_overcooked_rl.utils.evaluation_tools import CoordinationFluency
 import pickle
 import pandas as pd

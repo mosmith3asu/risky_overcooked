@@ -7,6 +7,12 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 import torch
 from numba import int32, float32,boolean    # import the types
 from numba.experimental import jitclass
+
+import torch
+from torch.cuda.amp import autocast
+
+
+
 spec = [
     ('b', float32),           # a simple scalar field
     ('lam', float32),
@@ -731,6 +737,387 @@ class CumulativeProspectTheory_bu(object):
             Fk = np.round(Fk,sigdig)
         return Fk
 
+class CumulativeProspectTheory:
+    def __init__(self, b, lam, eta_p, eta_n, delta_p, delta_n, mean_val_ref=None):
+        """
+        Instantiates a CPT object that can be used to model human risk-sensitivity.
+        :param b: reference point determining if outcome is gain or loss
+        :param lam: loss-aversion parameter
+        :param eta_p: exponential gain on positive outcomes
+        :param eta_n: exponential loss on negative outcomes
+        :param delta_p: probability weighting for positive outcomes
+        :param delta_n: probability weighting for negative outcomes
+        """
+        # assert b==0, "Reference point must be 0"
+        self.b = b
+        self.lam = lam
+        self.eta_p = eta_p
+        self.eta_n = eta_n
+        self.delta_p = delta_p
+        self.delta_n = delta_n
+
+        self.expected_td_targets = np.zeros(256, dtype=np.float32)
+        self._f_vmap = None
+
+        self.is_rational = True
+        if self.b != 0:
+            self.is_rational = False
+        elif self.lam != 1:
+            self.is_rational = False
+        elif self.eta_p != 1:
+            self.is_rational = False
+        elif self.eta_n != 1:
+            self.is_rational = False
+        elif self.delta_p != 1:
+            self.is_rational = False
+        elif self.delta_n != 1:
+            self.is_rational = False
+
+    def sample_expectation_batch(self, X):
+        """Estimates CPT-value from only samples (no probs) in batch form"""
+        if isinstance(X, torch.Tensor): is_torch = True
+        elif isinstance(X, np.ndarray): is_torch = False
+        elif isinstance(X, list): X = np.array(X); is_torch = False
+        else:  raise ValueError("X must be a torch.Tensor, np.ndarray, or list.")
+        assert X.ndim == 2, f"X must be 2D array of value samples (B,N), got {X.shape}"
+
+        N_max = X.shape[1]
+        B = X.shape[0]
+
+        if is_torch:
+            device, dtype = X.device, X.dtype
+            X = X.to(device=device, dtype=torch.float64)  # change to double percision
+            X_sort = torch.sort(X, dim=1).values
+            I = torch.arange(1, N_max + 1, device=device, dtype=dtype).unsqueeze(0).repeat(B,1)
+            K = (X_sort <= self.b).sum(dim=1)  -1
+        else:
+            raise NotImplementedError("Numpy batch version not implemented yet.")
+
+
+        # Compute quantiles
+        z_1 = (N_max + 1 - I) / N_max
+        z_2 = (N_max - I) / N_max
+        z_3 = I / N_max
+        z_4 = (I - 1) / N_max
+
+        rho_plus = self.u_plus(X_sort) * (self.w_plus(z_1) - self.w_plus(z_2))
+        rho_minus = self.u_neg(X_sort) * (self.w_neg(z_3) - self.w_neg(z_4))
+
+        if is_torch:
+            # Create index mask [B, N]
+            idx = torch.arange(N_max, device=K.device).unsqueeze(0).expand(B, N_max)
+
+            # Compute masks for each term
+            mask_plus = idx > K.unsqueeze(1)  # True for j >= k[b]
+            mask_minus = idx <= K.unsqueeze(1)  # True for j < k[b]
+            mask_all_gains = K.unsqueeze(1) == -1  # True for all gains
+
+            mask_plus = mask_plus | mask_all_gains
+            mask_minus = mask_minus & (~mask_all_gains)
+
+            # Apply masks and sum along dim=1
+            rho = (rho_plus * mask_plus).sum(dim=1) - (rho_minus * mask_minus).sum(dim=1)
+
+            # rho = torch.zeros(B, device=device, dtype=dtype)
+            # for b in range(B):
+            #     k = K[b]
+            #     if k == -1:  rho[b] = torch.sum(rho_plus[b, :]) # all gains
+            #     else: rho[b] = torch.sum(rho_plus[b, k:]) - torch.sum(rho_minus[b, :k])
+            rho = rho.to(dtype=dtype)
+        else:
+            rho = np.zeros(B)
+            for b in range(B):
+                rho[b] = np.sum(rho_plus[b, K[b]:]) - np.sum(rho_minus[b, :K[b]])
+
+        # assert rho.shape == (B,), f"rho must be of shape (B,), got {rho.shape}"
+        return rho
+
+    def sample_expectation(self, X):
+        """Estimates CPT-value from only samples (no probs)"""
+        if isinstance(X, torch.Tensor): is_torch = True
+        elif isinstance(X, np.ndarray): is_torch = False
+        elif isinstance(X, list): X = np.array(X); is_torch = False
+        else:  raise ValueError("X must be a torch.Tensor, np.ndarray, or list.")
+        assert X.ndim == 1, f"X must be 1D array of value samples, got {X.shape}"
+        N_max = X.shape[0]
+
+        if is_torch:
+            device, dtype = X.device, X.dtype
+            X_sort = torch.sort(X).values
+            I = torch.arange(1, N_max + 1, device=device, dtype=dtype)
+            k = (X_sort <= self.b).sum(dim=-1) - 1
+            # if not torch.any(X_sort <= self.b):
+            #     k = 0  # all gains
+            # else:
+            #     k = torch.where(X_sort <= self.b)[0][-1]
+        else:
+            X_sort = np.sort(X)
+            I = np.arange(1, N_max + 1)
+            if not np.any(X_sort <= self.b):
+                k = 0  # all gains
+            else:
+                k = np.where(X_sort <= self.b)[0][-1]
+
+        # Compute quantiles
+        z_1 = (N_max + 1 - I) / N_max  # # {z_1 = (N_max + i - 1) / N_max <-- mistake}
+        z_2 = (N_max - I) / N_max
+        z_3 = I / N_max
+        z_4 = (I - 1) / N_max
+
+        rho_plus = self.u_plus(X_sort) * (self.w_plus(z_1) - self.w_plus(z_2))
+        rho_minus = self.u_neg(X_sort) * (self.w_neg(z_3) - self.w_neg(z_4))
+        # rho = torch.sum(rho_plus) - torch.sum(rho_minus)
+        return rho_plus, rho_minus, k
+
+        # rho_plus = self.u_plus(X_sort[k:]) * (self.w_plus(z_1[k:]) - self.w_plus(z_2[k:]))
+        # rho_minus = self.u_neg(X_sort[:k]) * (self.w_neg(z_3[:k]) - self.w_neg(z_4[:k]))
+        #
+        # if is_torch:
+        #     rho = torch.sum(rho_plus) - torch.sum(rho_minus)
+        # else:
+        #     rho = np.sum(rho_plus) - np.sum(rho_minus)
+        # return rho
+
+    def expectation(self, values, p_values):
+        """
+        Applies the CPT-expectation multiple prospects (i.e. a series of value-probability pairs) which can arbitrarily
+        replace the rational expectation operator E[v,p] = Σ(p*v). When dealing with more than two prospects, we must
+        calculate the expectation over the cumulative probability distributions.
+        :param values:
+        :param p_values:
+        :return:
+        """
+        if self.is_rational:
+            # Rational Expectation
+            return np.sum(values * p_values)
+
+        # Step 1: arrange all samples in ascending order and get indexs of gains/losses
+        sorted_idxs = np.argsort(values)
+        sorted_v = values[sorted_idxs]
+        sorted_p = p_values[sorted_idxs]
+
+        K = len(sorted_v)  # number of samples
+        if K == 1: return sorted_v[0]  # Single prospect = no CPT
+        l = np.where(sorted_v <= self.b)[0]
+        l = -1 if len(l) == 0 else l[-1]  # of no losses l=-1 indicator
+
+        # Step 2: Calculate the cumulative liklihoods for gains and losses
+        Fk = [min([max([0, np.sum(sorted_p[0:i + 1])]), 1]) for i in range(l + 1)] + \
+             [min([max([0, np.sum(sorted_p[i:K])]), 1]) for i in range(l + 1, K)]  # cumulative probability
+        Fk = Fk + [0]  # padding to make dealing with only gains or only losses easier
+
+        # Step 3: Calculate biased expectation for gains and losses
+        rho_p = self.perc_util_plus(sorted_v, Fk, l, K)
+        rho_n = self.perc_util_neg(sorted_v, Fk, l, K)
+
+        # Step 3: Add the cumulative expectation and return
+        rho = rho_p - rho_n
+
+        return rho
+
+    def expectation_batch(self, X, p_values):
+        if isinstance(X, torch.Tensor): is_torch = True
+        elif isinstance(X, np.ndarray): is_torch = False
+        elif isinstance(X, list): X = np.array(X); is_torch = False
+        else:  raise ValueError("X must be a torch.Tensor, np.ndarray, or list.")
+        assert X.ndim == 2, f"X must be 2D array of value samples (B,N), got {X.shape}"
+        B,N = X.shape
+
+        if is_torch:
+            device, dtype = X.device, X.dtype
+            X = X.to(device=device, dtype=torch.float64)  # change to double percision
+            # X_sort = torch.sort(X, dim=1).values
+            X_sort, sorted_idxs = torch.sort(X, dim=1)
+            P_sort = p_values.to(device=device, dtype=torch.float64)
+            P_sort = torch.gather(P_sort, 1, sorted_idxs)
+
+            I = torch.arange(1, N + 1, device=device, dtype=dtype).unsqueeze(0).repeat(B,1)
+            L = (X_sort <= self.b).sum(dim=1)  -1# idx of last loss for each batch
+
+            # Create index mask [B, N]
+            idx = torch.arange(N, device=X.device).unsqueeze(0).expand(B, N)
+
+            # Compute masks for each term
+            mask_plus      = idx > L.unsqueeze(1)  # True for j >= k[b]
+            mask_minus     = idx <= L.unsqueeze(1)  # True for j < k[b]
+            mask_all_gains = L.unsqueeze(1) == -1  # True for all gains
+            mask_plus      = mask_plus | mask_all_gains
+            mask_minus     = mask_minus & (~mask_all_gains)
+
+            # Reverse order fo dim 1 in P_sort
+            # P_plus = (P_sort[:,::-1].cumsum(dim=1))[:,::-1] * mask_plus
+            F_plus = torch.cumsum(P_sort.flip(dims=[1]), dim=1).flip(dims=[1])* mask_plus
+            F_minus = P_sort.cumsum(dim=1) * mask_minus
+            Fk = F_plus + F_minus
+            Fk = torch.cat([Fk, torch.zeros(B,1,device=device,dtype=dtype)], dim=1)  # pad with zeros at the end
+            z1 = Fk[:,:-1]
+            z2 = Fk[:,1:]
+            z3 = Fk[:, 1:]
+            z4 = Fk[:, :-1]
+
+
+            # rho_plus = torch.zeros(B, N, device=device, dtype=torch.float64)
+            # rho_minus = torch.zeros(B, N, device=device, dtype=torch.float64)
+            #
+            # rho_plus[:,-1] = self.u_plus(X_sort[:,-1]) * self.w_plus(P_sort[:,-1])
+            # rho_minus[:,0] = self.u_neg(X_sort[0]) * self.w_neg(P_sort[0])
+            #
+            # rp = self.u_plus(X_sort) * (self.w_plus(Fk1) - self.w_plus(Fk2))
+            # rm = self.u_neg(X_sort) * (self.w_neg(Fk1) - self.w_neg(Fk2))
+            #
+            # rho_plus[:,  :-1] = rp *
+            # rho_minus[:, 1:]
+
+            rho_plus = self.u_plus(X_sort) * (self.w_plus(z1) - self.w_plus(z2))
+            rho_minus = self.u_neg(X_sort) * (self.w_neg(z3) - self.w_neg(z4))
+            rho_plus *= mask_plus
+            rho_minus *= mask_minus
+            rho = (rho_plus).sum(dim=1) - (rho_minus).sum(dim=1)
+
+            #
+            # P_plus = torch.cat([P_plus, torch.zeros(B, 1, device=device, dtype=dtype)], dim=1)  # pad with zeros at the end
+            # P_minus = torch.cat([P_minus, torch.zeros(B, 1, device=device, dtype=dtype)], dim=1)  # pad with zeros at the end
+            # P_plus1, P_plus2 = P_plus[:,:-1], P_plus[:,1:]
+            # P_minus1, P_minus2 = P_minus[:,:-1], P_minus[:,1:]
+            # rho_plus = self.u_plus(X_sort) * (self.w_plus(P_plus1) - self.w_plus(P_plus2))
+            # rho_minus = self.u_neg(X_sort) * (self.w_neg(P_minus1) - self.w_neg(P_minus2))
+
+
+            # Apply masks and sum along dim=1
+            # rho = (rho_plus * mask_plus).sum(dim=1) - (rho_minus * mask_minus).sum(dim=1)
+
+            rho = rho.to(dtype=dtype)
+            return rho
+        else:
+            raise NotImplementedError("Numpy batch version not implemented yet.")
+
+    def perc_util_plus(self, sorted_v, Fk, l, K):
+        """Calculates the cumulative expectation of all utilities percieved as gains"""
+        rho_p = 0
+        for i in range(l + 1, K):
+            rho_p += self.u_plus(sorted_v[i]) * (self.w_plus(Fk[i]) - self.w_plus(Fk[i + 1]))
+        # CLASSICAL FORMULATION ( no Fk =  Fk + [0]) -----------------------
+        # for i in range(l + 1, K - 1):
+        #     rho_p += self.u_plus(sorted_v[i]) * (self.w_plus(Fk[i]) - self.w_plus(Fk[i + 1]))
+        # rho_p += self.u_plus(sorted_v[K - 1]) * self.w_plus(sorted_p[K - 1])
+        return rho_p
+
+    def perc_util_neg(self, sorted_v, Fk, l, K):
+        """Calculates the cumulative expectation of all utilities percieved as losses"""
+        # Fk =  Fk + [0]  # add buffer which results in commented out version below
+        rho_n = 0
+        for i in range(0, l + 1):
+            rho_n += self.u_neg(sorted_v[i]) * (self.w_neg(Fk[i]) - self.w_neg(Fk[i - 1]))
+        return rho_n
+        # CLASSICAL FORMULATION ( no Fk =  Fk + [0]) -----------------------
+        # rho_n = self.u_neg(sorted_v[0]) * self.w_neg(sorted_p[0])
+        # for i in range(1, l + 1):
+        #     rho_n += self.u_neg(sorted_v[i]) * (self.w_neg(Fk[i]) - self.w_neg(Fk[i - 1]))
+        # return rho_n
+
+    def u_plus(self, v):
+        """ Weights the values (v) perceived as losses (v>b)"""
+        if isinstance(v,torch.Tensor):
+            return torch.pow(torch.abs(v - self.b), self.eta_p)
+        return np.power(np.abs(v - self.b), self.eta_p)
+
+    def u_neg(self, v):
+        """ Weights the values (v) perceived as gains (v<=b)"""
+        if isinstance(v,torch.Tensor):
+            return self.lam * torch.pow(torch.abs(v - self.b), self.eta_n)
+        return self.lam * np.power(np.abs(v - self.b), self.eta_n)
+
+    def w_plus(self, p):
+        """ Weights the probabilities p for probabilities of values perceived as gains  (v>b)"""
+        return self._w(p, self.delta_p)
+
+    def w_neg(self, p):
+        """ Weights the probabilities p for probabilities of values perceived as losses (v<=b)"""
+        return self._w(p, self.delta_n)
+
+    def _w(self, p, delta):
+        if isinstance(p,torch.Tensor):
+            z = torch.pow(p, delta)  # precompute term
+            denom = z + torch.pow(1 - p, delta)
+            denom = torch.pow(denom, 1 / delta)
+            return z / denom
+
+        z = np.power(p,delta)  # precompute term
+        denom = z + np.power(1 - p,delta)
+        denom = np.power(denom, 1 / delta)
+        return z / denom
+        # return p ** delta / ((p ** delta + (1 - p) ** delta) ** (1 / delta))
+
+
+class SPSA:
+    def __init__(self, model, criterion):
+        self.sp_avg = 5
+        self.b1 = 0.9
+        self.m1 = 0
+        self.o = 1.0
+        self.c = 0.005
+        self.a = 0.01
+        self.alpha = 0.4
+        self.gamma = 0.2
+
+        self.model = model
+        self.criterion = criterion
+
+        self.est_type = 'spsa-gc'
+
+        for name, param in self.model.named_parameters():
+            param.requires_grad_(False)
+
+    def estimate(self, epoch, images, labels):
+        with autocast():
+            ghats = []
+            ak = self.a / ((epoch + self.o) ** self.alpha)
+            ck = self.c / (epoch ** self.gamma)
+            w = torch.nn.utils.parameters_to_vector(self.model.coordinator.dec.parameters())
+
+            for _ in range(self.sp_avg):
+                p_side = (torch.rand(len(w)).reshape(-1, 1) + 1) / 2
+                samples = torch.cat([p_side, -p_side], dim=1)
+                perturb = torch.gather(samples, 1,
+                                       torch.bernoulli(torch.ones_like(p_side) / 2).type(torch.int64)).reshape(
+                    -1).cuda()
+                del samples;
+                del p_side
+
+                w_r = w + ck * perturb
+                w_l = w - ck * perturb
+
+                with torch.no_grad():
+                    torch.nn.utils.vector_to_parameters(w_r, self.model.coordinator.dec.parameters())
+                    output_r = self.model(images)
+
+                    torch.nn.utils.vector_to_parameters(w_l, self.model.coordinator.dec.parameters())
+                    output_l = self.model(images)
+
+                loss_r = self.criterion(output_r, labels)
+                loss_l = self.criterion(output_l, labels)
+
+                ghat = (loss_r - loss_l) / ((2 * ck) * perturb)
+                ghats.append(ghat.reshape(1, -1))
+
+            if self.sp_avg > 1:
+                ghat = torch.cat(ghats, dim=0).mean(dim=0)
+
+            if self.est_type == 'spsa-gc':
+                if epoch > 1:
+                    self.m1 = self.b1 * self.m1 + ghat
+                else:
+                    self.m1 = ghat
+                accum_ghat = ghat + self.b1 * self.m1
+            elif self.est_type == 'spsa':
+                accum_ghat = ghat
+            else:
+                raise ValueError
+
+            w_new = w - ak * accum_ghat
+            torch.nn.utils.vector_to_parameters(w_new, self.model.coordinator.dec.parameters())
+
+
 def animation():
     import imageio
     fps = 10
@@ -1033,8 +1420,9 @@ def main():
     }
     # averse_OG = CumulativeProspectTheory_bu(**averse_params)
     neutral = CumulativeProspectTheory_Compiled(**neutral_params)
-    averse = CumulativeProspectTheory_Compiled(**averse_params)
+    # averse = CumulativeProspectTheory_Compiled(**averse_params)
     seeking = CumulativeProspectTheory_Compiled(**seeking_params)
+    neutral_NEW = CumulativeProspectTheory(**neutral_params)
     # averse = CumulativeProspectTheory_Test(**averse_params)
     # seeeking = CumulativeProspectTheory_Test(**seeking_params)
     # print(averse_OG.mean_value_ref)
@@ -1048,7 +1436,14 @@ def main():
     exp_seeking = seeking.expectation(values, p_values)
     exp_neutral = neutral.expectation(values, p_values)
 
+    values = torch.tensor(values).unsqueeze(0)  # make batch of 1
+    p_values = torch.tensor(p_values).unsqueeze(0)
+    exp_neutral2 = neutral_NEW.expectation_batch(values, p_values)
+
     print(exp_seeking)
     print(exp_neutral)
+    print(exp_neutral2.cpu().numpy()[0])
 if __name__ == "__main__":
     main()
+
+

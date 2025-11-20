@@ -115,6 +115,9 @@ class TrajectoryVisualizer(object):
         if title is not None:
             self.fig.suptitle(title)
 
+        if title is not None:
+            self.fig.suptitle(title)
+
         self.imgs = []
         for state in state_history:
             self.imgs.append(self.render_image(state))

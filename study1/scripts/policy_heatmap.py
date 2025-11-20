@@ -11,7 +11,7 @@ from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
 from itertools import count
 from src.risky_overcooked_py.mdp.actions import Action
 # import risky_overcooked_rl.algorithms.DDQN as Algorithm
-import study_1 as Algorithm
+import study1 as Algorithm
 import pickle
 from risky_overcooked_rl.utils.visualization import TrajectoryHeatmap
 

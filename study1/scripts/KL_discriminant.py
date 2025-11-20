@@ -18,7 +18,7 @@ from risky_overcooked_rl.algorithms.DDQN.utils.agents import SelfPlay_QRE_OSA_CP
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
 from risky_overcooked_rl.utils.evaluation_tools import Discriminability
 import risky_overcooked_rl.algorithms.DDQN as Algorithm
-from study_1 import get_absolute_save_dir
+from study1 import get_absolute_save_dir
 
 
 def run_discriminant(layout,fnames,p_slip,debug=False):

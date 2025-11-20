@@ -12,13 +12,21 @@ WORKDIR /app
 RUN apt-get -y update
 RUN apt-get upgrade -y
 RUN apt-get install -y libgl1-mesa-dev
+#RUN git clone --recursive https://github.com/mosmith3asu/risky_overcooked.git --branch $OVERCOOKED_BRANCH --single-branch /risky_overcooked
+ENV PYTHONPATH="${PYTHONPATH}:/risky_overcooked/src"
+
+# Install bigger dependancies
+RUN apt-get install -y libgl1-mesa-dev
 RUN pip install opencv-python-headless
 RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 
 
+# Install non-chai dependencies
 COPY ./$SRC_PATH/risky_overcooked_webserver/server/requirements.txt ./requirements.txt
 RUN pip install -r requirements.txt
+
+
 #ADD ./../../../risky_overcooked /risky_overcooked
 # Install eventlet production server if production build
 RUN if [ "$BUILD_ENV" = "production" ] ; then pip install eventlet ; fi

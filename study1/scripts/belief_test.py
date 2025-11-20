@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import random
-from study_1 import get_default_config,get_absolute_save_dir,set_config_value
+from study1 import get_default_config,get_absolute_save_dir,set_config_value
 from risky_overcooked_rl.algorithms.DDQN.utils.agents import SelfPlay_QRE_OSA_CPT
 from risky_overcooked_rl.utils.belief_update import BayesianBeliefUpdate
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv

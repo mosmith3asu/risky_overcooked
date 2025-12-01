@@ -11,13 +11,13 @@
          "risky_shortcuts3_pslip03"
     ],
     "MAX_EXPERIMENTS" : 1,
-    "MAX_GAME_LENGTH" : 60,
+    "MAX_GAME_LENGTH" : 70,
     "AGENT_DIR" : "./static/assets/agents",
     "MAX_FPS" : 30,
     "DATA_COLLECTION" :  "on",
 
     "AGENTS": {
-        "game_length": 60,
+        "game_length": 70,
         "rationality": 10,
         "sophistication": 8,
         "belief_trick": true,
@@ -34,15 +34,7 @@
         "stages": {
             "consent": "DummyData",
             "participant_information": "DemographicData",
-            "demographic": "SurveyData",
-            "risk_propensity": "SurveyData",
 
-            "instructions": "DummyData",
-            "basic_instruction": "DummyData",
-            "risky_tutorial_0": "InteractionData",
-            "risky_tutorial_1": "InteractionData",
-            "risky_tutorial_2": "InteractionData",
-            "risky_tutorial_3": "InteractionData",
 
             "experiment_begin": "DummyData",
 

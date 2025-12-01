@@ -1433,12 +1433,15 @@ class TorchPolicy:
         self.joint_action_dim = len(Action.ALL_JOINT_ACTIONS)
         self.joint_action_space = Action.ALL_JOINT_ACTIONS
         self.num_agents = 2
-        self.rationality = 20
+        # self.rationality = 20
+        self.rationality = 10
         self.model = self.load_model(PATH)
 
         self.QRE = QuantalResponse_torch(rationality=self.rationality,belief_trick=belief_trick,
                                          sophistication=sophistication,joint_action_space=self.joint_action_space,
                                          device=self.device)
+
+        # self.frozen_count = 0
 
 
 

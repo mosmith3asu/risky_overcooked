@@ -716,8 +716,8 @@ class RiskyOvercookedGame(OvercookedGame):
         kwargs['layouts'] = [layout]
 
         super(RiskyOvercookedGame, self).__init__(playerOne=partner_name,
-                                                  max_game_time = EXPERIMENT_CONFIG.get('game_length',60),
-                                                  gameTime = EXPERIMENT_CONFIG.get('game_length',60),
+                                                  max_game_time = EXPERIMENT_CONFIG.get('game_length',70),
+                                                  gameTime = EXPERIMENT_CONFIG.get('game_length',70),
                                                   **kwargs)
         self.mdp_params = kwargs.get("mdp_params", {'neglect_boarders':True})
         self.id = kwargs.get("id", id(self))

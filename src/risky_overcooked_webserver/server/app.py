@@ -407,10 +407,13 @@ def on_user_data(data):
         data = data['prolific_data']
 
         curr_experiment = get_curr_experiment(user_id)
-        with curr_experiment.lock:
-            curr_experiment.prolific_id = data.get("prolific_id", None)
-            curr_experiment.study_id = data.get("study_id", None)
-            curr_experiment.session_id = data.get("session_id", None)
+        if curr_experiment is None:
+            print("[BAD USER DATA REQUEST] No experiment found for user {}".format(user_id), file=sys.stderr)
+        else:
+            with curr_experiment.lock:
+                curr_experiment.prolific_id = data.get("prolific_id", None)
+                curr_experiment.study_id = data.get("study_id", None)
+                curr_experiment.session_id = data.get("session_id", None)
     if DEBUG:
         print(f'\n User {user_id} provided data: {data}', file=sys.stderr,end=PRINTEND)
         print(f'\t| prolific_id: {curr_experiment.prolific_id}', file=sys.stderr,end=PRINTEND)

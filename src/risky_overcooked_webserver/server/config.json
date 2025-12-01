@@ -34,7 +34,15 @@
         "stages": {
             "consent": "DummyData",
             "participant_information": "DemographicData",
+            "demographic": "SurveyData",
+            "risk_propensity": "SurveyData",
 
+            "instructions": "DummyData",
+            "basic_instruction": "DummyData",
+            "risky_tutorial_0": "InteractionData",
+            "risky_tutorial_1": "InteractionData",
+            "risky_tutorial_2": "InteractionData",
+            "risky_tutorial_3": "InteractionData",
 
             "experiment_begin": "DummyData",
 

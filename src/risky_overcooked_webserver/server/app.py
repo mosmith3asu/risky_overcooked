@@ -973,7 +973,7 @@ class RiskyOvercookedGame(OvercookedGame):
                 self.npc_policies[key].activate(self.mdp)
 
         if self.debug:
-            print(f'\n\nActivating OvercookedGame...')
+            print(f'\n [Activating OvercookedGame]', end='')
             print("\tLayout: {}".format(self.curr_layout), end='')
             print("\tp_slip: {}".format(self.mdp.p_slip), end='')
             print("\tWrite data: {}".format(self.write_data), end='')

@@ -436,8 +436,6 @@ def on_trigger_prolific_redirect(data):
     url = "https://app.prolific.com/submissions/complete?cc=C1NXVB3O"
     socketio.emit("redirect", {'url': url}, room=user_id)
 
-
-
 @socketio.on("connect")
 def on_connect():
     user_id = request.sid
@@ -672,10 +670,16 @@ def on_request_stages(data):
     for key in EXPERIMENT_CONFIG['stages'].keys():
         if 'game_loop' in key:
             n = int(key[-1])
+            _isurv = 0
             for i in range(n * len(LAYOUTS), (n + 1) *  len(LAYOUTS)):
                 STAGE_NAMES.append(f'priming{i}')
                 STAGE_NAMES.append(f'game{i}' )
-                STAGE_NAMES.append(f'trust_survey{i}' )
+                # STAGE_NAMES.append(f'trust_survey{i}' )
+                if _isurv == 0 or _isurv == 3:
+                    STAGE_NAMES.append(f'AC_trust_survey{i}')  # attention check
+                else:
+                    STAGE_NAMES.append(f'trust_survey{i}')
+                _isurv += 1
         else:
             STAGE_NAMES.append(key)
 
@@ -1129,10 +1133,15 @@ class Experiment:
 
             elif 'game_loop' in stage_name.lower():
                 n = int(stage_name[-1])
+                _isurv = 0
                 for i in range(n*int(self.n_trials / 2), (n+1)*int(self.n_trials / 2)):
                     STAGES[f'priming{i}'] = SurveyData(f'priming{i}')
                     STAGES[f'game{i}'] = InteractionData(self.layouts[i], self.p_slips[i], self.partners[i])
-                    STAGES[f'trust_survey{i}'] = SurveyData(f'trust_survey{i}')
+                    if _isurv == 0:
+                        STAGES[f'AC_trust_survey{i}'] = SurveyData(f'trust_survey{i}') # attention check
+                    else:
+                        STAGES[f'trust_survey{i}'] = SurveyData(f'trust_survey{i}')  # attention check
+                    _isurv +=1
             else:
                 print(f"Unknown stage type {data_type} for stage {stage_name}")
 
@@ -1170,7 +1179,9 @@ class Experiment:
 
     def log_survey(self,name, response_dict):
         if self.data_collection:
-            assert name in self.stages.keys(), f"Survey Stage {name} not found in stages."
+            assert name in self.stages.keys() or "AC_"+name in self.stages.keys(), f"Survey Stage {name} not found in stages."
+            if name not in self.stages.keys():
+                name = "AC_"+name
             self.stages[name].set_responses(response_dict)
             self.update_stage(name, True)
 

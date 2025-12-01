@@ -999,9 +999,11 @@ class Page_RiskPropensityScale {
 }
 
 class Page_TrustSurvey {
-    constructor(parent_container, num) {
+    constructor(parent_container, num,attention_check=false) {
         this.header = "Post-Game Survey"
         this.name = `trust_survey${num}`;
+        this.attention_check = attention_check;
+
         this.container = document.createElement("div");
         this.container.style.display = "none";
         this.container.style.width = "90%";
@@ -1021,14 +1023,27 @@ class Page_TrustSurvey {
         // ];
         this.sections = [
             {
-                title: "What % of the time will a virtual partner be…",
+                title: "What % of the time will the virtual partner be…",
                 questions: ["Dependable", "Reliable", "Unresponsive", "Predictable"]
             },
             {
-                title: "What % of the time will a virtual partner…",
+                title: "What % of the time will the virtual partner…",
                 questions: ["Act consistently", "Take too many risks", "Meet the needs of the task", "Perform as expected", "Play too safe"]
             }
         ];
+
+        // random number between 1 and 4 for attention check
+        if (this.attention_check) {
+            let randomInteger = Math.floor(Math.random() * 2);
+            if (randomInteger === 0){
+                this.sections[0].questions.push(this.sections[0].questions[2]);
+                this.sections[0].questions[2] = "A car";
+            }
+            else{
+                this.sections[1].questions.push(this.sections[1].questions[2]);
+                this.sections[1].questions[2] = "Play the guitar";
+            }
+        }
         this.scale = [" 0% ", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%"];
         // this.container = document.getElementById(containerId);
         this.render();
@@ -2163,6 +2178,7 @@ socket.on('stage_data', function(data) {
 
         else if (stage_name.includes('priming')){pages.push(new Page_GameInstructions(gameWindow, parseInt(stage_name.slice(-1))));}
         else if (stage_name.includes('game')){ pages.push(new Page_GamePlay(gameWindow, parseInt(stage_name.slice(-1))));}
+        else if (stage_name.includes('AC_trust_survey')){pages.push(new Page_TrustSurvey(gameWindow, parseInt(stage_name.slice(-1)),true));}
         else if (stage_name.includes('trust_survey')){pages.push(new Page_TrustSurvey(gameWindow, parseInt(stage_name.slice(-1))));}
         else if (stage_name==='washout'){ pages.push(new Page_Washout(gameWindow));}
 

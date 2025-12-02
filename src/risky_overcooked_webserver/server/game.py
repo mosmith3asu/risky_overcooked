@@ -1163,6 +1163,7 @@ class TutorialAI:
                         self.curr_route.append('wait4service')
                     return Action.STAY
 
+                action = Action.STAY # no objects
             return action
 
         else:

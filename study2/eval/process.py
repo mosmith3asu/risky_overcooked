@@ -10,7 +10,7 @@ from matplotlib.widgets import Button
 # from pingouin import cronbach_alpha
 
 from study2.static import *
-from study2.eval.eval_utils import get_unprocessed_fnames
+from study2.eval.eval_utils import get_unprocessed_fnames, get_processed_fnames
 
 from risky_overcooked_rl.utils.evaluation_tools import CoordinationFluency
 from risky_overcooked_rl.algorithms.DDQN.utils.agents import DQN_vector_feature
@@ -28,6 +28,37 @@ class DataPoint:
             - More trust in RS-ToM agent = higher score
             - RS-ToM agent more risk-seeking = higher score
     """
+    @staticmethod
+    def load_all_processed_data():
+        fname_dict = get_processed_fnames(full_path=False)
+        COND1_FNAMES = fname_dict['cond1']
+        COND0_FNAMES = fname_dict['cond0']
+
+        # fname = "2025-10-16_22-37-54__PID68c08483061276d20b570579__cond0"
+        # fpath = PROCESSED_COND0_DIR + r"\\"+ fname
+        # dp = DataPoint.load_processed(fpath)
+        dps_cond1 = []
+        dps_cond0 = []
+        dps_all = []
+        for fname in COND0_FNAMES:
+            fpath = PROCESSED_COND0_DIR + "\\" + fname
+            # fpath = PROCESSED_COND0_DIR + fname
+
+            dp = DataPoint.load_processed(fpath)
+            dps_cond0.append(dp)
+
+        for fname in COND1_FNAMES:
+            fpath = PROCESSED_COND1_DIR + "\\" + fname
+
+            # fpath = PROCESSED_COND1_DIR + r"\\"+ fname
+            dp = DataPoint.load_processed(fpath)
+            dps_cond1.append(dp)
+
+        dps_all += dps_cond0 + dps_cond1
+        data_dict = {'cond0': dps_cond0,
+                     'cond1': dps_cond1,
+                     'all': dps_all}
+        return data_dict
     @classmethod
     def load_processed(cls, file_path):
         # raise NotImplementedError("Processed data loading not implemented yet")
@@ -92,6 +123,7 @@ class DataPoint:
             self.RTP_responses, self.RTP_score, self.RTP_dur = self.compute_risk_taking_propensity()
             self.rel_trust_responses, self.rel_trust_score,self.rel_trust_dur = self.compute_relative_trust_score()
             self.rel_risk_perc_responses, self.rel_risk_perc_score,self.rel_risk_perc_dur = self.compute_relative_risk_perception()
+            self.pass_attention_check, self.attention_check_responses = self.compute_attention()
 
             # Surveys (repeated measures)
             self.trust_responses, self.trust_scores, self.delta_trusts, self.trust_durs = self.compute_trust_scores()
@@ -109,7 +141,7 @@ class DataPoint:
             # Check data validity
 
             self.min_survey_var = min_survey_var
-            # self.surveys_valid,self.survey_approval_rate = self.check_survey_validity()
+            self.surveys_valid,self.survey_approval_rate = self.check_survey_validity()
             self.was_active = self.check_activity()
             self.passed_review, self.manual_reviews = self.check_game_validity()
 
@@ -221,6 +253,46 @@ class DataPoint:
                                                         f" got {len(rel_risk_perception_responses)} in filename {self.fname}"
         return rel_risk_perception_responses, rel_risk_perception_score, duration
 
+
+    def compute_attention(self, N=2):
+        # reverse_coded = ('Played more safe',)
+        exclude_items = ['ID',
+                         ' Took more risks',
+                         'Played more safe'
+                         'More dependable' ,
+                         'More reliable',
+                         'More predictable',
+                         'Acted more consistently',
+                         'Better met the needs of the task',
+                        'Better performed as expected']
+
+        #################################################
+        attention_checks = []
+        passed_checks = []
+
+        for ic in range(len(self.conds)):
+            cond_surveys = copy.deepcopy(self._trust_surveys[self.conds[ic]])
+
+            # cond_games = self._games[self.conds[ic]]
+            for _is, s in enumerate(cond_surveys):
+                if "Play the guitar" in s.responses.keys():
+                    key = "Play the guitar"
+
+                elif "A car" in s.responses.keys():
+                    key =  "A car"
+                else:
+                    continue
+
+                resp = (key, int(s.responses[key]))
+                attention_checks.append(resp)
+                passed_checks.append(int(s.responses[key]) == 0)
+        pass_attention = all(passed_checks)
+
+        if not pass_attention:
+            print(f"Warning: Participant {self.fname} failed attention check(s): {attention_checks}", file=sys.stderr)
+        return pass_attention, attention_checks
+
+
     ###############################################
     # Trial metrics ###############################
 
@@ -285,7 +357,11 @@ class DataPoint:
 
             # cond_games = self._games[self.conds[ic]]
             for _is, s in enumerate(cond_surveys):
-                responses = self._exclude_survey_items(s.responses, exclude_items=exclude_items)
+                if "Play the guitar" in s.responses.keys(): extra_exclude =  ["Play the guitar"]
+                elif "A car" in s.responses.keys(): extra_exclude =  ["A car"]
+                else: extra_exclude = []
+
+                responses = self._exclude_survey_items(s.responses, exclude_items=exclude_items + extra_exclude)
                 coded_responses, score = self._parse_survey_responses(responses,reverse_coded=reverse_coded)
                 assert len(coded_responses) == N, f"Expected {N} trust responses,got {len(coded_responses)} "
 
@@ -330,7 +406,11 @@ class DataPoint:
 
             # cond_games = self._games[self.conds[ic]]
             for _is, s in enumerate(cond_surveys):
-                responses = self._exclude_survey_items(s.responses, exclude_items=exclude_items)
+                if "Play the guitar" in s.responses.keys(): extra_exclude =  ["Play the guitar"]
+                elif "A car" in s.responses.keys(): extra_exclude =  ["A car"]
+                else: extra_exclude = []
+                responses = self._exclude_survey_items(s.responses, exclude_items=exclude_items + extra_exclude)
+
                 coded_responses, score = self._parse_survey_responses(responses,reverse_coded=reverse_coded)
                 assert len(coded_responses) == N, f"Expected {N} risk perception responses,got {len(coded_responses)} "
 
@@ -673,7 +753,9 @@ class DataPoint:
     def is_valid(self):
         # return self.was_active and self.surveys_valid and self.passed_review
         return self.surveys_valid and self.passed_review
-
+    @property
+    def PID(self):
+        return self.fname.split('__')[1]
     ###############################################
     # Helper methods ##############################
     def parse_ordered_layouts(self):
@@ -693,6 +775,8 @@ class DataPoint:
             key = f'{stage_key}{i}'
             if key in self._stage_list:
                 all_stages.append(self._raw[key])
+            elif "AC_" + key in self._stage_list:
+                all_stages.append(self._raw["AC_" + key])
             else:
                 break
         n_games = len(all_stages)
@@ -722,13 +806,6 @@ class DataPoint:
         with open(file_path, 'wb') as file:
             pickle.dump(self, file)
         print(f"Processed data saved to {file_path}")
-
-    # def load_processed(self, file_path):
-    #     # raise NotImplementedError("Processed data loading not implemented yet")
-    #     if ".pkl" not in file_path: file_path += ".pkl"
-    #     with open(file_path, 'rb') as file:
-    #         data_point = pickle.load(file)
-    #     return data_point
 
     def load_raw(self, file_path):
         """Read a pickle file and return the deserialized object."""
@@ -791,6 +868,36 @@ class DataPoint:
             except Exception as e:
                 raise print(f"Error loading policy from {PATH}\n{e}")
         return policies
+
+    def to_pandas(self,dtype_header=False):
+        """Convert the DataPoint metrics to a pandas DataFrame for easier analysis."""
+        N = 10  # Number of data points (e.g., games)
+
+        data = {
+            # Metadata
+            'ID': [self.PID]*N,
+            'condition': [self.icond] * N,
+            'age': [self.age] * N,
+            'sex': [self.sex] * N,
+            'risk_propensity': [self.RTP_score]*N,
+
+            # Game info
+            'game_num': np.arange(10),
+            'partner_type':[self.conds[0]]*int(N/2) +[self.conds[1]]*int(N/2),
+            'risk_preference': self.priming_labels[0] + self.priming_labels[1],
+            'game_reward': self.rewards[0] + self.rewards[1],
+            'trust_score': self.trust_scores[0] + self.trust_scores[1],
+            'partner_risk_perception': self.risk_perc_scores[0] + self.risk_perc_scores[1],
+            'num_human_risks': self.nH_risks[0] + self.nH_risks[1],
+            'num_robot_risks': self.nR_risks[0] + self.nR_risks[1],
+            'human_predictability': self.predictability[0] + self.predictability[1],
+            '%concurrent_activity': self.C_ACTs[0] + self.C_ACTs[1],
+            '%human_idle': self.H_IDLEs[0] + self.H_IDLEs[1],
+            '%robot_idle': self.R_IDLEs[0] + self.R_IDLEs[1]
+            # 'delta_trusts',
+        }
+        df = pd.DataFrame(data)
+        return df
 
 
     def __repr__(self):
@@ -1083,12 +1190,14 @@ def main():
     # fname = "2025-10-28_23-57-46__PID5f3ac1732efa0a74f975b1a8__cond1"
     # fname = "2025-11-06_17-35-29__TEST_PID67f447d8bd15d28465f1ec51__cond0"
     # fname = "2025-11-06_18-23-16__PID64136bf30b27746cb96f7db8__cond1"
-    fname = "2025-11-06_20-10-11__PID61501cb61a74bfb111a98657__cond0"
-    dp = DataPoint(fname)
-    dp.save()
-    # for fname in get_unprocessed_fnames():
-    #     dp = DataPoint(fname)
-    #     dp.save()
+    # fname = "2025-12-01_22-27-04__PID63474e67a5fd298c6103c409__cond1"
+    # dp = DataPoint(fname)
+    # dp.save()
+    #
+    # print(dp.to_pandas())
+    for fname in get_unprocessed_fnames():
+        dp = DataPoint(fname)
+        dp.save()
 
 
 if __name__ == '__main__':

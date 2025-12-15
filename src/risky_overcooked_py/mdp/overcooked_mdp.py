@@ -2785,7 +2785,10 @@ class OvercookedGridworld(object):
 
     def get_lossless_encoding_vector_astensor(self, overcooked_state,device):
         feat_vec = self.get_lossless_encoding_vector(overcooked_state)
-        return torch.from_numpy(feat_vec).to(device,non_blocking=True).float()
+        # return torch.from_numpy(feat_vec).to(device,non_blocking=True).float()
+        return torch.from_numpy(feat_vec).to(device).float()
+
+
         # return torch.from_numpy(feat_vec).cuda(non_blocking=True).float()
 
         # # feature_vector = self.get_lossless_encoding_vector(overcooked_state)

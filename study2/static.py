@@ -3,6 +3,9 @@ import os
 _current_dir = os.path.dirname(os.path.abspath(__file__))
 _proj_root_dir = os.path.join(_current_dir.split("risky_overcooked")[0] , "risky_overcooked")
 
+
+HUMANDATA_DIR = os.path.join(_current_dir, "human_data")
+
 PROCESSED_DIR = os.path.join(_current_dir, "human_data", "processed")
 PROCESSED_COND0_DIR = os.path.join(PROCESSED_DIR, "cond_0")
 PROCESSED_COND1_DIR = os.path.join(PROCESSED_DIR, "cond_1")

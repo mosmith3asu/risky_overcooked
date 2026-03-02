@@ -7,6 +7,7 @@ import json
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
+import warnings
 # from pingouin import cronbach_alpha
 
 from study2.static import *
@@ -19,6 +20,86 @@ from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_rl.algorithms.DDQN.utils.game_thoery import QuantalResponse_torch
 from risky_overcooked_rl.utils.visualization import TrajectoryVisualizer
 
+
+# EXCLUDE_PIDs = [
+# "PID677317a5e11a1e2ab07f415e",
+# "PID6726eb8bd8a35b7366b1790a",
+# "PID5eb402bed161131f83db9ce4",
+# "PID6600a119385d8631c41cd795",
+# "PID5f3ac1732efa0a74f975b1a8",
+# "PID66463e4efb99fba5a67a010a",
+# # "PID66f305037af69346a9a55b42",
+# "PID68dd6ada1c06b7f58ff4020c",
+# # "PID5dce3ccc32ccbf0cd54263db",
+# # "PID5c8974ef34daa70015e92daf",
+# "PID58a0c507890ea500014c4e9b",
+# # "PID672135003f5e272c889620ea",
+# "PID65f366dfcb46b71238e9418d",
+# "PID66293ce3dba0764775195e58",
+# # "PID5dce29700ad506063969a4a5",
+# "PID66b01097e95b0626c2cd7b5c",
+# # "PID63474e67a5fd298c6103c409",
+# "PID67f192e08cf17c568074969d",
+# "PID666b59f95861737274e65238",
+# ]
+EXCLUDE_DICT_PIDs = {
+    'PID677317a5e11a1e2ab07f415e':	0,
+    'PID66d8e14e71c04a7d23ff43c9':	0,
+    'PID6726eb8bd8a35b7366b1790a':	0,
+    'PID5eb402bed161131f83db9ce4':	0,
+    'PID6600a119385d8631c41cd795':	0,
+    'PID66463e4efb99fba5a67a010a':	0,
+    'PID5f3ac1732efa0a74f975b1a8':	0,
+    'PID5bce1e8453de590001846151':	0,
+    'PID66f305037af69346a9a55b42':	0,
+    'PID68dd6ada1c06b7f58ff4020c':	0,
+    'PID666f76b68b89442817be678a':	0,
+    'PID5dce3ccc32ccbf0cd54263db':	1,
+    'PID66d13205a7d03cb99053fea4':	0,
+    'PID5c8974ef34daa70015e92daf':	1,
+    'PID58a0c507890ea500014c4e9b':	0,
+    'PID672135003f5e272c889620ea':	1,
+    'PID65f366dfcb46b71238e9418d':	0,
+    'PID66293ce3dba0764775195e58':	0,
+    'PID62ab399e15b98baaf3099d60':	0,
+    'PID5dce29700ad506063969a4a5':	1,
+    'PID66b01097e95b0626c2cd7b5c':	0,
+    'PID63474e67a5fd298c6103c409':	1,
+    'PID67f192e08cf17c568074969d':	0,
+    'PID666b59f95861737274e65238':	0,
+    'PID67722f8e3a4f08a288a1f640':	1,
+    'PID66c0f464e0ff62798027b486':	1,
+    'PID691525ea2e1385d5abf9772e':	1,
+    'PID670d8b142f87173ffe3b4763':	1,
+    'PID60d50ceb7c563c73f91d9ec5':	1,
+    'PID66ba7e4126d266ff3cdf6d79':	1,
+    'PID5e0857276aab7c17f7e21662':	1,
+    'PID66db9db4324609f1a7231f49':	1,
+    'PID5f0f771eeab74413eb386872':	1,
+    'PID66b504cd131c63b36b682b8d':	1,
+    'PID67e2ec1e3ccfcc02f94d6351':	1,
+    'PID5e29cc3230cf9d03580c34bf':	1,
+    'PID66520f31e4b5df0b6b365ed3':	0,
+    'PID5d4ac837d2844e0001ecf699':	1,
+    'PID68c08483061276d20b570579':	1,
+    'PID60a1e1f4a3707c983a98f185':	1,
+    'PID64136bf30b27746cb96f7db8':	1,
+    'PID67435174b76a747138e8a47a':	1,
+    'PID616f727b03e888e0f8213eec':	1,
+    'PID63d1c79ff86ec609af6f77ad':	1,
+    'PID653703627539f3a8b2ed4af3':	1,
+    'PID60ac66a8e1bf5a1c51fa864c':	1,
+    'PID67ee6f72aa206db46d5e9d11':	1,
+    'PID60c2cc653d0c6208fc8899fc':	1,
+    'PID663a6a13c0b6b4aff21552f8':	1,
+    'PID6079ff1600ff2b7455e1c3e0':	1,
+    'PID60c8467d9872c0d83f695499':	1,
+    'PID5d9d5debf346240014428500':	1,
+}
+EXCLUDE_PIDs = [pid for pid,flag in EXCLUDE_DICT_PIDs.items() if flag == 0]
+
+AGENT_CACHE = {}
+
 class DataPoint:
     """
     Scores and Reverse Codes are framed as:
@@ -29,29 +110,36 @@ class DataPoint:
             - RS-ToM agent more risk-seeking = higher score
     """
     @staticmethod
+    def get_trust_questions(df_labels= False):
+        labels = ['Dependable', 'Reliable', '-(Unresponsive)', 'Predictable',
+            'Act consistently', 'Meet the needs of the task', 'Perform as expected'
+        ]
+        if df_labels:
+            labels = [f'trust_q{i}_{label}' for i,label in enumerate(labels)]
+        return labels
+    @staticmethod
     def load_all_processed_data():
         fname_dict = get_processed_fnames(full_path=False)
         COND1_FNAMES = fname_dict['cond1']
         COND0_FNAMES = fname_dict['cond0']
 
-        # fname = "2025-10-16_22-37-54__PID68c08483061276d20b570579__cond0"
-        # fpath = PROCESSED_COND0_DIR + r"\\"+ fname
-        # dp = DataPoint.load_processed(fpath)
+        for ex_pid in EXCLUDE_PIDs:
+            assert any(ex_pid in fname for fname in COND0_FNAMES + COND1_FNAMES), f"Excluded PID {ex_pid} not found in filenames"
+
         dps_cond1 = []
         dps_cond0 = []
         dps_all = []
         for fname in COND0_FNAMES:
-            fpath = PROCESSED_COND0_DIR + "\\" + fname
-            # fpath = PROCESSED_COND0_DIR + fname
 
+            fpath = PROCESSED_COND0_DIR + "\\" + fname
             dp = DataPoint.load_processed(fpath)
+            dp.included = all(ex_pid not in fname for ex_pid in EXCLUDE_PIDs)
             dps_cond0.append(dp)
 
         for fname in COND1_FNAMES:
             fpath = PROCESSED_COND1_DIR + "\\" + fname
-
-            # fpath = PROCESSED_COND1_DIR + r"\\"+ fname
             dp = DataPoint.load_processed(fpath)
+            dp.included = all(ex_pid not in fname for ex_pid in EXCLUDE_PIDs)
             dps_cond1.append(dp)
 
         dps_all += dps_cond0 + dps_cond1
@@ -92,6 +180,7 @@ class DataPoint:
         self.path = file_path
         self._raw = self.load_raw(file_path)
         self.survey_range = (10,0)
+        self._included = True
 
 
         # self.reverse_coded = []
@@ -135,10 +224,15 @@ class DataPoint:
             self.rewards = self.compute_rewards()
             self.nH_risks, self.nR_risks = self.compute_n_risks()
             self.predictability = self.compute_predictabilities()
+            self.beliefs, self.inferences, self.accuracies = self.compute_belief_accuracies()
             self.C_ACTs, self.H_IDLEs, self.R_IDLEs = self.compute_coordination_fluency()
             self.H_frozen, self.R_frozen, self.any_frozen = self.compute_frozen()
 
             # Check data validity
+            # if not self.pass_attention_check:
+            #     print(f"Participant {self.fname} failed attention check {self.attention_check_responses}", file=sys.stderr)
+            # else:
+            #     print(f"Participant {self.fname} attention check passed: {self.attention_check_responses}")
 
             self.min_survey_var = min_survey_var
             self.surveys_valid,self.survey_approval_rate = self.check_survey_validity()
@@ -322,7 +416,7 @@ class DataPoint:
                 if p.responses['priming'] in averse_responses:
                     label,score = 'averse', -1
                 elif p.responses['priming'] in rational_responses:
-                    label,score = 'rational', -1
+                    label,score = 'rational', 0
                 elif p.responses['priming'] in seeking_responses:
                     label,score = 'seeking',1
                 else:
@@ -338,7 +432,127 @@ class DataPoint:
         return priming_labels, priming_scores, priming_durs
 
     def compute_belief_accuracies(self):
-        raise NotImplementedError("Belief accuracy computation not implemented yet")
+        beliefs = copy.deepcopy(self._def_dict)
+        inferences = copy.deepcopy(self._def_dict)
+        accuracies = copy.deepcopy(self._def_dict)
+
+        for ic in range(len(self.conds)):
+            cond_games = self._games[self.conds[ic]]
+
+            for ig, g in enumerate(cond_games):
+                game_beliefs = np.empty([len(g.transition_history),3])  # time_steps,num_policies
+                game_inferences = np.empty([len(g.transition_history)])  # time_steps
+                for t, s, aH, aR, info in g.transition_history:
+                    # b = np.array([info['belief'][p] for p in ['averse','neutral','seeking']])
+                    b = json.loads(info['belief'].replace("'",'"'))
+                    if len(b.keys()) == 1:  # rational
+                        b = np.array([0,1,0])
+                    else:
+                        b = np.array([b[p] for p in ['averse', 'neutral', 'seeking']])
+
+                    game_beliefs[t-1, :] = b
+                    game_inferences[t-1] = np.argmax(b) - 1 # adjust to -1,0,1
+
+                # true_policy = self.priming_scores[self.conds[ic]][ig]
+                true_policy = self.priming_scores[ic][ig]
+
+                game_accuracy = np.mean(game_inferences == true_policy)
+
+                beliefs[self.conds[ic]].append(game_beliefs)
+                beliefs[ic].append(game_beliefs)
+                inferences[self.conds[ic]].append(game_inferences)
+                inferences[ic].append(game_inferences)
+
+
+                accuracies[self.conds[ic]].append(game_accuracy)
+                accuracies[ic].append(game_accuracy)
+
+
+
+
+        return beliefs,inferences,accuracies
+
+
+        # raise NotImplementedError("Belief accuracy computation not implemented yet")
+
+    def recompute_belief_accuracies(self):
+        from risky_overcooked_webserver.server.game import BayesianBeliefUpdate
+        # print("Recomputing belief accuracies with belief updater...")
+        beliefs = copy.deepcopy(self._def_dict)
+        inferences = copy.deepcopy(self._def_dict)
+        accuracies = copy.deepcopy(self._def_dict)
+        # try:
+        for ic in range(len(self.conds)):
+            cond_games = self._games[self.conds[ic]]
+            # Instantiate Belief Updater
+
+            agent_names = ['averse', 'neutral', 'seeking'] if self.conds[ic] == 'rs-tom' else ['neutral']
+
+
+
+            for ig, g in enumerate(cond_games):
+                game_beliefs = np.empty([len(g.transition_history), 3])  # time_steps,num_policies
+                game_inferences = np.empty([len(g.transition_history)])  # time_steps
+                mdp = OvercookedGridworld.from_layout_name(g.layout, p_slip=g.p_slip, neglect_boarders=True)
+
+                policies = self._models[ic][ig]
+                belief = BayesianBeliefUpdate(policies, policies,
+                                              names=agent_names,
+                                              iego=1,
+                                              ipartner=0,
+                                              capacity=10,
+                                              alpha = 0.99
+                                              )
+                belief.reset_prior()
+
+
+                # for t, state, aH, aR, info in g.transition_history:
+                for t, state, aH, aR, info in g.transition_history:
+
+
+                    if len(agent_names) == 1: # rational
+                        b = np.array([0, 1, 0])
+                    else:
+
+
+                        state_dict = json.loads(state.replace("'", '"'))
+                        state = OvercookedState.from_dict(state_dict)
+                        # aH =  tuple(aR) if isinstance(aR, list) else aR
+                        aH = tuple(aH) if isinstance(aH, list) else aH
+
+                        obs = mdp.get_lossless_encoding_vector_astensor(state,  device='cpu').unsqueeze(0) # ,
+                        human_iA = Action.ACTION_TO_INDEX[aH]
+
+                        is_trivial = (aH == "Stay" or aH == (0, 0))
+                        if not is_trivial:
+                            belief.update_belief(obs, human_iA, is_only_partner_action=True)
+                        b = belief.belief
+                        # b = np.array([0, 1, 0])
+
+
+
+                    game_beliefs[t - 1, :] = b
+                    game_inferences[t - 1] = np.argmax(b) - 1  # adjust to -1,0,1
+
+                # true_policy = self.priming_scores[self.conds[ic]][ig]
+                true_policy = self.priming_scores[ic][ig]
+
+                game_accuracy = np.mean(game_inferences == true_policy)
+
+                beliefs[self.conds[ic]].append(game_beliefs)
+                beliefs[ic].append(game_beliefs)
+                inferences[self.conds[ic]].append(game_inferences)
+                inferences[ic].append(game_inferences)
+
+                accuracies[self.conds[ic]].append(game_accuracy)
+                accuracies[ic].append(game_accuracy)
+        # except Exception as e:
+        #     print(f"Error recomputing belief accuracies for file {self.fname}: {e}", file=sys.stderr)
+        #     return self.compute_belief_accuracies()
+
+        return beliefs, inferences, accuracies
+
+        # raise NotImplementedError("Belief accuracy computation not implemented yet")
 
     def compute_trust_scores(self,N=7  ):
         reverse_coded = ('Unresponsive',)
@@ -482,6 +696,8 @@ class DataPoint:
 
     def compute_predictabilities(self,iH=0,**kwargs):
         predictabilities = copy.deepcopy(self._def_dict)
+        beliefs = copy.deepcopy(self._def_dict)
+
         mdp_params = kwargs.get("mdp_params", {'neglect_boarders': True})
 
         for ic in range(len(self.conds)):
@@ -585,16 +801,14 @@ class DataPoint:
             raw_var, rc_var, fails = self._score_survey_validity(rps)
 
             if any(fails.values()) or (dur < min_dur if dur is not None else False):
-                print(f"\nWarning: Participant {self.fname} failed survey validity check:"
-                      f"\n\t| Duration = {dur}"
-                      f"\n\t| raw_var={raw_var}, rc_var={rc_var}, fails={fails}",file=sys.stderr)
                 dur_str = f' (dur={dur:.1f}s)' if dur is not None else 'No Dur'
                 approved = SurveyVisualizer(rps).review(title=f' ({dur_str}s) [{self.fname}]')
                 if not approved:
                     dur = dur if dur is not None else -1
                     failure_durs.append(dur)
                     failure_item_durs.append(dur / len(rps))
-            else: approved = True
+            else:
+                approved = True
             approvals.append(approved)
 
         # Repeated surveys ###############
@@ -603,11 +817,12 @@ class DataPoint:
                 for i, rps in enumerate(survey[cond]):
                     rps = copy.deepcopy(rps)
                     rps.update(self.risk_perc_responses[cond][i])
+
                     dur = self.trust_durs[cond][i]
 
                     raw_var, rc_var, fails = self._score_survey_validity(rps)
-                    if True:
-                    # if any(fails.values()):
+                    # if True:
+                    if any(fails.values()):
                     #     print(f"Warning: Participant {self.fname} failed survey validity check:"
                     #           f"\n raw_var={raw_var}, rc_var={rc_var}, fails={fails}", file=sys.stderr)
                         dur_str = f' (dur={dur:.1f}s)' if dur is not None else None
@@ -619,52 +834,25 @@ class DataPoint:
                     else:
                         approved = True
                     approvals.append(approved)
-        # for survey in repeated_survey:
-        #     for cond in self.conds:
-        #         for rps in survey[cond]:
-        #             raw_var, rc_var, fails = self._score_survey_validity(rps)
-        #             # if True:
-        #             if any(fails.values()):
-        #                 print(f"Warning: Participant {self.fname} failed survey validity check:"
-        #                       f"\n raw_var={raw_var}, rc_var={rc_var}, fails={fails}", file=sys.stderr)
-        #                 approved = SurveyVisualizer(rps).review(title='')
-        #             else:
-        #                 approved = True
-        #             approvals.append(approved)
 
-
-
-
-
-        # for cond in self.conds:
-        #     cond_surveys = copy.deepcopy(repeated_surveys[0][cond])
-        #     for survey in cond_surveys:
-        #         raw_var, rc_var, fails = self._score_survey_validity(survey)
-        #         if any(fails.values()):
-        #             print(f"Warning: Participant {self.fname} failed survey validity check:"
-        #                   f" raw_var={raw_var}, rc_var={rc_var}, fails={fails}",file=sys.stderr)
-        #             approved = SurveyVisualizer(survey).review(title='')
-        #         else:
-        #             approved = True
-        #         approvals.append(approved)
         #
         approval_rate = np.array(approvals, dtype=int).mean()
         is_valid = approval_rate > approval_thresh
 
 
-        if not is_valid:
-            print(f"\n\nWarning: Participant {self.fname} failed survey validity with approval rate {approval_rate}")
-            print(f'Rejection Messsage:')
-            print(f"Unfortunately, your responses to {(1-approval_rate)*100:0.1f}% of the provided surveys"
-                  f" failed one or more conservative validity checks, which indicate that they may not have been completed with sufficient attention or effort."
-                  f" This result was determined by "
-                    f"A) analysis of variance in reverse-coded questions (i.e., questions with opposite meaning) which show inconsistent responses and "
-                    f"B) unusually short completion times with an average of {np.mean(failure_durs):.1f} seconds per survey ({np.mean(failure_item_durs):.1f} seconds per item). "
-                  f"Both determinations indicate insufficient engagement with the content, typically due to straight-lined or random responses."
-                  " \n\nAs a result, we are unable to approve this submission. We appreciate your time, but to ensure data quality"
-                  " and fairness across participants, only valid and attentive responses can be accepted.")
-        else:
-            print(f'Participant {self.fname} passed survey validity with approval rate {approval_rate}')
+        # if not is_valid:
+        #     print(f"\n\nWarning: Participant {self.fname} failed survey validity with approval rate {approval_rate}")
+        #     print(f'Rejection Messsage:')
+        #     print(f"Unfortunately, your responses to {(1-approval_rate)*100:0.1f}% of the provided surveys"
+        #           f" failed one or more conservative validity checks, which indicate that they may not have been completed with sufficient attention or effort."
+        #           f" This result was determined by "
+        #             f"A) analysis of variance in reverse-coded questions (i.e., questions with opposite meaning) which show inconsistent responses and "
+        #             f"B) unusually short completion times with an average of {np.mean(failure_durs):.1f} seconds per survey ({np.mean(failure_item_durs):.1f} seconds per item). "
+        #           f"Both determinations indicate insufficient engagement with the content, typically due to straight-lined or random responses."
+        #           " \n\nAs a result, we are unable to approve this submission. We appreciate your time, but to ensure data quality"
+        #           " and fairness across participants, only valid and attentive responses can be accepted.")
+        # else:
+        #     print(f'Participant {self.fname} passed survey validity with approval rate {approval_rate}')
         return is_valid, approval_rate
 
     def check_game_validity(self):
@@ -688,9 +876,12 @@ class DataPoint:
                     mdp = OvercookedGridworld.from_layout_name(g.layout, p_slip=g.p_slip,neglect_boarders=True)
                     env = OvercookedEnv.from_mdp(mdp, horizon=360)
                     visualizer = TrajectoryVisualizer(env)
-                    title=f' {self.conds[ic]} - Game {ig+1} [Inactive: {was_frozen} Frozen: {was_frozen}]'
+                    title=f'{self.fname}\n {self.conds[ic]} - Game {ig+1} [Inactive: {was_frozen} Frozen: {was_frozen}]'
                     approved = visualizer.preview_approve_trajectory(state_history, title = title)
                     approvals.append(approved)
+
+                    if not approved:
+                        break
                 else:
                     approvals.append(True)
 
@@ -747,7 +938,39 @@ class DataPoint:
 
         return human_frozen, robot_frozen, any_frozen
 
+    def compute_saturated_trust(self,empty_val = ''):
+        saturated_thresh= 0.1
+        trust_score_sat = copy.deepcopy(self.trust_scores)
+        dtrust_sat = copy.deepcopy(self.delta_trusts)
+        for partner in ['rs-tom', 'rational']:
+            max_val = 10
+            values = trust_score_sat[partner].copy()
+            values_convol = np.vstack([values[0:-1], values[1:]])
+            is_saturated = np.all((values_convol > max_val * (1- saturated_thresh)) |
+                                  (values_convol < max_val * (saturated_thresh)), axis=0)
+            for i, is_sat in enumerate(is_saturated):
+                if is_sat:
+                    trust_score_sat[partner][i+1] = empty_val
+                    trust_score_sat[self.conds.index(partner)][i+1] = empty_val
+                    dtrust_sat[partner][i] = empty_val
+                    dtrust_sat[self.conds.index(partner)][i] = empty_val
+        return trust_score_sat, dtrust_sat
 
+
+
+    def _recompute_measures(self):
+        warnings.warn("Recomputing some measures from raw data. This should be done with raw data to save time")
+        self.priming_labels, self.priming_scores, self.priming_durs = self.compute_priming_labels()
+        self.beliefs, self.inferences, self.accuracies = self.compute_belief_accuracies()
+        # self.beliefs, self.inferences, self.accuracies = self.recompute_belief_accuracies()
+        self.trust_scores_sat, self.delta_trusts_sat = self.compute_saturated_trust()
+
+    @property
+    def include(self):
+        return self._included
+    @include.setter
+    def include(self, val):
+        self._included = int(val)
 
     @property
     def is_valid(self):
@@ -869,36 +1092,148 @@ class DataPoint:
                 raise print(f"Error loading policy from {PATH}\n{e}")
         return policies
 
-    def to_pandas(self,dtype_header=False):
+    def to_pandas(self):
         """Convert the DataPoint metrics to a pandas DataFrame for easier analysis."""
+
+        self._recompute_measures() # if necessary
+        rs_thresh = -0.2565
+        m_priming_score = np.mean(self.priming_scores[0] + self.priming_scores[1])
+        empty_val = ''
         N = 10  # Number of data points (e.g., games)
 
         data = {
             # Metadata
-            'ID': [self.PID]*N,
+            'include':[int(self.included)]*N,
+            'ID': [self.PID] * N,
+            'mdiff_reward': [np.mean(self.rewards['rs-tom']) - np.mean(self.rewards['rational'])]*N,
+            'mdiff_trust': [np.mean(self.trust_scores['rs-tom']) - np.mean(self.trust_scores['rs-tom']) ]*N,
+            'mdiff_dtrust': [np.mean(self.delta_trusts['rs-tom']) - np.mean(self.delta_trusts['rational'])]*N,
+
             'condition': [self.icond] * N,
             'age': [self.age] * N,
             'sex': [self.sex] * N,
             'risk_propensity': [self.RTP_score]*N,
+            'm_priming_score': [m_priming_score]*N,
+            'rs_label_zero': ['Seeking' if m_priming_score > 0 else 'Averse']*N,
+            'rs_label_clustered': ['Seeking' if rs_thresh > 0 else 'Averse']*N,
+            'm_human_risks': [np.mean(self.nH_risks[0] + self.nH_risks[1])] * N,
+            'm_robot_risks': [np.mean(self.nR_risks[0] + self.nR_risks[1])] * N,
+
 
             # Game info
             'game_num': np.arange(10),
-            'partner_type':[self.conds[0]]*int(N/2) +[self.conds[1]]*int(N/2),
-            'risk_preference': self.priming_labels[0] + self.priming_labels[1],
-            'game_reward': self.rewards[0] + self.rewards[1],
+            'interaction_num': np.hstack([np.arange(5),np.arange(5)]),
+            'partner_type': [self.conds[0]] * int(N / 2) + [self.conds[1]] * int(N / 2),
+            'Reward': self.rewards[0] + self.rewards[1],
             'trust_score': self.trust_scores[0] + self.trust_scores[1],
-            'partner_risk_perception': self.risk_perc_scores[0] + self.risk_perc_scores[1],
+            'dtrust': [empty_val] + self.delta_trusts[0] + [empty_val] + self.delta_trusts[1],
+            'C-ACT': self.C_ACTs[0] + self.C_ACTs[1],
+
+            'layout': self.layouts[0] + self.layouts[1],
+            'p_slip': self.p_slips[0] + self.p_slips[1],
+            'risk_preference': self.priming_labels[0] + self.priming_labels[1],
+            'priming_score': self.priming_scores[0] + self.priming_scores[1],
+
             'num_human_risks': self.nH_risks[0] + self.nH_risks[1],
             'num_robot_risks': self.nR_risks[0] + self.nR_risks[1],
-            'human_predictability': self.predictability[0] + self.predictability[1],
-            '%concurrent_activity': self.C_ACTs[0] + self.C_ACTs[1],
-            '%human_idle': self.H_IDLEs[0] + self.H_IDLEs[1],
-            '%robot_idle': self.R_IDLEs[0] + self.R_IDLEs[1]
-            # 'delta_trusts',
+            'H-Pred': self.predictability[0] + self.predictability[1],
+            'C-ACT': self.C_ACTs[0] + self.C_ACTs[1],
+            'H-IDLE': self.H_IDLEs[0] + self.H_IDLEs[1],
+            'R-IDLE': self.R_IDLEs[0] + self.R_IDLEs[1],
+            'belief_accuracies': self.accuracies[0] + self.accuracies[1],
+
+            # 'trust_slope': [self.trust_slopes[0]]*int(N/2) + [self.trust_slopes[1]]*int(N/2),
+            # 'dtrust': [0] + self.delta_trusts[0] + [0] + self.delta_trusts[1],
+            # 'trust_responses': self.trust_responses[0] + self.trust_responses[1],
+
+
         }
+
+        response_items = self.get_trust_questions()
+        for ipartner in range(2):
+            for igame in range(5):
+                for iq, qkey in enumerate(response_items):
+                    key = f'trust_q{iq}_{qkey}'
+                    if key not in data:
+                        data[key] = []
+                    data[key] += [0.1*self.trust_responses[ipartner][igame][qkey]]
+
+
+
+
         df = pd.DataFrame(data)
         return df
 
+    def to_pandas_flat(self):
+        """Convert the DataPoint metrics to a pandas DataFrame for easier analysis."""
+        self._recompute_measures()  # if necessary
+        m_priming_score =np.mean(self.priming_scores[0] + self.priming_scores[1])
+        saturated_thresh = 0.1
+
+        data_dict = {
+            # Metadata
+            'include':[int(self.included)],
+            'ID': [self.PID],
+            'condition': [self.icond],
+            'age': [self.age],
+            'sex': [self.sex],
+            'risk_propensity': [self.RTP_score],
+            'm_priming_score': [m_priming_score],
+            # 'm_human_risks': [np.mean(self.nH_risks[0] + self.nH_risks[1])] * N,
+            # 'm_robot_risks': [np.mean(self.nR_risks[0] + self.nR_risks[1])] * N,
+
+        }
+
+        TIMSERIES_DATA = {
+            'reward': self.rewards,
+            'dtrust': self.delta_trusts,
+            'trust_score': self.trust_scores,
+            'trust_score_sat': self.trust_scores_sat,
+            'dtrust_sat': self.delta_trusts_sat,
+            'CACT': self.C_ACTs,
+        }
+        MEAN_DIFFS = {}
+        for key, all_data in TIMSERIES_DATA.items():
+            means = []
+            for partner in ['rs-tom', 'rational']:
+
+                values = all_data[partner]
+                for i in range(len(values)):
+                    prefix = f'{partner}_G{i+1}_'
+                    data_dict[prefix + key]  = [values[i]]
+                # prefix = f'{partner}_mean_'
+                # data_dict[prefix + key] = [np.mean(values)]
+                means.append(np.mean([v for v in values if v != '']))
+
+
+            MEAN_DIFFS[f'meandiff_{key}'] = means[0] - means[1]
+            # prefix = f'{partner}_meandiff_'
+            # data_dict[prefix + key] = [means[0] - means[1]]
+
+        data_dict[f'RS_label'] = 'Seeking' if m_priming_score > 0 else 'Averse'
+
+        # filter saturated trust scores
+        # for partner in ['rs-tom', 'rational']:
+        #     max_val = 10
+        #     values = self.trust_scores[partner].copy()
+        #     values_convol = np.vstack([values[0:-2],
+        #                                values[1:-1]])
+        #     is_saturated = np.all((values_convol > max_val-saturated_thresh) |
+        #                           (values_convol < saturated_thresh), axis=0)
+        #     # pad with leading 0
+        #     is_saturated = np.insert(is_saturated, 0, False)
+        #
+        #     values[is_saturated] = 0
+
+
+        # data_dict[f'rs-tom_trust_slope'] = [self.trust_slopes['rs-tom']]
+        # data_dict[f'rational_trust_slope'] = [self.trust_slopes['rs-tom']]
+        for key, val in MEAN_DIFFS.items():
+            data_dict[key] = [val]
+
+
+        df = pd.DataFrame(data_dict)
+        return df
 
     def __repr__(self):
         KEYS = ['rs-tom', 'rational']
@@ -952,7 +1287,7 @@ class TorchPolicy:
         self.joint_action_dim = len(Action.ALL_JOINT_ACTIONS)
         self.joint_action_space = Action.ALL_JOINT_ACTIONS
         self.num_agents = 2
-        self.rationality = 20
+        self.rationality = 1
         self.model = self.load_model(PATH)
 
         self.QRE = QuantalResponse_torch(rationality=self.rationality, belief_trick=belief_trick,
@@ -1191,10 +1526,15 @@ def main():
     # fname = "2025-11-06_17-35-29__TEST_PID67f447d8bd15d28465f1ec51__cond0"
     # fname = "2025-11-06_18-23-16__PID64136bf30b27746cb96f7db8__cond1"
     # fname = "2025-12-01_22-27-04__PID63474e67a5fd298c6103c409__cond1"
+    # fname = "2025-12-02_17-39-42__PID65f366dfcb46b71238e9418d__cond0"
+    # fname = "2025-12-08_19-28-56__PID6788d82f8ec0422c248b737a__cond1"
+
+    # fname = "2026-01-13_04-24-29__PID65c243c37e0d77ca70ee030e__cond0"
+    #
+    # # fname = "2025-12-16_04-17-35__PID66293ce3dba0764775195e58__cond0"
     # dp = DataPoint(fname)
     # dp.save()
-    #
-    # print(dp.to_pandas())
+
     for fname in get_unprocessed_fnames():
         dp = DataPoint(fname)
         dp.save()

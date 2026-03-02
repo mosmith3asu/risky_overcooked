@@ -3,7 +3,7 @@ import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle, Patch
-
+from typing import Iterable, Optional, Union
 import pandas as pd
 from study2.eval.process import DataPoint,TorchPolicy
 from study2.eval.eval_utils import get_processed_fnames
@@ -520,6 +520,336 @@ def plot_grandmean_bar(ax, data, measures: list,
     # Attach secondary axis for external use without breaking return type
     ax.independent_ax = ax2
     return ax
+def _kde_1d_gaussian(x: np.ndarray, grid: np.ndarray) -> np.ndarray:
+    """
+    Lightweight 1D Gaussian KDE (no SciPy dependency).
+    Bandwidth uses Silverman's rule-of-thumb.
+    """
+    x = x[np.isfinite(x)]
+    n = x.size
+    if n < 2:
+        return np.full_like(grid, np.nan, dtype=float)
+
+    std = np.std(x, ddof=1)
+    if not np.isfinite(std) or std <= 0:
+        return np.full_like(grid, np.nan, dtype=float)
+
+    h = 1.06 * std * (n ** (-1 / 5))
+    if not np.isfinite(h) or h <= 0:
+        return np.full_like(grid, np.nan, dtype=float)
+
+    z = (grid[:, None] - x[None, :]) / h
+    dens = np.exp(-0.5 * z * z).mean(axis=1) / (h * np.sqrt(2 * np.pi))
+    return dens
+
+
+def plot_density_matrix(
+    ax: plt.Axes,
+    df: pd.DataFrame,
+    columns: Optional[Iterable[str]] = None,
+    *,
+    bins: int = 35,
+    diag: str = "kde",          # "kde" or "hist"
+    cmap: str = "Blues",
+    title: Optional[str] = "Pairwise density matrix",
+    share_limits: bool = True,
+    show_colorbar: bool = True,
+    label_fontsize: int = 9,
+) -> np.ndarray:
+    """
+    Plot a pairwise density "matrix" analogous to a correlation matrix, using inset axes.
+
+    - Diagonal cells: 1D density (KDE by default; or histogram).
+    - Off-diagonal cells: 2D density via normalized 2D histogram (np.histogram2d with density=True).
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Container axes to draw into (will be cleared and used as a layout canvas).
+    df : pandas.DataFrame
+        Source data.
+    columns : iterable[str] | None
+        Columns to include. If None, uses all numeric columns.
+    bins : int
+        Number of bins for 2D histograms (and 1D hist if diag="hist").
+    diag : {"kde","hist"}
+        Diagonal cell display.
+    cmap : str
+        Colormap for off-diagonal density images.
+    title : str | None
+        Plot title (None disables).
+    share_limits : bool
+        If True, uses shared x/y limits for each variable across the grid.
+    show_colorbar : bool
+        If True, draws a single colorbar for the 2D densities.
+    label_fontsize : int
+        Font size for variable labels on bottom row / left column.
+
+    Returns
+    -------
+    inset_axes : np.ndarray of shape (n, n)
+        Array of created inset axes (useful for further customization).
+    """
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("df must be a pandas DataFrame.")
+
+    # Select columns
+    if columns is None:
+        sub = df.select_dtypes(include=[np.number])
+        if sub.shape[1] == 0:
+            raise ValueError("No numeric columns found. Provide `columns` explicitly.")
+    else:
+        columns = list(columns)
+        missing = [c for c in columns if c not in df.columns]
+        if missing:
+            raise KeyError(f"Columns not found in df: {missing}")
+        sub = df[columns]
+        non_numeric = [c for c in sub.columns if not pd.api.types.is_numeric_dtype(sub[c])]
+        if non_numeric:
+            raise TypeError(
+                f"Non-numeric columns selected: {non_numeric}. Convert them to numeric or omit them."
+            )
+
+    labels: List[str] = sub.columns.tolist()
+    n = len(labels)
+    if n == 0:
+        raise ValueError("No columns to plot after selection.")
+
+    if diag not in {"kde", "hist"}:
+        raise ValueError("diag must be one of {'kde','hist'}")
+
+    # Compute per-variable ranges (for consistent extents)
+    data = {c: sub[c].to_numpy(dtype=float) for c in labels}
+    ranges: dict[str, Tuple[float, float]] = {}
+    for c in labels:
+        x = data[c]
+        x = x[np.isfinite(x)]
+        if x.size == 0:
+            # degenerate range; keep something finite to avoid crashes
+            ranges[c] = (0.0, 1.0)
+            continue
+        lo, hi = np.min(x), np.max(x)
+        if lo == hi:
+            # widen a bit
+            lo -= 0.5
+            hi += 0.5
+        # add small padding
+        pad = 0.02 * (hi - lo)
+        ranges[c] = (lo - pad, hi + pad)
+
+    # Clear and use parent ax as a canvas
+    ax.clear()
+    ax.set_axis_off()
+    if title:
+        ax.set_title(title)
+
+    inset_axes = np.empty((n, n), dtype=object)
+
+    mappable = None  # for colorbar
+
+    # Layout within the parent ax (axes fraction coordinates)
+    cell_w = 1.0 / n
+    cell_h = 1.0 / n
+
+    for i in range(n):
+        for j in range(n):
+            # i: row (top-to-bottom), j: col (left-to-right)
+            left = j * cell_w
+            bottom = 1.0 - (i + 1) * cell_h
+            w = cell_w
+            h = cell_h
+
+            iax = ax.inset_axes([left, bottom, w, h])
+            inset_axes[i, j] = iax
+
+            xname = labels[j]
+            yname = labels[i]
+
+            # Remove clutter by default
+            iax.tick_params(labelsize=7, length=2)
+
+            if i == j:
+                # Diagonal: 1D density
+                x = data[xname]
+                x = x[np.isfinite(x)]
+                if x.size >= 1:
+                    lo, hi = ranges[xname]
+                    if diag == "hist":
+                        iax.hist(x, bins=bins, density=True)
+                    else:
+                        grid = np.linspace(lo, hi, 200)
+                        dens = _kde_1d_gaussian(x, grid)
+                        iax.plot(grid, dens)
+                    if share_limits:
+                        iax.set_xlim(lo, hi)
+                iax.set_yticks([])
+            else:
+                # Off-diagonal: 2D density via normalized 2D histogram
+                x = data[xname]
+                y = data[yname]
+                mask = np.isfinite(x) & np.isfinite(y)
+                x = x[mask]
+                y = y[mask]
+
+                xlo, xhi = ranges[xname]
+                ylo, yhi = ranges[yname]
+
+                if x.size >= 2:
+                    H, xedges, yedges = np.histogram2d(
+                        x, y,
+                        bins=bins,
+                        range=[[xlo, xhi], [ylo, yhi]],
+                        density=True
+                    )
+                    # Display as image (transpose so x corresponds to horizontal axis)
+                    im = iax.imshow(
+                        H.T,
+                        origin="lower",
+                        extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
+                        aspect="auto",
+                        cmap=cmap
+                    )
+                    mappable = im  # keep last valid mappable for colorbar
+
+                if share_limits:
+                    iax.set_xlim(xlo, xhi)
+                    iax.set_ylim(ylo, yhi)
+
+            # Only label bottom row x-axis and left column y-axis
+            if i == n - 1:
+                iax.set_xlabel(xname, fontsize=label_fontsize)
+                iax.xaxis.set_label_position("bottom")
+                iax.tick_params(axis="x", labelrotation=45)
+            else:
+                iax.set_xticklabels([])
+
+            if j == 0:
+                iax.set_ylabel(yname, fontsize=label_fontsize)
+            else:
+                iax.set_yticklabels([])
+
+    # Single colorbar (if we plotted any off-diagonal images)
+    if show_colorbar and mappable is not None:
+        cbar = ax.figure.colorbar(mappable, ax=ax, fraction=0.046, pad=0.02)
+        cbar.set_label("Density")
+
+    return inset_axes
+
+def plot_corr_matrix(
+    ax: plt.Axes,
+    df: pd.DataFrame,
+    columns: Optional[Iterable[str]] = None,
+    method: str = "pearson",
+    *,
+    annot: bool = True,
+    fmt: str = ".2f",
+    cmap: str = "coolwarm",
+    vmin: float = -1.0,
+    vmax: float = 1.0,
+    title: Optional[str] = "Correlation matrix",
+    rotation_x: int = 45,
+    rotation_y: int = 0,
+    cbar: bool = True,
+    cbar_kw: Optional[dict] = None,
+) -> pd.DataFrame:
+    """
+    Plot a correlation matrix heatmap for selected columns of a DataFrame.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axes to plot into.
+    df : pandas.DataFrame
+        Source data.
+    columns : iterable[str] | None
+        Column names to include. If None, uses all numeric columns in df.
+    method : {"pearson","spearman","kendall"}
+        Correlation method (pandas.DataFrame.corr).
+    annot : bool
+        If True, writes correlation values into cells.
+    fmt : str
+        Format string for annotations, e.g., ".2f".
+    cmap : str
+        Matplotlib colormap name.
+    vmin, vmax : float
+        Color scale limits.
+    title : str | None
+        Plot title (None disables).
+    rotation_x, rotation_y : int
+        Tick label rotations.
+    cbar : bool
+        Whether to draw a colorbar.
+    cbar_kw : dict | None
+        Extra kwargs forwarded to fig.colorbar(...).
+
+    Returns
+    -------
+    corr : pandas.DataFrame
+        The computed correlation matrix (for downstream use / testing).
+    """
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("df must be a pandas DataFrame.")
+
+    if columns is None:
+        sub = df.select_dtypes(include=[np.number])
+        if sub.shape[1] == 0:
+            raise ValueError(
+                "No numeric columns found. Provide `columns` explicitly or ensure df has numeric data."
+            )
+    else:
+        columns = list(columns)
+        missing = [c for c in columns if c not in df.columns]
+        if missing:
+            raise KeyError(f"Columns not found in df: {missing}")
+        sub = df[columns]
+
+        # corr() will drop non-numeric columns; be explicit to avoid surprises
+        non_numeric = [c for c in sub.columns if not pd.api.types.is_numeric_dtype(sub[c])]
+        if non_numeric:
+            raise TypeError(
+                f"Non-numeric columns selected: {non_numeric}. "
+                "Convert them to numeric or omit them."
+            )
+
+    # Compute correlation (pairwise deletion of NaNs is handled by pandas)
+    corr = sub.corr(method=method)
+
+    # Plot heatmap
+    im = ax.imshow(corr.to_numpy(), vmin=vmin, vmax=vmax, cmap=cmap, aspect="equal")
+
+    # Ticks & labels
+    labels = corr.columns.tolist()
+    ax.set_xticks(np.arange(len(labels)))
+    ax.set_yticks(np.arange(len(labels)))
+    ax.set_xticklabels(labels, rotation=rotation_x, ha="right")
+    ax.set_yticklabels(labels, rotation=rotation_y)
+
+    # Gridlines between cells for readability
+    ax.set_xticks(np.arange(-0.5, len(labels), 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, len(labels), 1), minor=True)
+    ax.grid(which="minor", linestyle="-", linewidth=0.5)
+    ax.tick_params(which="minor", bottom=False, left=False)
+
+    if title:
+        ax.set_title(title)
+
+    # Optional annotations
+    if annot:
+        data = corr.to_numpy()
+        for i in range(data.shape[0]):
+            for j in range(data.shape[1]):
+                val = data[i, j]
+                text = "nan" if np.isnan(val) else format(val, fmt)
+                ax.text(j, i, text, ha="center", va="center")
+
+    # Colorbar
+    if cbar:
+        fig = ax.figure
+        _cbar_kw = {} if cbar_kw is None else dict(cbar_kw)
+        cb = fig.colorbar(im, ax=ax, **_cbar_kw)
+        cb.set_label(f"{method.title()} r")
+
+    return corr
 
 
 def plot_grandmean_bar2(ax, data, measures: list, groupby,
@@ -806,9 +1136,15 @@ def plot_radar(ax, data, measures: list, by_condition=True, by_partner=True,
 
 
 def main():
+    all_data_flat = gather(flat=True)
+    data_flat = all_data_flat.loc[all_data_flat['include']==0]
+    # data_flat = all_data_flat
+
     all_data = gather(flat=False)
     excluded_data = all_data.loc[all_data['include']==0]
     data = all_data.loc[all_data['include']==1]
+    # data = all_data
+
 
     print(f'Data Summary:')
     print(f'\t| All data points: N={all_data["ID"].nunique()}')
@@ -830,29 +1166,104 @@ def main():
     # plot_grandmean_bar2(axs[r, 0], data, measures=['dtrust'], ylabel="$\Delta Trust$",  title="Trust Calibration by Sex", **plot_params)
     # plot_grandmean_bar2(axs[r, 1], data, measures=['Reward'], ylabel="Reward", title="Reward by Sex", **plot_params)
     #
-    r = 1
-    plot_params = {'groupby': ['partner_type','layout']}
-    plot_grandmean_bar2(axs[r, 0], data, measures=['dtrust'], ylabel="$\Delta Trust$", title="Trust Calibration by Layout", **plot_params)
-    plot_grandmean_bar2(axs[r, 1], data, measures=['Reward'], ylabel="Reward", title="Reward by Layout", **plot_params)
+    r=0
+    # columns = ['game_num','risk_propensity','dtrust', 'num_human_risks', 'num_robot_risks',
+    #            'Reward', 'C-ACT', 'H-IDLE', 'R-IDLE', 'H-Pred']
+    columns = [ 'risk_propensity',  'm_priming_score', 'm_human_risks', 'm_robot_risks',
+                # 'priming_score', 'num_human_risks', 'num_robot_risks'
+                ]
+    plot_corr_matrix(axs[r, 0], data, columns=columns, method="pearson", annot=True)
+
+    # columns = ['risk_propensity','dtrust','trust_slope']
+
+    plot_density_matrix(axs[r, 1], data, columns=columns, bins=15, diag="kde", cmap="Blues")
+    #
+    #
+    #
+    # r = 1
+    # plot_params = {'groupby': ['partner_type','layout']}
+    # plot_grandmean_bar2(axs[r, 0], data, measures=['dtrust'], ylabel="$\Delta Trust$", title="Trust Calibration by Layout", **plot_params)
+    # plot_grandmean_bar2(axs[r, 1], data, measures=['Reward'], ylabel="Reward", title="Reward by Layout", **plot_params)
 
 
     ###########################################
     ####### TIMESERIES PLOTS #########################
-    sz = (2, 3)
-    r=0
-    fig, axs = plt.subplots(*sz, figsize=(axw * sz[1], axh * sz[0]), constrained_layout=True)
-    if np.ndim(axs) == 1: axs = axs[np.newaxis, :]
-    plot_timeseries(axs[r, 0], data, measure='trust_score', scatter=False, title=f"Timeseries Trust (Partner x Cond)",ylabel="Trust Score")
-    plot_timeseries(axs[r, 1], data, measure='Reward', scatter=False, title=f"Timeseries Reward (Partner x Cond)",ylabel="Reward")
-
-    r=1
-    plot_timeseries(axs[r, 0], data, measure='C-ACT', scatter=False, title=f"Timeseries C-ACT (Partner x Cond)", ylabel="C-ACT")
-    plot_timeseries(axs[r, 1], data, measure='H-IDLE', scatter=False, title=f"Timeseries H-IDLE (Partner x Cond)", ylabel="H-IDLE")
-    plot_timeseries(axs[r, 2], data, measure='R-IDLE', scatter=False, title=f"Timeseries R-IDLE (Partner x Cond)",  ylabel="R-IDLE")
+    # sz = (2, 3)
+    # r=0
+    # fig, axs = plt.subplots(*sz, figsize=(axw * sz[1], axh * sz[0]), constrained_layout=True)
+    # if np.ndim(axs) == 1: axs = axs[np.newaxis, :]
+    # plot_timeseries(axs[r, 0], data, measure='trust_score', scatter=False, title=f"Timeseries Trust (Partner x Cond)",ylabel="Trust Score")
+    # plot_timeseries(axs[r, 1], data, measure='Reward', scatter=False, title=f"Timeseries Reward (Partner x Cond)",ylabel="Reward")
+    #
+    # r=1
+    # plot_timeseries(axs[r, 0], data, measure='C-ACT', scatter=False, title=f"Timeseries C-ACT (Partner x Cond)", ylabel="C-ACT")
+    # plot_timeseries(axs[r, 1], data, measure='H-IDLE', scatter=False, title=f"Timeseries H-IDLE (Partner x Cond)", ylabel="H-IDLE")
+    # plot_timeseries(axs[r, 2], data, measure='R-IDLE', scatter=False, title=f"Timeseries R-IDLE (Partner x Cond)",  ylabel="R-IDLE")
 
 
     ###########################################
     ####### GAME RESULTS ######################
+    MEASURES = ['dtrust', 'Reward', 'C-ACT']
+    sz = (len(MEASURES), 4)
+    fig, axs = plt.subplots(*sz, figsize=(axw * sz[1], axh * sz[0]), constrained_layout=True)
+    if np.ndim(axs) == 1: axs = axs[np.newaxis, :]
+
+
+    for r,measure in enumerate(MEASURES):
+        _measure = 'trust_score' if measure == 'dtrust' else measure
+        plot_timeseries(axs[r, 0], data, measure=_measure, scatter=False,
+                        title=f"Timeseries {_measure} (by Partner)", ylabel=_measure)
+
+        plot_grandmean_bar2(axs[r, 1], data, measures=[measure], ylabel=measure,
+                            title=f"{measure} (by Partner)", groupby=['partner_type'])
+
+        plot_grandmean_bar(axs[r, 2], data,
+                           measures=['dtrust'],
+                           ylabel=measure, title=f"{measure} (by Partner x Condition)",
+                           zero_line=True, by_condition=True, by_partner=True)
+        plot_grandmean_bar2(axs[r, 3], data, measures=[measure], ylabel=measure,
+                            title=f"{measure} (by Partner x Sex)", groupby=['partner_type', 'sex'])
+
+    # r = 0
+    #
+    # plot_timeseries(axs[r, 0], data, measure='trust_score', scatter=False,
+    #                 title=f"Trust Score Over Games (by Partner)", ylabel="Trust Score")
+    #
+    # plot_grandmean_bar2(axs[r, 1], data, measures=['dtrust'], ylabel="$\Delta Trust$",
+    #                     title="Trust Calibration by (by Partner)", groupby=['partner_type'])
+    #
+    # plot_grandmean_bar(axs[r, 2], data,
+    #                    measures=['dtrust'],
+    #                     ylabel="$\Delta Trust$", title=f"Trust Calibration (by Partner x Condition)",
+    #                     zero_line=True, by_condition=True, by_partner=True)
+    #
+    #
+    # plot_grandmean_bar2(axs[r, 3], data, measures=['dtrust'], ylabel="$\Delta Trust$",
+    #                     title="Trust Calibration by (by Partner x Sex)", groupby=['partner_type', 'sex'])
+    #
+    #
+    #
+    # measure = 'C-ACT'
+    # r=1
+    #
+    # plot_timeseries(axs[r, 0], data, measure=measure, scatter=False,
+    #                 title=f"{measure} (by Partner)", ylabel=measure)
+    #
+    # plot_grandmean_bar2(axs[r, 1], data, measures=[measure], ylabel=measure,
+    #                     title=f"{measure} (by Partner)", groupby=['partner_type'])
+    #
+    # plot_grandmean_bar(axs[r, 2], data,
+    #                    measures=[measure],
+    #                     ylabel=measure, title=f"{measure} (by Partner x Condition)",
+    #                     zero_line=True, by_condition=True, by_partner=True)
+    #
+    # plot_grandmean_bar2(axs[r, 3], data, measures=[measure], ylabel="Reward",
+    #                     title=f"{measure} (by Partner x Sex)", groupby=['partner_type', 'sex'])
+
+
+    # ----------------------------------------
+
+
     # sz = (2,3)
     # fig, axs = plt.subplots(*sz,figsize=(axw*sz[1],axh*sz[0]), constrained_layout=True)
     # if np.ndim(axs) == 1: axs = axs[np.newaxis, :]

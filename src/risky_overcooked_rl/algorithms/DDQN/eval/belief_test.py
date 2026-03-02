@@ -9,12 +9,12 @@ import torch
 import random
 # from risky_overcooked_rl.utils.model_manager import get_default_config
 from risky_overcooked_rl.algorithms.DDQN import get_default_config
-from risky_overcooked_rl.utils.deep_models import SelfPlay_QRE_OSA_CPT
+from risky_overcooked_rl.algorithms.DDQN.utils.agents import SelfPlay_QRE_OSA_CPT, SelfPlay_QRE_OSA
 from risky_overcooked_rl.utils.belief_update import BayesianBeliefUpdate
 from risky_overcooked_py.mdp.overcooked_env import OvercookedEnv
 from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
 from itertools import count
-
+import risky_overcooked_rl.algorithms.DDQN as Algorithm
 
 LAYOUT = 'risky_coordination_ring'; P_SLIP = 0.4
 # LAYOUT = 'risky_multipath'; P_SLIP = 0.15
@@ -65,9 +65,11 @@ def get_belief_history(partner_type, N_tests=10, rationality=10,with_rational=Tr
     print('\n\nPartner Type:', partner_type,'\n\n')
 
 
-    config = get_default_config()
+    # config = get_default_config()
+    config = Algorithm.get_default_config()
     config['LAYOUT'] = LAYOUT
     config['p_slip'] = P_SLIP
+    config['agents']['model']['device'] = 'cuda' if torch.cuda.is_available() else 'cpu'
     rational_fname =  f'{LAYOUT}_pslip0{int(P_SLIP * 10)}__rational'
     averse_fname = f'{LAYOUT}_pslip0{int(P_SLIP * 10)}__b00_lam225_etap088_etan10_deltap061_deltan069'
     seeking_fname = f'{LAYOUT}_pslip0{int(P_SLIP * 10)}__b00_lam044_etap10_etan088_deltap061_deltan069'
@@ -122,15 +124,22 @@ def get_belief_history(partner_type, N_tests=10, rationality=10,with_rational=Tr
     mdp.p_slip = config['p_slip']
     obs_shape = mdp.get_lossless_encoding_vector_shape()
     n_actions = 36
-    env = OvercookedEnv.from_mdp(mdp, horizon=config['HORIZON'], time_cost=config['time_cost'])
+    env = OvercookedEnv.from_mdp(mdp, horizon=config['env']['HORIZON'], time_cost=config['env']['time_cost'])
+
+
 
     # Load Agents
-    seeking_agent = SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config, seeking_fname)
-    # seeking_agent = SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config, seeking_fname)
-    averse_agent = SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config, averse_fname)
-    rational_agent = SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config, rational_fname)
-    true_agent = SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config,
+    seeking_agent = SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config['agents'], seeking_fname)
+    averse_agent = SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config['agents'], averse_fname)
+    rational_agent = SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config['agents'], rational_fname)
+    true_agent = SelfPlay_QRE_OSA_CPT.from_file(obs_shape, n_actions, config['agents'],
                                                 averse_fname if partner_type == 'Averse' else seeking_fname)
+    #
+    # seeking_agent = SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config, seeking_fname)
+    # averse_agent = SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config, averse_fname)
+    # rational_agent = SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config, rational_fname)
+    # true_agent = SelfPlay_QRE_OSA.from_file(obs_shape, n_actions, config,
+    #                                             averse_fname if partner_type == 'Averse' else seeking_fname)
 
 
     seeking_agent.rationality = rationality

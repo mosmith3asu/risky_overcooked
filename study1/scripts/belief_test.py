@@ -15,8 +15,8 @@ from risky_overcooked_py.mdp.overcooked_mdp import OvercookedGridworld
 from itertools import count
 
 
-# LAYOUT = 'risky_coordination_ring'; P_SLIP = 0.4
-LAYOUT = 'risky_multipath'; P_SLIP = 0.15
+LAYOUT = 'risky_coordination_ring'; P_SLIP = 0.4
+# LAYOUT = 'risky_multipath'; P_SLIP = 0.15
 RATIONALITY = 10
 BELIEF_CAPACITY = 200
 N_TESTS = 10

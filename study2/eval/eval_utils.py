@@ -2,7 +2,9 @@ import os
 from pathlib import Path
 from study2.static import *
 
-def get_unprocessed_fnames(dir_a=RAW_DIR, dir_b=PROCESSED_DIR,dir_c=PROCESSED_REJECT_DIR, full_path=False):
+def get_unprocessed_fnames(dir_a=RAW_DIR,
+                           dir_b=PROCESSED_DIR,
+                           dir_c=PROCESSED_REJECT_DIR, full_path=False):
     """
     Returns a list of file paths (relative to dir_a) that exist in dir_a (and its subdirectories)
     but NOT in dir_b (and its subdirectories).
@@ -23,12 +25,18 @@ def get_unprocessed_fnames(dir_a=RAW_DIR, dir_b=PROCESSED_DIR,dir_c=PROCESSED_RE
     files_b = {f.relative_to(dir_b) for f in dir_b.rglob('*') if f.is_file()}
     files_c = {f.relative_to(dir_c) for f in dir_c.rglob('*') if f.is_file()}
 
+    # only keep file name
+    files_a = {Path(f.name) for f in files_a}
+    files_b = {Path(f.name) for f in files_b}
+
     # remove "REJECTED_" prefix from files_c
-    files_c = {Path(str(f).replace("REJECTED_","")) for f in files_c}
+    files_b = {Path(str(f).replace("REJECTED_", "")) for f in files_b}
+    files_b = {Path(str(f).replace("rejected/", str(f).split("__")[-1][:-3] )) for f in files_b}
+    # files_c = {Path(str(f).replace("REJECTED_","")) for f in files_c}
 
     # Compute difference
     unique_files = files_a - files_b
-    unique_files = unique_files - files_c
+    # unique_files = unique_files - files_c
     unique_files = [str(f).split('\\')[-1] for f in unique_files]  # only keep filenames
 
     # Return as full paths if you prefer

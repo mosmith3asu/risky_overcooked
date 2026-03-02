@@ -74,10 +74,11 @@ class BayesianBeliefUpdate():
 
         prior = self.belief
 
-        likelihood = np.array([self.get_prob_partner_action(partner, obs, action,is_only_partner_action=is_only_partner_action)
-                               for partner in self.candidate_partners])
-        # likelihood += 1e-32
+        likelihood = np.array([self.get_prob_partner_action(partner, obs, action,is_only_partner_action=is_only_partner_action)  for partner in self.candidate_partners])
+        likelihood += 1e-6 # avoids NaN when likelihood is 0 for all candidates
         likelihood = likelihood / np.sum(likelihood)
+        assert not np.any(np.isnan(likelihood)), 'NaN in likelihood'
+
         for i, l in enumerate(likelihood):
             self.candidate_likelihood_mem[i].append(l)
 
@@ -144,6 +145,7 @@ class BayesianBeliefUpdate():
             print_dict[agent_name] = round(val,2)
 
         return str(print_dict)
+
 class SimulatedAgent():
     dists = [
         np.array([[[0, 0, 0, 0, 0, 0], [0.5, 0.1, 0.1, 0.1, 0.1, 0.1]]]),

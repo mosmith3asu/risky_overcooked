@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
+import pandas as pd
 from study2.eval.process import DataPoint,TorchPolicy
 from study2.eval.eval_utils import get_processed_fnames
 from study2.static import *
@@ -27,11 +27,6 @@ class StatTests:
 
     def t_test(self):
         pass
-
-
-# class PlotterBase:
-#     def __init__(self,dp_list):
-#         self.dp_list = dp_list
 
 
 class TrustPlot:
@@ -201,9 +196,9 @@ class TrustPlot:
         rs_tom = np.array(rs_tom)
         rational = np.array(rational)
         # for mode in ["by_time", "by_series"]:
-        for mode in ["by_series"]:
-            rs_tom, rs_tom_mask = self.remove_outliers(rs_tom, mode=mode, thresh=self.outlier_thresh , fix="interpolate")
-            rational, rational_mask = self.remove_outliers(rational, mode=mode, thresh=self.outlier_thresh , fix="interpolate")
+        # for mode in ["by_series"]:
+        #     rs_tom, rs_tom_mask = self.remove_outliers(rs_tom, mode=mode, thresh=self.outlier_thresh , fix="interpolate")
+        #     rational, rational_mask = self.remove_outliers(rational, mode=mode, thresh=self.outlier_thresh , fix="interpolate")
 
         T = rs_tom.shape[1]
         x_rs_tom = np.arange(T)
@@ -249,9 +244,9 @@ class TrustPlot:
         rs_tom = np.array(rs_tom)
         rational = np.array(rational)
 
-        for mode in ["by_time"]:
-            rs_tom, rs_tom_mask = self.remove_outliers(rs_tom, mode=mode, thresh=self.outlier_thresh , fix="interpolate")
-            rational, rational_mask = self.remove_outliers(rational, mode=mode, thresh=self.outlier_thresh , fix="interpolate")
+        # for mode in ["by_time"]:
+        #     rs_tom, rs_tom_mask = self.remove_outliers(rs_tom, mode=mode, thresh=self.outlier_thresh , fix="interpolate")
+        #     rational, rational_mask = self.remove_outliers(rational, mode=mode, thresh=self.outlier_thresh , fix="interpolate")
 
 
         rs_tom_style = {'color': COLOR['rs-tom']}
@@ -270,66 +265,110 @@ class TrustPlot:
         # ax.legend()
 
 
+def plot_trust_radar(data_list):
+    """Plots radar chart of trust survey responses for given data points"""
+    tom_response_dict = {}
+    rat_response_dict = {}
+
+
+    for dp in data_list:
+        for partner in ['rs-tom', 'rational']:
+            for isurvey, survey in enumerate(dp.trust_responses[partner]):
+                for qkey, response in survey.items():
+                    if partner == 'rs-tom':
+                        if qkey not in tom_response_dict:
+                            tom_response_dict[qkey] = []
+                        tom_response_dict[qkey].append(response)
+                    else:
+                        if qkey not in rat_response_dict:
+                            rat_response_dict[qkey] = []
+                        rat_response_dict[qkey].append(response)
+
+    # make radar plot
+    labels = list(tom_response_dict.keys())
+    tom_means = [np.mean(tom_response_dict[label]) for label in labels]
+    rat_means = [np.mean(rat_response_dict[label]) for label in labels]
+    angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()
+    tom_means += tom_means[:1]
+    rat_means += rat_means[:1]
+    angles += angles[:1]
+    fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+    ax.fill(angles, tom_means, color=COLOR['rs-tom'], alpha=0.25, label='RS-ToM')
+    ax.fill(angles, rat_means, color=COLOR['rational'], alpha=0.25, label='Rational')
+    ax.plot(angles, tom_means, color=COLOR['rs-tom'], linewidth=2)
+    ax.plot(angles, rat_means, color=COLOR['rational'], linewidth=2)
+    ax.set_yticklabels([])
+    ax.set_ylim(0,10)
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(labels)
+    ax.set_title('Trust Survey Responses', size=20, y=1.05)
+    ax.legend(loc='upper right', bbox_to_anchor=(1.1, 1.1))
+    plt.show()
+
+
+def preview_data(data):
+    data_df = data[0].to_pandas_flat()
+    for dp in data[1:]:
+        new_df = dp.to_pandas_flat()
+        data_df = pd.concat([data_df, new_df], ignore_index=True)
+
+    cols = ['rs-tom_mean_dtrust','rational_mean_dtrust']
+    df_supports = data_df[cols[0]] > data_df[cols[1]]
+    df_diff = data_df[cols[0]] - data_df[cols[1]]
+
+    data_df['rs-tom > rational'] = np.where(df_supports, 1, 0)
+    data_df['tom-rat'] = df_diff
+
+    print(data_df[['ID', 'condition', 'rs-tom > rational','tom-rat'] ])
+    # print(data_df[['ID','condition','rs-tom > rational'] + cols])
+    perc_supports = df_supports.sum() / len(df_supports) * 100
+    print(f"%Support: {perc_supports:.2f}%")
 
 def main():
-    # COND0_FNAMES = [
-    #     # "2025-10-16_22-37-54__PID68c08483061276d20b570579__cond0",
-    #     "2025-10-28_23-12-28__PID58a0c507890ea500014c4e9b__cond0",
-    #     "2025-10-27_18-53-52__PID67062295123561f8241f65fc__cond0",
-    #     "2025-10-27_19-38-25__PID66b504cd131c63b36b682b8d__cond0"
-    # ]
-    # COND1_FNAMES = [
-    #     "2025-10-28_22-46-41__PID5dce29700ad506063969a4a5__cond1",
-    #     "2025-10-28_23-57-46__PID5f3ac1732efa0a74f975b1a8__cond1"
-    #     # "2025-10-16_22-32-23__PID672135003f5e272c889620ea__cond1"
-    # ]
-
     fname_dict = get_processed_fnames(full_path=False)
     COND1_FNAMES = fname_dict['cond1']
     COND0_FNAMES = fname_dict['cond0']
 
-    # fname = "2025-10-16_22-37-54__PID68c08483061276d20b570579__cond0"
-    # fpath = PROCESSED_COND0_DIR + r"\\"+ fname
-    # dp = DataPoint.load_processed(fpath)
     dps_cond1 = []
     dps_cond0 = []
     dps_all = []
     for fname in COND0_FNAMES:
         fpath = PROCESSED_COND0_DIR + "\\"+ fname
-        # fpath = PROCESSED_COND0_DIR + fname
-
         dp = DataPoint.load_processed(fpath)
         dps_cond0.append(dp)
 
     for fname in COND1_FNAMES:
         fpath = PROCESSED_COND1_DIR + "\\"+ fname
-
-        # fpath = PROCESSED_COND1_DIR + r"\\"+ fname
         dp = DataPoint.load_processed(fpath)
         dps_cond1.append(dp)
 
+
     dps_all += dps_cond0 + dps_cond1
+    plot_trust_radar(dps_cond0)
+    preview_data(dps_all)
     nrow, ncol = 3,3
 
     fig, axs = plt.subplots(nrow, ncol, constrained_layout=True, figsize=(ncol*5, nrow*4))
 
     plt.ioff()
+
 ###############################
-    # trust_plot = TrustPlot(dps_cond1,scope='cond1')
-    # offset = 'rs-tom'
-    # cond_label = 'Cond1'
-    # # fig.suptitle(f'Metrics - {cond_label}: Rational -> RS-ToM', fontsize=16)
-    #
-    # trust_plot.timeseries_plot(axs[0, 0], 'trust_scores', title=f'({cond_label}) Trust Over Time', offset=offset)
-    # trust_plot.delta_plot(axs[0, 1], 'delta_trusts', title=f'({cond_label}) Delta Trust')
-    #
-    #
-    # trust_plot.timeseries_plot(axs[1, 0], 'C_ACTs', title=f'({cond_label}) C_ACTS', offset=offset)
-    # trust_plot.timeseries_plot(axs[1, 1], 'H_IDLEs', title=f'({cond_label}) H_IDLEs', offset=offset)
-    # trust_plot.timeseries_plot(axs[1, 2], 'R_IDLEs', title=f'({cond_label}) R_IDLEs', offset=offset)
-    #
-    # trust_plot.timeseries_plot(axs[2, 0], 'rewards', title=f'({cond_label}) Reward', offset=offset)
-    # trust_plot.timeseries_plot(axs[2, 1], 'predictability', title=f'({cond_label}) Predictability', offset=offset)
+    trust_plot = TrustPlot(dps_cond1,scope='cond1')
+    offset = 'rs-tom'
+    cond_label = 'Cond1'
+    # fig.suptitle(f'Metrics - {cond_label}: Rational -> RS-ToM', fontsize=16)
+
+    trust_plot.timeseries_plot(axs[0, 0], 'trust_scores', title=f'({cond_label}) Trust Over Time', offset=offset)
+    trust_plot.delta_plot(axs[0, 1], 'delta_trusts', title=f'({cond_label}) Delta Trust')
+    trust_plot.delta_plot(axs[0, 2], 'trust_slopes', title=f'({cond_label}) Slope Trust')
+
+
+    trust_plot.timeseries_plot(axs[1, 0], 'C_ACTs', title=f'({cond_label}) C_ACTS', offset=offset)
+    trust_plot.timeseries_plot(axs[1, 1], 'H_IDLEs', title=f'({cond_label}) H_IDLEs', offset=offset)
+    trust_plot.timeseries_plot(axs[1, 2], 'R_IDLEs', title=f'({cond_label}) R_IDLEs', offset=offset)
+
+    trust_plot.timeseries_plot(axs[2, 0], 'rewards', title=f'({cond_label}) Reward', offset=offset)
+    trust_plot.timeseries_plot(axs[2, 1], 'predictability', title=f'({cond_label}) Predictability', offset=offset)
     # trust_plot.delta_plot(axs[2, 2], 'risk_perc_scores', title=f'({cond_label}) Risk Perception')
 
     ###############################
@@ -348,25 +387,25 @@ def main():
     #
     # trust_plot.timeseries_plot(axs[2, 0], 'rewards', title=f'({cond_label}) Reward', offset=offset)
     # trust_plot.timeseries_plot(axs[2, 1], 'predictability', title=f'({cond_label}) Predictability', offset=offset)
-    # trust_plot.delta_plot(axs[2, 2], 'risk_perc_scores', title=f'({cond_label}) Risk Perception')
+    # # trust_plot.delta_plot(axs[2, 2], 'risk_perc_scores', title=f'({cond_label}) Risk Perception')
 
     ###############################
 
-    trust_plot = TrustPlot(dps_all, scope='all')
-    offset = None
-    cond_label = 'All'
-    fig.suptitle(f'Metrics - {cond_label}', fontsize=16)
-
-    trust_plot.timeseries_plot(axs[0, 0], 'trust_scores', title=f'({cond_label}) Trust Over Time', offset=offset)
-    trust_plot.delta_plot(axs[0, 1], 'delta_trusts', title=f'({cond_label}) Delta Trust')
-    # trust_plot.delta_plot(axs[0, 2], 'risk_perc_scores', title=f'({cond_label}) Risk Perception')
-
-    trust_plot.timeseries_plot(axs[1, 0], 'C_ACTs', title=f'({cond_label}) C_ACTS', offset=offset)
-    trust_plot.timeseries_plot(axs[1, 1], 'H_IDLEs', title=f'({cond_label}) H_IDLEs', offset=offset)
-    trust_plot.timeseries_plot(axs[1, 2], 'R_IDLEs', title=f'({cond_label}) R_IDLEs', offset=offset)
-
-    trust_plot.timeseries_plot(axs[2, 0], 'rewards', title=f'({cond_label}) Reward', offset=offset)
-    trust_plot.timeseries_plot(axs[2, 1], 'predictability', title=f'({cond_label}) Predictability', offset=offset)
+    # trust_plot = TrustPlot(dps_all, scope='all')
+    # offset = None
+    # cond_label = 'All'
+    # fig.suptitle(f'Metrics - {cond_label}', fontsize=16)
+    #
+    # trust_plot.timeseries_plot(axs[0, 0], 'trust_scores', title=f'({cond_label}) Trust Over Time', offset=offset)
+    # trust_plot.delta_plot(axs[0, 1], 'delta_trusts', title=f'({cond_label}) Delta Trust')
+    # # trust_plot.delta_plot(axs[0, 2], 'risk_perc_scores', title=f'({cond_label}) Risk Perception')
+    #
+    # trust_plot.timeseries_plot(axs[1, 0], 'C_ACTs', title=f'({cond_label}) C_ACTS', offset=offset)
+    # trust_plot.timeseries_plot(axs[1, 1], 'H_IDLEs', title=f'({cond_label}) H_IDLEs', offset=offset)
+    # trust_plot.timeseries_plot(axs[1, 2], 'R_IDLEs', title=f'({cond_label}) R_IDLEs', offset=offset)
+    #
+    # trust_plot.timeseries_plot(axs[2, 0], 'rewards', title=f'({cond_label}) Reward', offset=offset)
+    # trust_plot.timeseries_plot(axs[2, 1], 'predictability', title=f'({cond_label}) Predictability', offset=offset)
 
 
     plt.show()

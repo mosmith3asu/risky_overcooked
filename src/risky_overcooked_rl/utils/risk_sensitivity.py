@@ -7,7 +7,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 import torch
 from numba import int32, float32,boolean    # import the types
 from numba.experimental import jitclass
-
+from tqdm import trange,tqdm
 import torch
 from torch.cuda.amp import autocast
 
@@ -76,6 +76,19 @@ class CumulativeProspectTheory_Compiled:
 
         return self.expected_td_targets
 
+
+    def _get_l(self,sorted_v):
+        K = len(sorted_v)  # number of samples
+        if K == 1: return sorted_v[0]  # Single prospect = no CPT
+        l = np.where(sorted_v <= self.b)[0]
+        l = -1 if len(l) == 0 else l[-1]  # of no losses l=-1 indicator
+        return K,l
+    def _get_Fk(self,sorted_p,K,l):
+        # Step 2: Calculate the cumulative liklihoods for gains and losses
+        Fk = [min([max([0, np.sum(sorted_p[0:i + 1])]), 1]) for i in range(l + 1)] + \
+             [min([max([0, np.sum(sorted_p[i:K])]), 1]) for i in range(l + 1, K)]  # cumulative probability
+        Fk = Fk + [0]  # padding to make dealing with only gains or only losses easier
+        return Fk
     def expectation(self,values, p_values):
         """
         Applies the CPT-expectation multiple prospects (i.e. a series of value-probability pairs) which can arbitrarily
@@ -85,6 +98,9 @@ class CumulativeProspectTheory_Compiled:
         :param p_values:
         :return:
         """
+
+        values = values.astype(np.float64)
+        p_values = p_values.astype(np.float64)
         if self.is_rational:
             # Rational Expectation
             return np.sum(values * p_values)
@@ -118,7 +134,6 @@ class CumulativeProspectTheory_Compiled:
             self.b = 0
         return rho
 
-
     def perc_util_plus(self,sorted_v,Fk,l,K):
         """Calculates the cumulative expectation of all utilities percieved as gains"""
         rho_p = 0
@@ -158,587 +173,9 @@ class CumulativeProspectTheory_Compiled:
         delta = self.delta_n
         return p ** delta / ((p ** delta + (1 - p) ** delta) ** (1 / delta))
 
-
-class CumulativeProspectTheory_Test(object):
-    def __init__(self,b,lam,eta_p,eta_n,delta_p,delta_n,**kwargs):
-        """
-        Instantiates a CPT object that can be used to model human risk-sensitivity.
-        :param b: reference point determining if outcome is gain or loss
-        :param lam: loss-aversion parameter
-        :param eta_p: exponential gain on positive outcomes
-        :param eta_n: exponential loss on negative outcomes
-        :param delta_p: probability weighting for positive outcomes
-        :param delta_n: probability weighting for negative outcomes
-        """
-        # assert b==0, "Reference point must be 0"
-        self.b = b
-        self.lam = lam
-        self.eta_p = eta_p
-        self.eta_n = eta_n
-        self.delta_p = delta_p
-        self.delta_n = delta_n
-
-    def expectation(self,values, p_values):
-        """
-        Applies the CPT-expectation multiple prospects (i.e. a series of value-probability pairs) which can arbitrarily
-        replace the rational expectation operator E[v,p] = Σ(p*v). When dealing with more than two prospects, we must
-        calculate the expectation over the cumulative probability distributions.
-        :param values:
-        :param p_values:
-        :return:
-        """
-
-        # Step 1: arrange all samples in ascending order
-        sorted_idxs = np.argsort(values)
-        sorted_v = values[sorted_idxs]
-        sorted_p = np.array(p_values[sorted_idxs])  # sorted_p = p_values[sorted_idxs]
-
-        # Step 2: Calculate the cumulative liklihoods for gains and losses
-        K = len(sorted_v)  # number of samples
-
-        if K == 1: return sorted_v[0] # Single prospect = no CPT
-
-        l = np.where(sorted_v <= self.b)[0]
-        l = -1 if len(l) == 0 else l[-1]        # of no losses l=-1 indicator
-        Fk = [np.sum(sorted_p[0:i + 1], dtype=np.float64) for i in range(l + 1)] + \
-             [np.sum(sorted_p[i:K], dtype=np.float64) for i in range(l + 1, K)]  # cumulative probability
-
-        Fk =  Fk + [0]   # padding to make dealing with all gains/losses easier
-
-        # Step 3: Calculate biased expectation for gains and losses
-        rho_p = self.perc_util_plus(sorted_v, Fk, l, K)
-        rho_n = self.perc_util_neg(sorted_v, Fk, l, K)
-
-        # Step 3: Add the cumulative expectation and return
-        rho = rho_p - rho_n
-        return rho
-
-    def perc_util_plus(self,sorted_v,Fk,l,K):
-        """Calculates the cumulative expectation of all utilities percieved as gains"""
-        rho_p = 0
-        for i in range(l + 1, K):
-            rho_p += self.u_plus(sorted_v[i]) * (self.w_plus(Fk[i]) - self.w_plus(Fk[i + 1]))
-        # CLASSICAL FORMULATION ( no Fk =  Fk + [0]) -----------------------
-        # for i in range(l + 1, K - 1):
-        #     rho_p += self.u_plus(sorted_v[i]) * (self.w_plus(Fk[i]) - self.w_plus(Fk[i + 1]))
-        # rho_p += self.u_plus(sorted_v[K - 1]) * self.w_plus(sorted_p[K - 1])
-        return rho_p
-
-    def perc_util_neg(self,sorted_v,Fk,l,K):
-        """Calculates the cumulative expectation of all utilities percieved as losses"""
-        # Fk =  Fk + [0]  # add buffer which results in commented out version below
-        rho_n = 0
-        for i in range(0, l + 1):
-            rho_n += self.u_neg(sorted_v[i]) * (self.w_neg(Fk[i]) - self.w_neg(Fk[i - 1]))
-        return rho_n
-        # CLASSICAL FORMULATION ( no Fk =  Fk + [0]) -----------------------
-        # rho_n = self.u_neg(sorted_v[0]) * self.w_neg(sorted_p[0])
-        # for i in range(1, l + 1):
-        #     rho_n += self.u_neg(sorted_v[i]) * (self.w_neg(Fk[i]) - self.w_neg(Fk[i - 1]))
-        # return rho_n
-
-    def u_plus(self,v):
-        """ Weights the values (v) perceived as losses (v>b)"""
-        return np.abs(v-self.b)**self.eta_p
-    def u_neg(self, v):
-        """ Weights the values (v) perceived as gains (v<=b)"""
-        return self.lam * np.abs(v-self.b) ** self.eta_n
-    def w_plus(self, p):
-        """ Weights the probabilities p for probabilities of values perceived as gains  (v>b)"""
-        delta = self.delta_p
-        return p ** delta / ((p ** delta + (1 - p) ** delta) ** (1 / delta))
-    def w_neg(self, p):
-        """ Weights the probabilities p for probabilities of values perceived as losses (v<=b)"""
-        delta = self.delta_n
-        return p ** delta / ((p ** delta + (1 - p) ** delta) ** (1 / delta))
-
-
-class CumulativeProspectTheory_bu(object):
-    def __init__(self,b,lam,eta_p,eta_n,delta_p,delta_n):
-        """
-        :param b: reference point determining if outcome is gain or loss
-        :param lam: loss-aversion parameter
-        :param eta_p: exponential gain on positive outcomes
-        :param eta_n: exponential loss on negative outcomes
-        :param delta_p: probability weighting for positive outcomes
-        :param delta_n: probability weighting for negative outcomes
-        """
-        # assert b==0, "Reference point must be 0"
-        self.mean_value_ref = False
-        self.exp_value_ref = False
-        self.exp_rational_value_ref = False
-        if isinstance(b, str):
-            assert b in ['m','e','erat'], "b must be either ['m':mean,'e':expected,'erat':expected rational]"
-            if b == 'm': self.mean_value_ref = True
-            elif b == 'e': self.exp_value_ref = True
-            elif b == 'erat': self.exp_rational_value_ref = True
-            else: raise NotImplementedError()
-            self.b = None
-        else: self.b = np.float64(b) # STATICALLY DEFINED REFERENCE
-        self.lam = np.float64(lam)
-        self.eta_p = np.float64(eta_p)
-        self.eta_n = np.float64(eta_n)
-        self.delta_p = np.float64(delta_p)
-        self.delta_n = np.float64(delta_n)
-        # self.lam = lam
-        # self.eta_p = eta_p
-        # self.eta_n = eta_n
-        # self.delta_p = delta_p
-        # self.delta_n = delta_n
-        self.N_samples =100
-    def expectation_PT(self, values, p_values, value_refs=None):
-        """
-        Computes Prospect Theory Expectation (for validation)
-        - 2 values only
-             :param values: list of values of next states
-        :param p_values: probability of each value
-        :param value_refs: list of (rational) values used to compute reference point
-        :return: scalar value (biased) expectation
-        """
-        if self.mean_value_ref: self.b = np.mean(values)
-        elif self.exp_value_ref:  self.b = np.sum(values * p_values)
-        elif self.exp_rational_value_ref:  self.b = np.sum(value_refs * p_values)
-
-        # arrange all samples in ascending order
-        vp = values[np.where(values > self.b)[0]]
-        vn = values[np.where(values <= self.b)[0]]
-        u_plus = self.u_plus(vp)
-        u_neg = -1 * self.u_neg(vn)
-        u = np.hstack([u_neg, u_plus])
-
-
-        pp = p_values[np.where(values > self.b)[0]]
-        pn = p_values[np.where(values <= self.b)[0]]
-        w_plus = self.w_plus(pp)
-        w_neg = self.w_neg(pn)
-        w = np.hstack([w_neg, w_plus])
-        rho = np.sum(u*w)
-        return rho
-
-    def expectation(self, values, p_values, value_refs=None, pass_single_choice=True):
-        """
-        Computes CUMULATIVE Prospect Theory Expectation
-        :param values: list of values of next states
-        :param p_values: probability of each value
-        :param value_refs: list of (rational) values used to compute reference point
-        :param pass_single_choice: if True, return the rational value of the single prospect
-        :return: scalar value (biased) expectation
-        """
-        # arrange all samples in ascending order
-        handle_percision = True
-        sorted_idxs = np.argsort(values)
-        sorted_v = values[sorted_idxs]
-        sorted_p = np.array(p_values[sorted_idxs])  #sorted_p = p_values[sorted_idxs]
-        K = len(sorted_v)  # number of samples
-
-        if K == 1:
-            # If there is only one value, return the utility of that value
-            if pass_single_choice: return sorted_v[0]
-            elif sorted_v[0] > self.b:return self.u_plus(sorted_v[0])
-            else: return -1 * self.u_neg(sorted_v[0])
-
-        # All Losses
-        elif np.all(sorted_v <= self.b):
-            Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]
-            l = K - 1
-            rho_p = 0
-            if handle_percision: Fk = self.handle_percision_error(Fk)
-            # assert np.all(np.array(Fk) <= 1), f"Invalid Fk={Fk}"
-            rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
-            rho = rho_p - rho_n
-            return rho
-
-        # All gains
-        elif np.all(sorted_v > self.b):
-            Fk = [np.sum(sorted_p[i:K]) for i in range(K)]
-            if handle_percision: Fk = self.handle_percision_error(Fk)
-            # assert np.all(np.array(Fk) <= 1), f"Invalid Fk={Fk}"
-            l = -1
-            rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K)
-            rho_n = 0
-            rho = rho_p - rho_n
-            return rho
-        else:
-            l = np.where(sorted_v <= self.b)[0][-1]  # idx of highest loss
-            Fk = [np.sum(sorted_p[0:i + 1], dtype=np.float64) for i in range(l + 1)] + \
-                 [np.sum(sorted_p[i:K], dtype=np.float64) for i in range(l + 1, K)]  # cumulative probability
-            rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K)
-            rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
-            rho = rho_p - rho_n
-            return rho
-
-
-    def expectation_torch(self, values, p_values, pass_single_choice=True):
-        """
-        Handles pytorch variables
-        Computes CUMULATIVE Prospect Theory Expectation
-        :param values: list of values of next states
-        :param p_values: probability of each value
-        :param value_refs: list of (rational) values used to compute reference point
-        :param pass_single_choice: if True, return the rational value of the single prospect
-        :return: scalar value (biased) expectation
-        """
-        # assert  torch.is_tensor(values), "values must be a torch tensor"
-        # assert  torch.is_tensor(p_values), "p_values must be a torch tensor"
-        # print(f"values={values}, p_values={p_values}")
-
-        # arrange all samples in ascending order
-        sorted_idxs = torch.argsort(values)
-        sorted_v = values[sorted_idxs]
-        sorted_p = p_values[sorted_idxs]
-        K = sorted_v.size(0)  # number of samples
-
-        if K == 1:
-            if pass_single_choice:
-                return sorted_v[0]
-            elif sorted_v[0] > self.b:
-                return self.u_plus(sorted_v[0],is_torch=True)
-            else:
-                return -1 * self.u_neg(sorted_v[0],is_torch=True)
-
-        elif torch.all(sorted_v <= self.b):
-            Fk = torch.cumsum(sorted_p, dim=0)
-            l = K - 1
-            rho_p = 0
-            rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K,is_torch=True)
-            rho = rho_p - rho_n
-            return rho
-
-        elif torch.all(sorted_v > self.b):
-            Fk = torch.cumsum(sorted_p.flip(0), dim=0).flip(0)
-            l = -1
-            rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K,is_torch=True)
-            rho_n = 0
-            rho = rho_p - rho_n
-            return rho
-
-        else:
-            l = torch.where(sorted_v <= self.b)[0][-1].item()
-            Fk = torch.cat([
-                torch.cumsum(sorted_p[:l + 1], dim=0),
-                torch.cumsum(sorted_p[l + 1:].flip(0), dim=0).flip(0)
-            ])
-            rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K,is_torch=True)
-            rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K,is_torch=True)
-            rho = rho_p - rho_n
-            return rho
-
-
-
-    # def expectation(self, values, p_values, value_refs=None):
-    #     """
-    #     Computes CUMULATIVE Prospect Theory Expectation
-    #     :param values: list of values of next states
-    #     :param p_values: probability of each value
-    #     :param value_refs: list of (rational) values used to compute reference point
-    #     :return: scalar value (biased) expectation
-    #     """
-    #     if self.mean_value_ref: self.b = np.mean(values)
-    #     elif self.exp_value_ref: self.b = np.sum(values*p_values)
-    #     elif self.exp_rational_value_ref: self.b = np.sum(value_refs*p_values)
-    #     # arrange all samples in ascending order
-    #     sorted_idxs = np.argsort(values)
-    #     sorted_v = values[sorted_idxs]
-    #     sorted_p = p_values[sorted_idxs]
-    #     K = len(sorted_v)  # number of samples
-    #
-    #     # If there is only one value, return the utility of that value
-    #     if K==1:
-    #         # if sorted_v[0]>self.b: return self.u_plus(sorted_v[0])
-    #         # else: return -1*self.u_neg(sorted_v[0])
-    #         return sorted_v[0]
-    #
-    #     elif np.all(sorted_v<=self.b):
-    #         Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]
-    #         l=K-1
-    #         rho_p = 0
-    #         rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
-    #         rho = rho_p - rho_n
-    #         return rho
-    #     elif np.all(sorted_v > self.b):
-    #         Fk = [np.sum(sorted_p[i:K]) for i in range(K)]
-    #         l = -1
-    #         rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K)
-    #         rho_n = 0
-    #         rho = rho_p - rho_n
-    #         return rho
-    #     else:
-    #         l = np.where(sorted_v <= self.b)[0][-1]  # idx of highest loss
-    #         Fk = [np.sum(sorted_p[0:i + 1],dtype=np.float64) for i in range(l+1)] + \
-    #              [np.sum(sorted_p[i:K],dtype=np.float64) for i in range(l+1, K)]  # cumulative probability
-    #         rho_p = self.rho_plus(sorted_v, sorted_p, Fk, l, K)
-    #         rho_n = self.rho_neg(sorted_v, sorted_p, Fk, l, K)
-    #         rho = rho_p - rho_n
-    #         return rho
-
-    def expectation3(self,values,p_values):
-        sorted_idxs = np.argsort(values)
-        X_sort = values[sorted_idxs]
-        P_sort = p_values[sorted_idxs]
-        K = len(X_sort)
-
-        # number of losses
-        l = np.where(X_sort <= self.b)[0]  # idx of highest loss
-        if len(l) == 0: l = -1  # no losses
-        else: l = l[-1]
-
-        F = np.nan * np.ones(X_sort.shape)
-        for k in range(K):
-            if k <= l: F[k] = np.sum(P_sort[0:k + 1])
-            else:  F[k] = np.sum(P_sort[k:K + 1])
-        assert np.all(np.isfinite(F)), "F is not finite"
-
-        rho_plus = self.util_plus(X_sort[K-1],self.eta_p) * self.weight(P_sort[K-1],self.delta_p)
-        rho_minus = self.util_minus(X_sort[0], self.lam, self.eta_n) * self.weight(P_sort[0], self.delta_n)
-        for i in range(1,K-1):
-            rho_plus += self.util_plus(X_sort[i],self.eta_p) * (self.weight(F[i],self.delta_p) - self.weight(F[i + 1],self.delta_p))
-            rho_minus += self.util_minus(X_sort[i], self.lam, self.eta_n) * (self.weight(F[i], self.delta_n) - self.weight(F[i -1], self.delta_n))
-        rho = rho_plus - rho_minus
-        return rho
-
-    def expectation2(self,values,p_values,pass_single_choice=False):
-        # sorted_idxs = np.argsort(values)
-        # X_sort = values[sorted_idxs]
-        # P_sort = p_values[sorted_idxs]
-        # K = len(X_sort)-1  # number of samples
-        # l = np.where(X_sort <= self.b)[0][-1]  # idx of highest loss
-        #
-        # F = np.nan*np.ones(X_sort.shape)
-        # for k in range(K+1):
-        #     if k<=l: F[k] = np.sum(P_sort[0:k+1])
-        #     else: F[k] = np.sum(P_sort[k:K+1])
-        # assert np.all(np.isfinite(F)), "F is not finite"
-        #
-        # rho_plus = 0
-        # for i in range(l+1, K):
-        #     rho_plus += self.u_plus(X_sort[i]) * (self.w_plus(F[i]) - self.w_plus(F[i+1]))
-        # rho_plus += self.u_plus(X_sort[K]) * self.w_plus(P_sort[K])
-        #
-        # rho_minus = self.u_neg(X_sort[0]) * self.w_neg(P_sort[0])
-        # for i in range(1, l+1):
-        #     rho_minus += self.u_neg(X_sort[i]) * (self.w_neg(F[i]) - self.w_neg(F[i-1]))
-        #
-        # rho = rho_plus - rho_minus
-        # return rho
-        sorted_idxs = np.argsort(values)
-        X_sort = values[sorted_idxs]
-        P_sort = p_values[sorted_idxs]
-        K = len(X_sort)
-
-        # number of losses
-        l = np.where(X_sort <= self.b)[0]  # idx of highest loss
-        if len(l)==0: l=-1 # no losses
-        else: l = l[-1] +1
-
-        F = np.nan * np.ones(X_sort.shape)
-        for k in range(K):
-            if k <= l: F[k] = np.sum(P_sort[0:k + 1])
-            else: F[k] = np.sum(P_sort[k:K + 1])
-        assert np.all(np.isfinite(F)), "F is not finite"
-
-        rho_plus = 0
-        if l<K:
-            for i in range(l + 1, K-1):
-                rho_plus += self.u_plus(X_sort[i]) * (self.w_plus(F[i]) - self.w_plus(F[i + 1]))
-            rho_plus += self.u_plus(X_sort[K]) * self.w_plus(P_sort[K])
-
-
-        rho_minus = self.u_neg(X_sort[0]) * self.w_neg(P_sort[0])
-        for i in range(1, l + 1):
-            rho_minus += self.u_neg(X_sort[i]) * (self.w_neg(F[i]) - self.w_neg(F[i - 1]))
-
-        rho = rho_plus - rho_minus
-        return rho
-    def expectation_from_samples(self,values,p_values):
-        N_max = self.N_samples
-        X = [np.random.choice(values,p=p_values)  for _ in range(N_max)] # generate empirical samples
-        X_sort = np.sort(X)
-
-        rho_plus, rho_minus = 0, 0
-        _rho_plus, _rho_minus = 0, 0
-        for i in range(1, N_max + 1):
-            z_1 = (N_max + 1 - i) / N_max # # {z_1 = (N_max + i - 1) / N_max <-- mistake}
-            z_2 = (N_max - i) / N_max
-            z_3 = i / N_max
-            z_4 = (i - 1) / N_max
-
-            _rho_plus += self.util_plus(X_sort[i - 1], self.eta_p) * (
-                        self.weight(z_1, self.delta_p) - self.weight(z_2, self.delta_p))
-
-            _rho_minus += self.util_minus(X_sort[i - 1], self.lam,self.eta_n) * (
-                        self.weight(z_3, self.delta_n) - self.weight(z_4, self.delta_n))
-
-        rho = rho_plus - rho_minus
-        return rho
-
-    def rho_plus(self,sorted_v,sorted_p,Fk,l,K,is_torch=False):
-        rho_p = 0
-        for i in range(l + 1, K - 1):
-            rho_p += self.u_plus(sorted_v[i],is_torch=is_torch) * (self.w_plus(Fk[i]) - self.w_plus(Fk[i + 1]))
-        rho_p += self.u_plus(sorted_v[K - 1],is_torch=is_torch) * self.w_plus(sorted_p[K - 1])
-        return rho_p
-    def rho_neg(self,sorted_v,sorted_p,Fk,l,K,is_torch=False):
-
-        rho_n = self.u_neg(sorted_v[0],is_torch=is_torch) * self.w_neg(sorted_p[0])
-        for i in range(1, l + 1):
-            rho_n += self.u_neg(sorted_v[i],is_torch=is_torch) * (self.w_neg(Fk[i]) - self.w_neg(Fk[i - 1]))
-        return rho_n
-
-    def u_plus(self,v,is_torch=False):
-        if is_torch: return torch.abs(v - self.b) ** self.eta_p
-        else: return np.abs(v-self.b)**self.eta_p
-    def u_neg(self, v,is_torch=False):
-        # return -1*self.lam * np.abs(v-self.b) ** self.eta_n
-        if is_torch: return self.lam * torch.abs(v-self.b) ** self.eta_n
-        else: return self.lam * np.abs(v-self.b) ** self.eta_n
-
-    def w_plus(self,p):
-        delta = self.delta_p
-        return p**delta/((p**delta + (1-p)**delta)**(1/delta))
-    def w_neg(self,p):
-        delta = self.delta_n
-        return p ** delta / ((p ** delta + (1 - p) ** delta) ** (1 / delta))
-        # try:
-        #     assert 0<=p<=1, "p must be in [0,1]"
-        #     assert 0<=delta<=1, "delta must be in [0,1]"
-        #     x = (p ** delta + (1 - p) ** delta)
-        #     assert x>0, f'x={x}'
-        #     denom = (x**(float(1/delta)))
-        #     assert np.isnan(denom)==False, f'denom={denom}'
-        #     return p**delta/denom
-        # except:
-        #     raise ValueError(f'p={p}, delta={delta}')
-
-    def util_plus(self,rew,eta):
-        rew = max(rew, 0)
-        return np.power(abs(rew), eta)
-
-    def util_minus(self,rew,lam,beta):
-        rew = min(rew, 0)
-        return lam * np.power(abs(rew), beta)
-
-    def weight(self,prob, gamma):
-        # assert 0<=prob<=1, "prob must be in [0,1]"
-        return (prob ** gamma) / (((prob ** gamma) + (1 - prob) ** gamma) ** (1 / gamma))
-
-    def plot_curves(self,with_params=False,get_img=False,neg_lambda=True,scale_fig=0.6,svg_fname=None,axs=None,titles=None,show=True):
-        rand_var = '\mathcal{X}' # \\tau
-        # c_gain = 'tab:green'
-        # c_loss = 'tab:red'
-        c_gain = 'royalblue'
-        c_loss = 'firebrick'
-        if with_params:
-            if axs is None:
-                fig, axs = plt.subplots(1, 3, constrained_layout=True,figsize=(9,3))
-        else:
-            if axs is None:
-                fig,axs = plt.subplots(1,2,constrained_layout=True,figsize=(10*scale_fig,5*scale_fig))
-
-        # Plot utility functions
-        v = np.linspace(-10,10,100)
-        vp = v[np.where(v>=self.b)[0]]
-        vn = v[np.where(v<=self.b)[0]]
-        u_plus = self.u_plus(vp)
-        u_neg = -1*self.u_neg(vn)
-        u = np.hstack([u_neg,u_plus])
-        axs[0].plot(vp,u_plus,color=c_gain,label=f'$u^+({rand_var}_i)$')
-        axs[0].plot(np.hstack([vn,vp[0]]),np.hstack([u_neg,u_plus[0]]),color=c_loss,label=f'$u^-({rand_var}_i)$')
-        # axs[0].plot(v, u, color='g',label='Rational')
-        axs[0].plot(v, v, color='gray',linestyle='--',label='Rational')
-        axs[0].set_xlabel(f'Utility ${rand_var}_i$')
-        axs[0].set_ylabel(f'Perceived Utility $u({rand_var}_i)$')
-        axs[0].set_ylim([min(v),max(v)])
-        axs[0].plot([v[0], v[-1]], [0, 0], c="lightgrey", zorder=1, lw=1)
-        axs[0].plot([0, 0], [v[0], v[-1]], c="lightgrey", zorder=1, lw=1)
-        #make axis square
-        axs[0].set_aspect('equal', adjustable='box')
-        axs[0].legend(frameon=False,ncol=1)
-        axs[0].set_xlim([-10, 10])
-        axs[0].set_xticks([-10,0,10])
-        axs[0].set_yticks([-10,0,10])
-        # axs[0].set_xlim([0,10])
-        # axs[0].set_ylim([0, 10])
-        # Plot probability weighting functions
-        p = np.linspace(0,1,100)
-        pp = self.w_plus(p)
-        pn = self.w_neg(p)
-        axs[1].plot(p, pp,color=c_gain,label='$w^+(p_i)$')
-        axs[1].plot(p, pn,color=c_loss,label='$w^-(p_i)$')
-        axs[1].plot(p, p, color='gray', label='Rational',linestyle='--')
-        axs[1].set_xlabel('Probability $p_i$')
-        axs[1].set_ylabel('Decision Weight $w(p_i)$')
-        axs[1].legend(frameon=False,ncol=1)
-        axs[1].set_aspect('equal', adjustable='box')
-        axs[1].set_ylim([0, 1])
-        axs[1].set_xlim([0, 1])
-        axs[1].set_xticks([0, 1])
-        axs[1].set_yticks([0, 1])
-
-        if titles is not None:
-            for i, title in enumerate(titles):
-                axs[i].set_title(title)
-
-        if with_params:
-            if neg_lambda:
-                param_dict = {
-                    '$b$': self.b,
-                    '$1/\ell$': 1/self.lam,
-                    '$\eta^+$': self.eta_p,
-                    '$\eta^-$': self.eta_n,
-                    '$\delta^+$': self.delta_p,
-                    '$\delta^-$': self.delta_n
-                }
-            else:
-                param_dict = {
-                     '$b$':self.b,
-                 '$\ell$':self.lam,
-                 '$\eta^+$':self.eta_p,
-                 '$\eta^-$':self.eta_n,
-                 '$\delta^+$':self.delta_p,
-                 '$\delta^-$':self.delta_n
-                }
-
-            # create a barchart of param_dict
-            c = (255/255, 192/255, 0)
-            axs[2].bar(param_dict.keys(),param_dict.values(), fc = c)
-            # axs[2].bar(param_dict.keys(), param_dict.values(), fc=['k','r','b','r','b','r'])
-            for bar,c in zip(axs[2].get_children(),['tab:gray',c_loss,c_gain,c_loss,c_gain,c_loss]):
-                if isinstance(bar, plt.Rectangle):
-                    bar.set_color(c)
-            axs[2].set_aspect(1.0/axs[2].get_data_ratio(), adjustable='box')
-            axs[2].set_ylim([0,1.1])
-
-            axs[2].set_ylabel('Parameter Value')
-        if get_img:
-            canvas = FigureCanvasAgg(fig)
-            canvas.draw()
-            buf = canvas.buffer_rgba()
-            return np.asarray(buf)
-
-        else:
-            if svg_fname is not None:
-                if '.svg' not in svg_fname:
-                    svg_fname += '.svg'
-                plt.savefig(svg_fname)
-
-            if show:
-                plt.show()
-
-
-    @property
-    def is_rational(self):
-        return (self.b==0 and self.lam==1
-                and self.eta_p == 1 and self.eta_n == 1
-                and self.delta_p == 1 and self.delta_n == 1)
-
-    def handle_percision_error(self,Fk,sigdig=5,is_torch=False):
-        """ handles unknown rounding error in Fk = [np.sum(sorted_p[0:i + 1]) for i in range(K)]"""
-        if np.any(np.array(Fk)>1):
-            Fk = np.round(Fk,sigdig)
-        return Fk
 
 class CumulativeProspectTheory:
-    def __init__(self, b, lam, eta_p, eta_n, delta_p, delta_n, mean_val_ref=None):
+    def __init__(self, b, lam, eta_p, eta_n, delta_p, delta_n, compiled=False,mean_value_ref=False):
         """
         Instantiates a CPT object that can be used to model human risk-sensitivity.
         :param b: reference point determining if outcome is gain or loss
@@ -756,7 +193,10 @@ class CumulativeProspectTheory:
         self.delta_p = delta_p
         self.delta_n = delta_n
 
-        self.expected_td_targets = np.zeros(256, dtype=np.float32)
+        self.compiled_expectation = compiled
+        # if self.compiled_expectation:
+        #     self.expectation_batch = torch.jit.script(self.expectation_batch)
+
         self._f_vmap = None
 
         self.is_rational = True
@@ -775,108 +215,10 @@ class CumulativeProspectTheory:
 
     def sample_expectation_batch(self, X):
         """Estimates CPT-value from only samples (no probs) in batch form"""
-        if isinstance(X, torch.Tensor): is_torch = True
-        elif isinstance(X, np.ndarray): is_torch = False
-        elif isinstance(X, list): X = np.array(X); is_torch = False
-        else:  raise ValueError("X must be a torch.Tensor, np.ndarray, or list.")
-        assert X.ndim == 2, f"X must be 2D array of value samples (B,N), got {X.shape}"
-
-        N_max = X.shape[1]
-        B = X.shape[0]
-
-        if is_torch:
-            device, dtype = X.device, X.dtype
-            X = X.to(device=device, dtype=torch.float64)  # change to double percision
-            X_sort = torch.sort(X, dim=1).values
-            I = torch.arange(1, N_max + 1, device=device, dtype=dtype).unsqueeze(0).repeat(B,1)
-            K = (X_sort <= self.b).sum(dim=1)  -1
-        else:
-            raise NotImplementedError("Numpy batch version not implemented yet.")
-
-
-        # Compute quantiles
-        z_1 = (N_max + 1 - I) / N_max
-        z_2 = (N_max - I) / N_max
-        z_3 = I / N_max
-        z_4 = (I - 1) / N_max
-
-        rho_plus = self.u_plus(X_sort) * (self.w_plus(z_1) - self.w_plus(z_2))
-        rho_minus = self.u_neg(X_sort) * (self.w_neg(z_3) - self.w_neg(z_4))
-
-        if is_torch:
-            # Create index mask [B, N]
-            idx = torch.arange(N_max, device=K.device).unsqueeze(0).expand(B, N_max)
-
-            # Compute masks for each term
-            mask_plus = idx > K.unsqueeze(1)  # True for j >= k[b]
-            mask_minus = idx <= K.unsqueeze(1)  # True for j < k[b]
-            mask_all_gains = K.unsqueeze(1) == -1  # True for all gains
-
-            mask_plus = mask_plus | mask_all_gains
-            mask_minus = mask_minus & (~mask_all_gains)
-
-            # Apply masks and sum along dim=1
-            rho = (rho_plus * mask_plus).sum(dim=1) - (rho_minus * mask_minus).sum(dim=1)
-
-            # rho = torch.zeros(B, device=device, dtype=dtype)
-            # for b in range(B):
-            #     k = K[b]
-            #     if k == -1:  rho[b] = torch.sum(rho_plus[b, :]) # all gains
-            #     else: rho[b] = torch.sum(rho_plus[b, k:]) - torch.sum(rho_minus[b, :k])
-            rho = rho.to(dtype=dtype)
-        else:
-            rho = np.zeros(B)
-            for b in range(B):
-                rho[b] = np.sum(rho_plus[b, K[b]:]) - np.sum(rho_minus[b, :K[b]])
-
-        # assert rho.shape == (B,), f"rho must be of shape (B,), got {rho.shape}"
-        return rho
+        raise NotImplementedError("sample_expectation_batch not implemented yet.")
 
     def sample_expectation(self, X):
-        """Estimates CPT-value from only samples (no probs)"""
-        if isinstance(X, torch.Tensor): is_torch = True
-        elif isinstance(X, np.ndarray): is_torch = False
-        elif isinstance(X, list): X = np.array(X); is_torch = False
-        else:  raise ValueError("X must be a torch.Tensor, np.ndarray, or list.")
-        assert X.ndim == 1, f"X must be 1D array of value samples, got {X.shape}"
-        N_max = X.shape[0]
-
-        if is_torch:
-            device, dtype = X.device, X.dtype
-            X_sort = torch.sort(X).values
-            I = torch.arange(1, N_max + 1, device=device, dtype=dtype)
-            k = (X_sort <= self.b).sum(dim=-1) - 1
-            # if not torch.any(X_sort <= self.b):
-            #     k = 0  # all gains
-            # else:
-            #     k = torch.where(X_sort <= self.b)[0][-1]
-        else:
-            X_sort = np.sort(X)
-            I = np.arange(1, N_max + 1)
-            if not np.any(X_sort <= self.b):
-                k = 0  # all gains
-            else:
-                k = np.where(X_sort <= self.b)[0][-1]
-
-        # Compute quantiles
-        z_1 = (N_max + 1 - I) / N_max  # # {z_1 = (N_max + i - 1) / N_max <-- mistake}
-        z_2 = (N_max - I) / N_max
-        z_3 = I / N_max
-        z_4 = (I - 1) / N_max
-
-        rho_plus = self.u_plus(X_sort) * (self.w_plus(z_1) - self.w_plus(z_2))
-        rho_minus = self.u_neg(X_sort) * (self.w_neg(z_3) - self.w_neg(z_4))
-        # rho = torch.sum(rho_plus) - torch.sum(rho_minus)
-        return rho_plus, rho_minus, k
-
-        # rho_plus = self.u_plus(X_sort[k:]) * (self.w_plus(z_1[k:]) - self.w_plus(z_2[k:]))
-        # rho_minus = self.u_neg(X_sort[:k]) * (self.w_neg(z_3[:k]) - self.w_neg(z_4[:k]))
-        #
-        # if is_torch:
-        #     rho = torch.sum(rho_plus) - torch.sum(rho_minus)
-        # else:
-        #     rho = np.sum(rho_plus) - np.sum(rho_minus)
-        # return rho
+        raise NotImplementedError("sample_expectation not implemented yet.")
 
     def expectation(self, values, p_values):
         """
@@ -887,133 +229,141 @@ class CumulativeProspectTheory:
         :param p_values:
         :return:
         """
-        if self.is_rational:
-            # Rational Expectation
-            return np.sum(values * p_values)
+        if isinstance(values, np.ndarray):
+            values = torch.tensor(values, dtype=torch.float64).reshape(1,-1)
+        if isinstance(p_values, np.ndarray):
+            p_values = torch.tensor(p_values, dtype=torch.float64).reshape(1,-1)
+        return self.expectation_batch(values, p_values)
 
-        # Step 1: arrange all samples in ascending order and get indexs of gains/losses
-        sorted_idxs = np.argsort(values)
-        sorted_v = values[sorted_idxs]
-        sorted_p = p_values[sorted_idxs]
-
-        K = len(sorted_v)  # number of samples
-        if K == 1: return sorted_v[0]  # Single prospect = no CPT
-        l = np.where(sorted_v <= self.b)[0]
-        l = -1 if len(l) == 0 else l[-1]  # of no losses l=-1 indicator
-
-        # Step 2: Calculate the cumulative liklihoods for gains and losses
-        Fk = [min([max([0, np.sum(sorted_p[0:i + 1])]), 1]) for i in range(l + 1)] + \
-             [min([max([0, np.sum(sorted_p[i:K])]), 1]) for i in range(l + 1, K)]  # cumulative probability
-        Fk = Fk + [0]  # padding to make dealing with only gains or only losses easier
-
-        # Step 3: Calculate biased expectation for gains and losses
-        rho_p = self.perc_util_plus(sorted_v, Fk, l, K)
-        rho_n = self.perc_util_neg(sorted_v, Fk, l, K)
-
-        # Step 3: Add the cumulative expectation and return
-        rho = rho_p - rho_n
-
-        return rho
-
-    def expectation_batch(self, X, p_values):
-        if isinstance(X, torch.Tensor): is_torch = True
-        elif isinstance(X, np.ndarray): is_torch = False
-        elif isinstance(X, list): X = np.array(X); is_torch = False
-        else:  raise ValueError("X must be a torch.Tensor, np.ndarray, or list.")
-        assert X.ndim == 2, f"X must be 2D array of value samples (B,N), got {X.shape}"
-        B,N = X.shape
-
-        if is_torch:
-            device, dtype = X.device, X.dtype
-            X = X.to(device=device, dtype=torch.float64)  # change to double percision
-            # X_sort = torch.sort(X, dim=1).values
-            X_sort, sorted_idxs = torch.sort(X, dim=1)
-            P_sort = p_values.to(device=device, dtype=torch.float64)
-            P_sort = torch.gather(P_sort, 1, sorted_idxs)
-
-            I = torch.arange(1, N + 1, device=device, dtype=dtype).unsqueeze(0).repeat(B,1)
-            L = (X_sort <= self.b).sum(dim=1)  -1# idx of last loss for each batch
-
-            # Create index mask [B, N]
-            idx = torch.arange(N, device=X.device).unsqueeze(0).expand(B, N)
-
-            # Compute masks for each term
-            mask_plus      = idx > L.unsqueeze(1)  # True for j >= k[b]
-            mask_minus     = idx <= L.unsqueeze(1)  # True for j < k[b]
-            mask_all_gains = L.unsqueeze(1) == -1  # True for all gains
-            mask_plus      = mask_plus | mask_all_gains
-            mask_minus     = mask_minus & (~mask_all_gains)
-
-            # Reverse order fo dim 1 in P_sort
-            # P_plus = (P_sort[:,::-1].cumsum(dim=1))[:,::-1] * mask_plus
-            F_plus = torch.cumsum(P_sort.flip(dims=[1]), dim=1).flip(dims=[1])* mask_plus
-            F_minus = P_sort.cumsum(dim=1) * mask_minus
-            Fk = F_plus + F_minus
-            Fk = torch.cat([Fk, torch.zeros(B,1,device=device,dtype=dtype)], dim=1)  # pad with zeros at the end
-            z1 = Fk[:,:-1]
-            z2 = Fk[:,1:]
-            z3 = Fk[:, 1:]
-            z4 = Fk[:, :-1]
+        # if self.is_rational:
+        #     # Rational Expectation
+        #     return np.sum(values * p_values)
+        #
+        # # Step 1: arrange all samples in ascending order and get indexs of gains/losses
+        # sorted_idxs = np.argsort(values)
+        # sorted_v = values[sorted_idxs]
+        # sorted_p = p_values[sorted_idxs]
+        #
+        # K = len(sorted_v)  # number of samples
+        # if K == 1: return sorted_v[0]  # Single prospect = no CPT
+        # l = np.where(sorted_v <= self.b)[0]
+        # l = -1 if len(l) == 0 else l[-1]  # of no losses l=-1 indicator
+        #
+        # # Step 2: Calculate the cumulative liklihoods for gains and losses
+        # Fk = [min([max([0, np.sum(sorted_p[0:i + 1])]), 1]) for i in range(l + 1)] + \
+        #      [min([max([0, np.sum(sorted_p[i:K])]), 1]) for i in range(l + 1, K)]  # cumulative probability
+        # Fk = Fk + [0]  # padding to make dealing with only gains or only losses easier
+        #
+        # # Step 3: Calculate biased expectation for gains and losses
+        # rho_p = self.perc_util_plus(sorted_v, Fk, l, K)
+        # rho_n = self.perc_util_neg(sorted_v, Fk, l, K)
+        #
+        # # Step 3: Add the cumulative expectation and return
+        # rho = rho_p - rho_n
+        #
+        # return rho
 
 
-            # rho_plus = torch.zeros(B, N, device=device, dtype=torch.float64)
-            # rho_minus = torch.zeros(B, N, device=device, dtype=torch.float64)
-            #
-            # rho_plus[:,-1] = self.u_plus(X_sort[:,-1]) * self.w_plus(P_sort[:,-1])
-            # rho_minus[:,0] = self.u_neg(X_sort[0]) * self.w_neg(P_sort[0])
-            #
-            # rp = self.u_plus(X_sort) * (self.w_plus(Fk1) - self.w_plus(Fk2))
-            # rm = self.u_neg(X_sort) * (self.w_neg(Fk1) - self.w_neg(Fk2))
-            #
-            # rho_plus[:,  :-1] = rp *
-            # rho_minus[:, 1:]
+        # if add_pad:
+        #     from itertools import zip_longest
+        #     X = list(zip(*zip_longest(*X, fillvalue=0)))
+        #     p_values = list(zip(*zip_longest(*p_values, fillvalue=0)))
+        #
+        #     X = torch.tensor(X, device=device, dtype=torch.float64)
+        #     p_values = torch.tensor(p_values,device=device, dtype=torch.float64)
 
-            rho_plus = self.u_plus(X_sort) * (self.w_plus(z1) - self.w_plus(z2))
-            rho_minus = self.u_neg(X_sort) * (self.w_neg(z3) - self.w_neg(z4))
-            rho_plus *= mask_plus
-            rho_minus *= mask_minus
-            rho = (rho_plus).sum(dim=1) - (rho_minus).sum(dim=1)
+    def expectation_batch(self, X: torch.Tensor, p: torch.Tensor, add_pad = False) -> torch.Tensor:
+        """
+        Calculates CPT expectation in batches from prospects of size (B, N)
+        where B is batch size and N is number of prospects.
+        """
+        if add_pad:
+            from itertools import zip_longest
+            device = X[0].device
+            X = list(zip(*zip_longest(*X, fillvalue=torch.inf)))
+            p_values = list(zip(*zip_longest(*p, fillvalue=0)))
+            X = torch.tensor(X, device=device, dtype=torch.float64)
+            p = torch.tensor(p_values,device=device, dtype=torch.float64)
 
-            #
-            # P_plus = torch.cat([P_plus, torch.zeros(B, 1, device=device, dtype=dtype)], dim=1)  # pad with zeros at the end
-            # P_minus = torch.cat([P_minus, torch.zeros(B, 1, device=device, dtype=dtype)], dim=1)  # pad with zeros at the end
-            # P_plus1, P_plus2 = P_plus[:,:-1], P_plus[:,1:]
-            # P_minus1, P_minus2 = P_minus[:,:-1], P_minus[:,1:]
-            # rho_plus = self.u_plus(X_sort) * (self.w_plus(P_plus1) - self.w_plus(P_plus2))
-            # rho_minus = self.u_neg(X_sort) * (self.w_neg(P_minus1) - self.w_neg(P_minus2))
+        assert isinstance(X, torch.Tensor)
+        assert isinstance(p, torch.Tensor)
 
+        B, N = X.shape
+        device = X.device
+        _dtype = X.dtype
 
-            # Apply masks and sum along dim=1
-            # rho = (rho_plus * mask_plus).sum(dim=1) - (rho_minus * mask_minus).sum(dim=1)
+        dtype = torch.float64
+        X.to(dtype=torch.float64)
+        p.to(dtype=torch.float64)
 
-            rho = rho.to(dtype=dtype)
+        if self.compiled_expectation:
+            pt_params = [torch.tensor(param, dtype=torch.float32, device=device)
+                         for param in [self.b, self.lam, self.eta_p, self.eta_n, self.delta_p, self.delta_n]]
+            rho = _compiled_expectation(X, p, *pt_params)
             return rho
-        else:
-            raise NotImplementedError("Numpy batch version not implemented yet.")
 
-    def perc_util_plus(self, sorted_v, Fk, l, K):
-        """Calculates the cumulative expectation of all utilities percieved as gains"""
-        rho_p = 0
-        for i in range(l + 1, K):
-            rho_p += self.u_plus(sorted_v[i]) * (self.w_plus(Fk[i]) - self.w_plus(Fk[i + 1]))
-        # CLASSICAL FORMULATION ( no Fk =  Fk + [0]) -----------------------
-        # for i in range(l + 1, K - 1):
-        #     rho_p += self.u_plus(sorted_v[i]) * (self.w_plus(Fk[i]) - self.w_plus(Fk[i + 1]))
-        # rho_p += self.u_plus(sorted_v[K - 1]) * self.w_plus(sorted_p[K - 1])
-        return rho_p
+        # Ensure contiguous (helps some kernels, especially after slicing/gathering)
+        X = X.contiguous()
+        p = p.contiguous()
 
-    def perc_util_neg(self, sorted_v, Fk, l, K):
-        """Calculates the cumulative expectation of all utilities percieved as losses"""
-        # Fk =  Fk + [0]  # add buffer which results in commented out version below
-        rho_n = 0
-        for i in range(0, l + 1):
-            rho_n += self.u_neg(sorted_v[i]) * (self.w_neg(Fk[i]) - self.w_neg(Fk[i - 1]))
-        return rho_n
-        # CLASSICAL FORMULATION ( no Fk =  Fk + [0]) -----------------------
-        # rho_n = self.u_neg(sorted_v[0]) * self.w_neg(sorted_p[0])
-        # for i in range(1, l + 1):
-        #     rho_n += self.u_neg(sorted_v[i]) * (self.w_neg(Fk[i]) - self.w_neg(Fk[i - 1]))
-        # return rho_n
+        # ---- Sort values and align probabilities ----
+        X_sort, sorted_idxs = torch.sort(X, dim=1)  # [B, N]
+        P_sort = torch.gather(p.to(device=device, dtype=dtype), 1, sorted_idxs)
+
+        # Index of last loss for each batch (<= b)
+        L = (X_sort <= self.b).sum(dim=1) - 1  # [B]
+
+        # Precompute (or reuse from self if N fixed) index row: [1, N] broadcasts to [B, N]
+        idx = torch.arange(N, device=device).view(1, -1)
+
+        # mask_minus: losses; mask_plus: gains
+        mask_minus = idx <= L.unsqueeze(1)  # [B, N]
+        mask_plus = ~mask_minus  # [B, N]
+        # Note: when all gains, L = -1 → mask_minus all False, mask_plus all True
+        #       when all losses, L = N-1 → mask_minus all True, mask_plus all False
+
+        # ---- Cumulative probabilities ----
+        # Forward cumsum for losses
+        F_minus = P_sort.cumsum(dim=1)  # [B, N]
+
+
+        # Reverse cumsum for gains
+        P_rev = torch.flip(P_sort, dims=[1])
+        F_plus = torch.flip(P_rev.cumsum(dim=1), dims=[1])  # [B, N]
+
+        # Select correct cumulative probs per entry without extra masks
+        F_minus = F_minus.clamp(min=0.0, max=1.0) # Handle rounding errors
+        F_plus = F_plus.clamp(min=0.0, max=1.0) # Handle rounding errors
+        # assert torch.all(F_plus >= 0) and torch.all(F_plus <= 1), f"F_plus out of bounds {F_plus}"
+        # assert torch.all(F_minus >= 0) and torch.all(F_minus <= 1), f"F_minus out of bounds {F_minus}"
+        Fk = torch.where(mask_minus, F_minus, F_plus)
+        # Fk = torch.where(mask_minus, F_minus, F_plus)  # [B, N]
+
+        # ---- Shifted Fk for decision weights ----
+        pad0 = X.new_zeros(B, 1)  # correct device & dtype
+
+        # Keep the same structure as your original implementation
+        z1 = torch.cat([Fk, pad0], dim=1)[:, :-1]  # [B, N]
+        z2 = torch.cat([Fk, pad0], dim=1)[:, 1:]  # [B, N]
+        z3 = torch.cat([pad0, Fk], dim=1)[:, 1:]  # [B, N]
+        z4 = torch.cat([pad0, Fk], dim=1)[:, :-1]  # [B, N]
+        _b = torch.tensor(self.b, device=X.device, dtype=X.dtype)
+
+        # ---- Utility and weighting ----
+        u_plus = self.u_plus(X_sort)
+        u_minus = self.u_neg(X_sort)
+
+        rho_plus    = u_plus * (self.w_plus(z1) - self.w_plus(z2))
+        rho_minus   = u_minus * (self.w_neg(z3) - self.w_neg(z4))
+
+        # Only gains contribute to rho_plus, only losses to rho_minus
+        rho_plus =  torch.nan_to_num(rho_plus,  nan=0.0, posinf=0.0) * mask_plus
+        rho_minus = torch.nan_to_num(rho_minus, nan=0.0, posinf=0.0) * mask_minus
+
+        # Final CPT expectation per batch element
+        rho = rho_plus.sum(dim=1) - rho_minus.sum(dim=1)  # [B]
+
+        return rho.to(dtype=_dtype)
 
     def u_plus(self, v):
         """ Weights the values (v) perceived as losses (v>b)"""
@@ -1049,347 +399,203 @@ class CumulativeProspectTheory:
         # return p ** delta / ((p ** delta + (1 - p) ** delta) ** (1 / delta))
 
 
-class SPSA:
-    def __init__(self, model, criterion):
-        self.sp_avg = 5
-        self.b1 = 0.9
-        self.m1 = 0
-        self.o = 1.0
-        self.c = 0.005
-        self.a = 0.01
-        self.alpha = 0.4
-        self.gamma = 0.2
-
-        self.model = model
-        self.criterion = criterion
-
-        self.est_type = 'spsa-gc'
-
-        for name, param in self.model.named_parameters():
-            param.requires_grad_(False)
-
-    def estimate(self, epoch, images, labels):
-        with autocast():
-            ghats = []
-            ak = self.a / ((epoch + self.o) ** self.alpha)
-            ck = self.c / (epoch ** self.gamma)
-            w = torch.nn.utils.parameters_to_vector(self.model.coordinator.dec.parameters())
-
-            for _ in range(self.sp_avg):
-                p_side = (torch.rand(len(w)).reshape(-1, 1) + 1) / 2
-                samples = torch.cat([p_side, -p_side], dim=1)
-                perturb = torch.gather(samples, 1,
-                                       torch.bernoulli(torch.ones_like(p_side) / 2).type(torch.int64)).reshape(
-                    -1).cuda()
-                del samples;
-                del p_side
-
-                w_r = w + ck * perturb
-                w_l = w - ck * perturb
-
-                with torch.no_grad():
-                    torch.nn.utils.vector_to_parameters(w_r, self.model.coordinator.dec.parameters())
-                    output_r = self.model(images)
-
-                    torch.nn.utils.vector_to_parameters(w_l, self.model.coordinator.dec.parameters())
-                    output_l = self.model(images)
-
-                loss_r = self.criterion(output_r, labels)
-                loss_l = self.criterion(output_l, labels)
-
-                ghat = (loss_r - loss_l) / ((2 * ck) * perturb)
-                ghats.append(ghat.reshape(1, -1))
-
-            if self.sp_avg > 1:
-                ghat = torch.cat(ghats, dim=0).mean(dim=0)
-
-            if self.est_type == 'spsa-gc':
-                if epoch > 1:
-                    self.m1 = self.b1 * self.m1 + ghat
-                else:
-                    self.m1 = ghat
-                accum_ghat = ghat + self.b1 * self.m1
-            elif self.est_type == 'spsa':
-                accum_ghat = ghat
-            else:
-                raise ValueError
-
-            w_new = w - ak * accum_ghat
-            torch.nn.utils.vector_to_parameters(w_new, self.model.coordinator.dec.parameters())
 
 
-def animation():
-    import imageio
-    fps = 10
-    fname = 'CPT_animation'
-    IMGS = []
-    cpt_params = {'b': 0, 'lam': 1.0,
-                  'eta_p': 1., 'eta_n': 1.,
-                  'delta_p': 1., 'delta_n': 1.}
+@torch.jit.script
+def _utility_fun(v,b,lam,eta_n):
+    return lam * torch.pow(torch.abs(v - b), eta_n)
 
-    N = 30
-    # for eta_p,eta_n,delta_p,delta_n in zip(
-    #                         np.linspace(1, 0.4, N),
-    #                        np.linspace(1, 0.1, N),
-    #                        np.linspace(1, 0.5, N),
-    #                        np.linspace(1, 0.2, N)):
-    #     cpt_params['eta_p'] = eta_p
-    #     cpt_params['eta_n'] = eta_n
-    #     cpt_params['delta_p'] = delta_p
-    #     cpt_params['delta_n'] = delta_n
-    #
-    #     CPT = CumulativeProspectTheory(**cpt_params)
-    #     IMGS.append(CPT.plot_curves(with_params=True,get_img=True))
+@torch.jit.script
+def _weight_fun(p,delta):
+    z = torch.pow(p, delta)  # precompute term
+    denom = z + torch.pow(1 - p, delta)
+    denom = torch.pow(denom, 1 / delta)
+    return z / denom
 
-    # for lam in 1/np.linspace(1, 0.5, N):
-    #     cpt_params['lam'] = lam
-    #     CPT = CumulativeProspectTheory(**cpt_params)
-    #     IMGS.append(CPT.plot_curves(with_params=True, get_img=True,neg_lambda=True))
-    # for lam in 1/np.linspace(0.5, 1, N):
-    #     cpt_params['lam'] = lam
-    #     CPT = CumulativeProspectTheory(**cpt_params)
-    #     IMGS.append(CPT.plot_curves(with_params=True, get_img=True,neg_lambda=True))
+@torch.jit.script
+def _compiled_expectation(X, p, b, lam_n, eta_p, eta_n, delta_p, delta_n):
+    B, N = X.shape
+    device = X.device
+    dtype = X.dtype
 
-    # for b in np.linspace(0, 1, N):
-    #     cpt_params['b'] = b
-    #     CPT = CumulativeProspectTheory(**cpt_params)
-    #     IMGS.append(CPT.plot_curves(with_params=True,get_img=True))
-    # for b in np.linspace(1, 0, N):
-    #     cpt_params['b'] = b
-    #     CPT = CumulativeProspectTheory(**cpt_params)
-    #     IMGS.append(CPT.plot_curves(with_params=True, get_img=True))
+    # Ensure contiguous (helps some kernels, especially after slicing/gathering)
+    X = X.contiguous()
+    p = p.contiguous()
 
-    # for eta_p,eta_n in zip(
-    #                         np.linspace(1, 0.3, N),
-    #                        np.linspace(1, 0.7, N)):
-    #     cpt_params['eta_p'] = eta_p
-    #     cpt_params['eta_n'] = eta_n
-    #     # cpt_params['delta_p'] = delta_p
-    #     # cpt_params['delta_n'] = delta_n
-    #
-    #     CPT = CumulativeProspectTheory(**cpt_params)
-    #     IMGS.append(CPT.plot_curves(with_params=True,get_img=True))
-    #
-    # for eta_p, eta_n in zip(
-    #         np.linspace(0.3,1, N),
-    #         np.linspace(0.7,1, N)):
-    #     cpt_params['eta_p'] = eta_p
-    #     cpt_params['eta_n'] = eta_n
-    #     # cpt_params['delta_p'] = delta_p
-    #     # cpt_params['delta_n'] = delta_n
-    #
-    #     CPT = CumulativeProspectTheory(**cpt_params)
-    #     IMGS.append(CPT.plot_curves(with_params=True,get_img=True))
+    # ---- Sort values and align probabilities ----
+    X_sort, sorted_idxs = torch.sort(X, dim=1)  # [B, N]
+    P_sort = torch.gather(p.to(device=device, dtype=dtype), 1, sorted_idxs)
 
-    # for delta_p,delta_n in zip(
-    #                         np.linspace(1, 0.6, N),
-    #                        np.linspace(1, 0.4, N)):
-    #     cpt_params['delta_p'] = delta_p
-    #     cpt_params['delta_n'] = delta_n
-    #     CPT = CumulativeProspectTheory(**cpt_params)
-    #     IMGS.append(CPT.plot_curves(with_params=True,get_img=True))
-    # for delta_p, delta_n in zip(
-    #         np.linspace(0.6,1, N),
-    #         np.linspace(0.4,1, N)):
-    #     cpt_params['delta_p'] = delta_p
-    #     cpt_params['delta_n'] = delta_n
-    #     CPT = CumulativeProspectTheory(**cpt_params)
-    #     IMGS.append(CPT.plot_curves(with_params=True, get_img=True))
-    # fname = 'CPT_animation_delta'
+    # Index of last loss for each batch (<= b)
+    L = (X_sort <= b).sum(dim=1) - 1  # [B]
 
-    for lam,eta_p,eta_n,delta_p,delta_n in zip(
-            1 / np.linspace(1, 0.5, N),
-            np.linspace(1, 0.3, N),
-            np.linspace(1, 0.7, N),
-                            np.linspace(1, 0.6, N),
-                           np.linspace(1, 0.4, N)):
+    # Precompute (or reuse from self if N fixed) index row: [1, N] broadcasts to [B, N]
+    idx = torch.arange(N, device=device).view(1, -1)
 
-        cpt_params['eta_p'] = eta_p
-        cpt_params['eta_n'] = eta_n
-        cpt_params['delta_p'] = delta_p
-        cpt_params['delta_n'] = delta_n
-        # cpt_params['lam'] = lam
-        CPT = CumulativeProspectTheory(**cpt_params)
-        IMGS.append(CPT.plot_curves(with_params=True, get_img=True,neg_lambda=True))
-    for lam, eta_p, eta_n, delta_p, delta_n in reversed(list(zip(
-            1 / np.linspace(1, 0.5, N),
-            np.linspace(1, 0.3, N),
-            np.linspace(1, 0.7, N),
-            np.linspace(1, 0.6, N),
-            np.linspace(1, 0.4, N)))):
-        cpt_params['eta_p'] = eta_p
-        cpt_params['eta_n'] = eta_n
-        cpt_params['delta_p'] = delta_p
-        cpt_params['delta_n'] = delta_n
-        # cpt_params['lam'] = lam
-        CPT = CumulativeProspectTheory(**cpt_params)
-        IMGS.append(CPT.plot_curves(with_params=True, get_img=True, neg_lambda=True))
-    # for delta_p, delta_n in zip(
-    #         np.linspace(0.6,1, N),
-    #         np.linspace(0.4,1, N)):
-    #     cpt_params['delta_p'] = delta_p
-    #     cpt_params['delta_n'] = delta_n
-    #     CPT = CumulativeProspectTheory(**cpt_params)
-    #     IMGS.append(CPT.plot_curves(with_params=True, get_img=True))
-    fname = 'CPT_animation_all'
-    print(len(IMGS))
-    imageio.mimsave(f'{fname}.gif', IMGS,loop=0,fps=fps)
-def animation_all():
-    fps = 10
-    fname = 'CPT_animation'
-    IMGS = []
-    cpt_params = {'b': 0, 'lam': 1.0,
-                  'eta_p': 1., 'eta_n': 1.,
-                  'delta_p': 1., 'delta_n': 1.}
+    # mask_minus: losses; mask_plus: gains
+    mask_minus = idx <= L.unsqueeze(1)  # [B, N]
+    mask_plus = ~mask_minus  # [B, N]
+    # Note: when all gains, L = -1 → mask_minus all False, mask_plus all True
+    #       when all losses, L = N-1 → mask_minus all True, mask_plus all False
+
+    # ---- Cumulative probabilities ----
+    # Forward cumsum for losses
+    F_minus = P_sort.cumsum(dim=1)  # [B, N]
+
+    # Reverse cumsum for gains
+    P_rev = torch.flip(P_sort, dims=[1])
+    F_plus = torch.flip(P_rev.cumsum(dim=1), dims=[1])  # [B, N]
+
+    # Select correct cumulative probs per entry without extra masks
+    F_minus = F_minus.clamp(min=0.0, max=1.0)  # Handle rounding errors
+    F_plus = F_plus.clamp(min=0.0, max=1.0)  # Handle rounding errors
+    Fk = torch.where(mask_minus, F_minus, F_plus)  # [B, N]
 
 
+    # ---- Shifted Fk for decision weights ----
+    pad0 = X.new_zeros(B, 1)  # correct device & dtype
 
-    N = 30
-    sp_b = np.linspace(0, 1, N)
-    sp_lam = 1/np.linspace(1, 0.5, N)
-    sp_eta_p = np.linspace(1, 0.3, N)
-    sp_eta_n = np.linspace(1, 0.8, N)
-    sp_delta_p = np.linspace(1, 0.6, N)
-    sp_delta_n = np.linspace(1, 0.4, N)
+    # Keep the same structure as your original implementation
+    z1 = torch.cat([Fk, pad0], dim=1)[:, :-1]  # [B, N]
+    z2 = torch.cat([Fk, pad0], dim=1)[:, 1:]  # [B, N]
+    z3 = torch.cat([pad0, Fk], dim=1)[:, 1:]  # [B, N]
+    z4 = torch.cat([pad0, Fk], dim=1)[:, :-1]  # [B, N]
+    # return X_sort, P_sort, L, mask_plus, mask_minus, z1, z2, z3, z4
 
-    for lam,eta_p,eta_n,delta_p,delta_n in zip(
-            sp_lam,sp_eta_p,sp_eta_n,sp_delta_p,sp_delta_n):
-        cpt_params['eta_p'] = eta_p
-        cpt_params['eta_n'] = eta_n
-        cpt_params['delta_p'] = delta_p
-        cpt_params['delta_n'] = delta_n
-        # cpt_params['lam'] = lam
-        CPT = CumulativeProspectTheory(**cpt_params)
-        IMGS.append(CPT.plot_curves(with_params=True, get_img=True,neg_lambda=True))
-    for lam, eta_p, eta_n, delta_p, delta_n in reversed(list(zip(
-            sp_lam, sp_eta_p, sp_eta_n, sp_delta_p, sp_delta_n))):
-        cpt_params['eta_p'] = eta_p
-        cpt_params['eta_n'] = eta_n
-        cpt_params['delta_p'] = delta_p
-        cpt_params['delta_n'] = delta_n
-        # cpt_params['lam'] = lam
-        CPT = CumulativeProspectTheory(**cpt_params)
-        IMGS.append(CPT.plot_curves(with_params=True, get_img=True, neg_lambda=True))
-    fname = 'CPT_animation_all'
-    print(len(IMGS))
-    imageio.mimsave(f'{fname}.gif', IMGS,loop=0,fps=fps)
+    # ---- Utility and weighting ----
+    lam_p = torch.ones_like(lam_n)
+    u_plus = _utility_fun(X_sort, b,lam_p,eta_p)
+    u_minus = _utility_fun(X_sort, b, lam_n, eta_n)
 
-def main2():
-    animation_all()
-    # animation()
-    # example from https://engineering.purdue.edu/DELP/education/decision_making_slides/Module_12___Cumulative_Prospect_Theory.pdf
-    # values = np.array([80,60,40,20,0])
-    # # p_values = np.array([0.2,0.2,0.2,0.2,0.2])
-    # values = np.array([-10, -20, -1,1, 10, 20])
-    # # values = np.array([-80, 60, 40, 20, 0])
-    # p_values = np.array([0.2, 0.2, 0.2,0.2, 0.2, 0.2])
-    #
-    # # values =  np.array([-0.018, -0.018])#np.random.randint(-5,5,2)
-    # values = np.array([0.02, 0.02])  # np.random.randint(-5,5,2)
-    # p_values = np.array([0.5, 0.5])
-    #
-    # values = np.array([-0.00110984, -0.00128507])  # np.random.randint(-5,5,2)
-    # p_values = np.array([0.1, 0.9])
-    #
-    # # values = np.array([-1,1])
-    # # p_values = np.ones(len(values)) / len(values)
-    # # cpt_params = {'b':2.0, 'lam':2.0,
-    # #               'eta_p':0.88,'eta_n':0.5,
-    # #               'delta_p':0.88,'delta_n':0.6}
-    # cpt_params = {'b': 0, 'lam': 1.0,
-    #               'eta_p': 1., 'eta_n': 1.,
-    #               'delta_p': 1., 'delta_n': 1.}
-    # # cpt_params = {'b':1.0, 'lam':2.25,
-    # #               'eta_p':0.88,'eta_n':0.5,
-    # #               'delta_p':0.88,'delta_n':0.6}
-    # CPT = CumulativeProspectTheory(**cpt_params)
-    # print(CPT.expectation(values,p_values))
-    # print(CPT.expectation_PT(values,p_values))
-    #
-    # print(np.sum(values*p_values))
-    # CPT.plot_curves()
+    rho_plus = u_plus * (_weight_fun(z1,delta_p) - _weight_fun(z2,delta_p))
+    rho_minus = u_minus * (_weight_fun(z3,delta_n) - _weight_fun(z4,delta_n))
+
+    # Only gains contribute to rho_plus, only losses to rho_minus
+    rho_plus = torch.nan_to_num(rho_plus, nan=0.0, posinf=0.0) * mask_plus
+    rho_minus = torch.nan_to_num(rho_minus, nan=0.0, posinf=0.0) * mask_minus
+    # rho_plus = rho_plus * mask_plus
+    # rho_minus = rho_minus * mask_minus
+
+    # Final CPT expectation per batch element
+    # rho = torch.nan_to_num(rho_plus - rho_minus).sum(dim=1)  # [B]
+    rho = rho_plus.sum(dim=1) - rho_minus.sum(dim=1)  # [B]
+    return rho
+
+def gen_random_prospect(min_val=-10, max_val=10, min_size=2, max_size=10):
+    size = np.random.randint(min_size, max_size + 1)
+    # values = np.random.randint(min_val, max_val + 1, size)
+    values = np.random.rand(size)* (max_val - min_val) + min_val
+    p_values = np.random.rand(size)
+    p_values /= p_values.sum()
+    return values, p_values
 
 
-    # cpt_params = {'b': 0, 'lam': 2.25,
-    #               'eta_p': 0.88, 'eta_n': 0.88,
-    #               'delta_p': 0.61, 'delta_n': 0.69}
-    # cpt_params = {'b': 0, 'lam': 2.25,
-    #               'eta_p': 0.88, 'eta_n': 1,
-    #               'delta_p': 0.61, 'delta_n': 0.69}
-    # cpt_params = {'b': 0, 'lam': 0.44,
-    #               'eta_p': 1, 'eta_n': 0.88,
-    #               'delta_p': 0.61, 'delta_n': 0.69}
-    # CPT = CumulativeProspectTheory(**cpt_params)
-    # CPT.plot_curves(svg_fname='Fig_Seeking_ProspectCurves.svg')
-    fig, dump_axs = plt.subplots(1, 1, constrained_layout=True, figsize=(10 * 0.6, 5 * 0.6 * 1.3))
-    fig, axs = plt.subplots(1, 3, constrained_layout=True, figsize=(10 * 0.6*1.5, 5 * 0.6))
+def test_equivalance(cpt1, cpt2, n_tests=1000):
+    # CASE: centered/zero expectation
+    values = np.array([-20, -10, -5.0, 5.0, 10, 20])
+    p_values = np.array([0.1, 0.2, 0.2, 0.2, 0.2, 0.1])
+    _values = np.array([-5, -5, 5, 5])
+    _p_values = np.array([0.3, 0.2, .2, 0.3])
+    vbatch = [torch.tensor(values.copy()), torch.tensor(_values.copy())]
+    pbatch = [torch.tensor(p_values.copy()), torch.tensor(_p_values.copy())]
 
-    averse_params = {'b': 0, 'lam': 2.25,
-                  'eta_p': 0.88, 'eta_n': 1,
-                  'delta_p': 0.61, 'delta_n': 0.69}
-    seekin_params = {'b': 0, 'lam': 0.44,
-                  'eta_p': 1, 'eta_n': 0.88,
-                  'delta_p': 0.61, 'delta_n': 0.69}
-    CPT = CumulativeProspectTheory(**seekin_params)
-    CPT.plot_curves(axs=[axs[i] for i in [0,2]],show=False, titles=['Risk-Seeking', 'Risk-Seeking & Averse'])
-    CPT = CumulativeProspectTheory(**averse_params)
-    CPT.plot_curves(svg_fname='Fig_Both_ProspectCurves.svg', axs=[axs[1],dump_axs], show=False, titles=['Risk-Averse', ''])
-    plt.show()
-#########################################################################################
-#########################################################################################
-    # values = np.array([0.01073038, 0.01114906])
-    # values = np.array([-15,-10,-5.0, 5.0, 10, 15])
-    # p_values = np.array([0.1,0.2,0.2, 0.2,0.2, 0.1])
-    # values = np.array([-15,-10,-5.0])*-1
-    # p_values = np.array([0.2,0.3,0.5])
-    values = np.array([-15])
-    p_values = np.array([1])
+    expectation = [cpt1.expectation(values.copy(), p_values.copy()),
+                   cpt1.expectation(_values.copy(), _p_values.copy())]
+    expectations_new = cpt2.expectation_batch(vbatch, pbatch, add_pad=True)
+    assert np.allclose(expectation,
+                       expectations_new.cpu().numpy()), f'[CASE MIXED] Values do not match: {expectation} vs {expectations_new.cpu().numpy()}'
 
-    # FROM Stochastic systems with cumulative prospect theory
-    # Example 2:
-    # values = np.array([-5, -3, -1, 2, 4, 6])
-    # p_values = np.array([1/6,1/6,1/6,1/6,1/6,1/6])#np.ones_like(values)/len(values)
+    # Mixed
+    for _ in range(100):
+        values, p_values = gen_random_prospect()
+        # _values, _p_values = gen_random_prospect()
+        _values, _p_values = values, p_values
+        vbatch = [torch.tensor(values), torch.tensor(_values)]
+        pbatch = [torch.tensor(p_values), torch.tensor(_p_values)]
+
+        expectation = [cpt1.expectation(values.copy(), p_values.copy()),
+                       cpt1.expectation(_values.copy(), _p_values.copy())]
+        expectations_new = cpt2.expectation_batch(vbatch, pbatch, add_pad=True)
+        assert np.allclose(expectation,
+                           expectations_new.cpu().numpy()), f'[CASE MIXED] Values do not match: {expectation} vs {expectations_new.cpu().numpy()}'
+
+    # All negatives
+    for _ in range(100):
+        values, p_values = gen_random_prospect(min_val=-5, max_val=-1)
+        # _values, _p_values = gen_random_prospect(min_val=-5, max_val=-1)
+        _values, _p_values = values, p_values
+        vbatch = [torch.tensor(values), torch.tensor(_values)]
+        pbatch = [torch.tensor(p_values), torch.tensor(_p_values)]
+
+        expectation = [cpt1.expectation(values.copy(), p_values.copy()),
+                       cpt1.expectation(_values.copy(), _p_values.copy())]
+
+        expectations_new = cpt2.expectation_batch(vbatch, pbatch, add_pad=True)
+        assert np.allclose(expectation,
+                           expectations_new.cpu().numpy()), f'[CASE NEGATIVE] Values do not match: {expectation} vs {expectations_new.cpu().numpy()}'
+
+    # All positive
+    for _ in range(100):
+        values, p_values = gen_random_prospect(min_val=1, max_val=20)
+        _values, _p_values = gen_random_prospect(min_val=1, max_val=20)
+        vbatch = [torch.tensor(values), torch.tensor(_values)]
+        pbatch = [torch.tensor(p_values), torch.tensor(_p_values)]
+
+        expectation = [cpt1.expectation(values.copy(), p_values.copy()),
+                       cpt1.expectation(_values.copy(), _p_values.copy())]
+
+        expectations_new = cpt2.expectation_batch(vbatch, pbatch, add_pad=True)
+        assert np.allclose(expectation,
+                           expectations_new.cpu().numpy()), f'Values do not match: {expectation} vs {expectations_new.cpu().numpy()}'
+
+def test_dominance():
+    import tqdm
+    rat_params = {
+        'b': 0.0,
+        'lam':1.0,
+        'eta_p': 1.0,
+        'eta_n': 1.0,
+        'delta_p': 1.0,
+        'delta_n':1.0,
+        'mean_value_ref': False
+    }
+    seek_params = {
+        'b': 0.0,
+        'lam':0.44,
+        'eta_p': 1.0,
+        'eta_n': 0.88,
+        'delta_p': 1.0,
+        'delta_n':1.0,
+        'mean_value_ref': True
+    }
+    averse_params = {
+        'b': 0.0,
+        'lam':2.25,
+        'eta_p': 0.88,
+        'eta_n': 1.0,
+        'delta_p': 1.0,
+        'delta_n':1.0,
+        'mean_value_ref': True
+    }
 
 
-    # cpt_params = {'b': 0, 'lam': 1,
-    #               'eta_p':0.88,'eta_n':0.88,
-    #               'delta_p':0.61,'delta_n':"0.69"}
-    # cpt_params = {'b': 'e', 'lam': 1,
-    #               'eta_p':1,'eta_n':1,
-    #               'delta_p':0.61,'delta_n':0.69}
-    cpt_params = {'b': 0, 'lam': 1,
-                  'eta_p':0.88,'eta_n':0.88,
-                  'delta_p':0.61,'delta_n':0.69}
-    # cpt_params = {'b': 0, 'lam': 1,
-    #               'eta_p':1,'eta_n':0.88,
-    #               'delta_p':1,'delta_n':1}
-    CPT = CumulativeProspectTheory(**cpt_params)
-    for p_slip in [0.1,0.25,0.5,0.75,0.9]:
-        print(f'p_slip = {p_slip}: w^-= {round(CPT.w_plus(1-p_slip),3)} | w^-= {round(CPT.w_neg(p_slip),3)}')
-    # print(CPT.expectation_from_samples(values, p_values))
+    # averse = CumulativeProspectTheory_Compiled(**averse_params)
+    cpt_rat = CumulativeProspectTheory_Compiled(**rat_params)
+    cpt_seek = CumulativeProspectTheory_Compiled(**seek_params)
+    cpt_aver = CumulativeProspectTheory_Compiled(**averse_params)
+    n_tests = 100000
 
-    # print(CPT.expectation(values, p_values))
-    # print(CPT.expectation_PT(values, p_values))
+    for _ in tqdm.tqdm(range(n_tests)):
+        values, p_values = gen_random_prospect()
+        val_rat = cpt_rat.expectation(values.copy(), p_values.copy())
+        val_seek = cpt_seek.expectation(values.copy(), p_values.copy())
+        # val_aver = cpt_aver.expectation(values.copy(), p_values.copy())
+        # print(np.array([ val_aver,val_rat, val_seek]).round(2))
 
-    # tstart = time.time()
-    # for _ in range(10000):
-    #     v_exp = CPT.expectation3(values, p_values)
-    # print(f'Exp1: {v_exp} {time.time()-tstart} ')
+        assert val_seek >= val_rat, f"Seeking not dominating rational: {val_seek} vs {val_rat} \nValues: {values} with probs {p_values}"
+        # assert val_aver <= val_rat, f"Averse not dominated by rational: {val_aver} vs {val_rat}"
 
-    tstart = time.time()
-    for _ in range(10000):
-        v_exp = CPT.expectation(values, p_values)
-    print(f'Exp1: {v_exp} {time.time()-tstart} ')
-
-    # tstart = time.time()
-    # for _ in range(10000):
-    #     v_exp = CPT.expectation2(values, p_values)
-    # print(f'Exp2: {v_exp} {time.time() - tstart} ')
-
-
-    print(np.sum(values * p_values))
-
-def main():
+def test_indifference():
     neutral_params = {
         'b': 0.0,
         'lam':1.0,
@@ -1404,45 +610,181 @@ def main():
         'lam': 2.25,
         'eta_p': 0.88,
         'eta_n': 1.0,
+        # 'delta_p': 1,
+        # 'delta_n': 1,
         'delta_p': 0.61,
         'delta_n': 0.69,
         # 'mean_value_ref': True
     }
-
     seeking_params = {
         'b': 0.0,
         'lam': 0.44,
         'eta_p': 1,
         'eta_n':  0.88,
+
+        # 'delta_p': 1,
+        # 'delta_n': 1,
         'delta_p': 0.61,
         'delta_n': 0.69,
-        # 'mean_value_ref': True
     }
-    # averse_OG = CumulativeProspectTheory_bu(**averse_params)
-    neutral = CumulativeProspectTheory_Compiled(**neutral_params)
-    # averse = CumulativeProspectTheory_Compiled(**averse_params)
-    seeking = CumulativeProspectTheory_Compiled(**seeking_params)
-    neutral_NEW = CumulativeProspectTheory(**neutral_params)
-    # averse = CumulativeProspectTheory_Test(**averse_params)
-    # seeeking = CumulativeProspectTheory_Test(**seeking_params)
-    # print(averse_OG.mean_value_ref)
 
 
-    values = np.array([-20, -10, -5.0, 5.0, 10, 20])
-    p_values = np.array([0.1, 0.2, 0.2, 0.2, 0.2, 0.1])
-    # values = np.array([5.0, 10, 15])
-    # p_values = np.array([0.4, 0.4, 0.2])
+    cpt1 = CumulativeProspectTheory_Compiled(**neutral_params)
+    cpt2 = CumulativeProspectTheory(compiled=True, **seeking_params)
+    cpt3 = CumulativeProspectTheory(compiled=True, **averse_params)
+    fig, axs = plt.subplots(3,3,figsize=(6, 6), constrained_layout=True)
 
-    exp_seeking = seeking.expectation(values, p_values)
-    exp_neutral = neutral.expectation(values, p_values)
 
-    values = torch.tensor(values).unsqueeze(0)  # make batch of 1
-    p_values = torch.tensor(p_values).unsqueeze(0)
-    exp_neutral2 = neutral_NEW.expectation_batch(values, p_values)
 
-    print(exp_seeking)
-    print(exp_neutral)
-    print(exp_neutral2.cpu().numpy()[0])
+
+    ######################################
+    x_vals = (200, 100, 0)
+    ax_row = axs[0]
+    indifference_curve(ax_row[0], cpt2, n_points=100, x_vals=x_vals)
+    indifference_curve(ax_row[1], cpt1, n_points=100, x_vals=x_vals)
+    indifference_curve(ax_row[2], cpt3, n_points=100, x_vals=x_vals, colorbar=True)
+    for ax in ax_row:
+        # annotate xvals in top right of plot
+        ax.annotate(f'Nonnegative:: {x_vals}', xy=(0.95, 0.95), xycoords='axes fraction',
+                    fontsize=8, ha='right', va='top',
+                    bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='black', lw=0.5))
+
+   #######################################
+
+    x_vals = (-200, 0, 200)
+    print(f"Plotting indifference curves... {x_vals}")
+    ax_row = axs[1]
+    indifference_curve(ax_row[0], cpt2, n_points=100, x_vals=x_vals)
+    indifference_curve(ax_row[1], cpt1, n_points=100,x_vals=x_vals)
+    indifference_curve(ax_row[2], cpt3, n_points=100,x_vals=x_vals, colorbar=True)
+    ax_row[0].set_title('Seeking')
+    ax_row[1].set_title('Rational')
+    ax_row[2].set_title('Averse')
+    ax_row[0].set_ylabel('p3')
+    for ax in ax_row:
+        # annotate xvals in top right of plot
+        ax.annotate(f'Mixed: {x_vals}', xy=(0.95, 0.95), xycoords='axes fraction',
+                    fontsize=8, ha='right', va='top',
+                    bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='black', lw=0.5))
+
+
+
+    ######################################
+    x_vals = (-200, -100, 0)
+    ax_row = axs[2]
+    indifference_curve(ax_row[0], cpt2, n_points=100, x_vals=x_vals, colorbar=True)
+    indifference_curve(ax_row[1], cpt1, n_points=100, x_vals=x_vals, colorbar=True)
+    indifference_curve(ax_row[2], cpt3, n_points=100, x_vals=x_vals, colorbar=True)
+    for ax in ax_row:
+        # annotate xvals in top right of plot
+        ax.annotate(f'Nonpositive: {x_vals}', xy=(0.95, 0.95), xycoords='axes fraction',
+                    fontsize=8, ha='right', va='top',
+                    bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='black', lw=0.5))
+    plt.show()
+
+
+def indifference_curve(ax, cpt, x_vals=(-200, -100, 0), n_points=100,colorbar=False):
+    P1 = np.linspace(0, 1, n_points)
+    P3 = np.linspace(0, 1, n_points)
+
+    Xg, Yg = np.meshgrid(P1, P3)
+    Zg = np.zeros_like(Xg)
+
+    for i in trange(n_points):
+        for j in range(n_points):
+            p1 = P1[i]
+            p3 = P3[j]
+            p2 = 1 - p1 - p3
+            if any(0 > p < 1 for p in [p1, p2, p3]):
+                Zg[i, j] = None
+            else:
+                values = np.array(x_vals)
+                p_values = np.array([p1, p2,p3])
+                cpt_val = cpt.expectation(values, p_values)
+                if isinstance(cpt_val, torch.Tensor):
+                    cpt_val = cpt_val.detach().cpu().numpy()
+                # Zg[i, j] = np.round(cpt_val - np.sum(x_vals * p_values),2)
+                Zg[i, j] =cpt_val
+
+                # print(f'val{cpt.expectation(values, p_values)}')
+
+
+    # plot meshgrid as 3d surface
+    # surf = ax.plot_surface(Xg, Yg, Zg, #cmap=cm.coolwarm,
+    #                        linewidth=0, antialiased=False)
+
+    # ax.pcolormesh(Xg, Yg, Zg, shading='auto', cmap='RdBu')
+    cb = ax.contourf(Xg, Yg, Zg)
+    if colorbar:
+        plt.colorbar(cb, ax=ax, label='intensity')
+
+
+    # contour = ax.contour(Xg, Yg, Zg, levels=[0], colors='blue')
+    # ax.clabel(contour, inline=True, fontsize=8)
+
+
+    # ax.set_xlabel('p1')
+    # ax.set_ylabel('p2')
+    # ax.set_title('Indifference Curve (CPT)')
+
+    # add white triangle patch
+    # triangle = plt.Polygon([[1, 1], [1, 0], [0, 1]], color='white', zorder=10)
+    # ax.add_patch(triangle)
+
+
+
+def main():
+    test_indifference()
+    # test_dominance()
+    # neutral_params = {
+    #     'b': 0.0,
+    #     'lam':1.0,
+    #     'eta_p': 1.0,
+    #     'eta_n': 1.0,
+    #     'delta_p': 1.0,
+    #     'delta_n':1.0,
+    #     # 'mean_value_ref': True
+    # }
+    # averse_params = {
+    #     'b': 0.0,
+    #     'lam': 2.25,
+    #     'eta_p': 0.88,
+    #     'eta_n': 1.0,
+    #     'delta_p': 0.61,
+    #     'delta_n': 0.69,
+    #     # 'mean_value_ref': True
+    # }
+    # seeking_params = {
+    #     'b': 0.0,
+    #     'lam': 0.44,
+    #     'eta_p': 1,
+    #     'eta_n':  0.88,
+    #     'delta_p': 0.61,
+    #     'delta_n': 0.69,
+    #     # 'mean_value_ref': True
+    # }
+
+    # test1_params = {
+    #     'b': 0.0,
+    #     'lam': 2.25,
+    #     'eta_p': 0.88,
+    #     'eta_n': 1.0,
+    #     'delta_p': 0.61,
+    #     'delta_n': 0.69,
+    #     # 'mean_value_ref': True
+    # }
+    #
+    #
+    # # averse = CumulativeProspectTheory_Compiled(**averse_params)
+    # cpt = CumulativeProspectTheory_Compiled(**test1_params)
+    # cpt_new = CumulativeProspectTheory(compiled=True, **test1_params)
+    # test_equivalance(cpt, cpt_new, n_tests=1000)
+    #
+    # test_speed()
+
+
+
+
 if __name__ == "__main__":
     main()
 

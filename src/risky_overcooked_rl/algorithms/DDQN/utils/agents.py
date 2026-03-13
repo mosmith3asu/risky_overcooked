@@ -405,7 +405,7 @@ class SelfPlay_QRE_OSA_CPT(SelfPlay_QRE_OSA):
 
             # self.qval_range = f'[{np.round(np.min(expected_value))}, {np.round(np.max(expected_value))}]' # (for logger)
 
-            expected_value = torch.from_numpy(expected_value).float().cuda().reshape(q_value.shape)
+            expected_value = torch.from_numpy(expected_value).float().to(self.device).reshape(q_value.shape)
 
         # Optimize ----------------
         loss = F.mse_loss(q_value, expected_value.detach(), reduction='none')

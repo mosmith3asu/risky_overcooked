@@ -3,7 +3,7 @@ import os
 
 print('\\'.join(os.getcwd().split('\\')[:-1]))
 sys.path.append('\\'.join(os.getcwd().split('\\')[:-1]))
-ROOT_DIR = "\\study_1\\"
+ROOT_DIR = "\\study1\\"
 
 def search_config_value(config, target_key, level=0):
     found = None
@@ -49,18 +49,42 @@ def get_default_config(path = ROOT_DIR+ '_config.yaml'):
     import yaml
     import os
 
+    # dirs = os.getcwd().split('\\')
+    # src_idx = dirs.index('src')  # find index of src directory
+    # src_dir = '\\'.join(dirs[:src_idx+1])
+    # src_dir = get_src_dir()
+    # if path.startswith('\\'):
+    #     path = '\\'.join(path.split('\\')[1:])
     dirs = os.getcwd().split('\\')
-    src_idx = dirs.index('src')  # find index of src directory
-    src_dir = '\\'.join(dirs[:src_idx+1])
+    src_idx = dirs.index('study1')  # find index of src directory
+    src_dir = '\\'.join(dirs[:src_idx])
+
+
     with open(f'{src_dir}{path}') as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
     return config
 
+def get_src_dir():
+    dirs = os.getcwd().split('\\')
+    try:
+        src_idx = dirs.index('src') # find index of src directory
+        return '\\'.join(dirs[:src_idx + 1]) + '\\'
+    except:
+        root_idx = dirs.index('risky_overcooked')
+        return '\\'.join(dirs[:root_idx + 1]) + "\\src\\"
 
 def get_absolute_save_dir(path = ROOT_DIR+'models\\'):
     dirs = os.getcwd().split('\\')
-    src_idx = dirs.index('src') # find index of src directory
-    return '\\'.join(dirs[:src_idx+1]) + path
+    study1_idx = dirs.index('study1') # find index of study_1 directory
+    return '\\'.join(dirs[:study1_idx]) + path
+    # try:
+    #     src_idx = dirs.index('src') # find index of src directory
+    #     return '\\'.join(dirs[:src_idx + 1]) + path
+    # except:
+    #     root_idx = dirs.index('risky_overcooked')
+    #     return '\\'.join(dirs[:root_idx + 1]) + "\\src" + path
+
+
 
 
 def get_save_dir():
